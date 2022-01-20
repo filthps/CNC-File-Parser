@@ -1,9 +1,5 @@
-from decorators import file_locker, re_numerate
+counter = 0
 
-
-@file_locker
-@re_numerate
-def main(full_path, **kwargs):
-    #with open(full_path) as file:
-        #pass
-    print(**kwargs)
+def heller(data):
+    global counter
+    print("Heller", counter)
