@@ -1,3 +1,4 @@
+import json
 import re
 import importlib
 from traceback import print_exc
@@ -61,14 +62,14 @@ def main():
 def scan_folders():
     def search_valid_folders(reg: re.match, path: str) -> re.match:
         return reg.match(path)
-    sep = os.path.sep
-    regexp = re.compile(r"(?P<path>[A-Z]:" + (sep * 2) + "(?:\w+" + (sep * 2) + ")*(?P<machine>" +
+    sep = os.path.sep * 2
+    regexp = re.compile(r"(?P<path>[A-Z]:" + sep + "(?:\w+" + sep + ")*(?P<machine>" +
                         "|".join(MACHINES_INPUT_PATH.keys()) +
-                        ")" + (sep * 2) + "(?:\w+" +
-                        (sep * 2) +
-                        ")*)(?P<name>[A-Z]?[0-9]{2,5})\.(?P<frmt>\w+)?")
-    available_folders = Path(INPUT_PATH_ROOT).glob("**/*.txt")
+                        ")" + sep + "(?:\S+" + sep +
+                        ")*)(?P<name>[A-Z]?\d{2,5}\b?(?:\w+\b?\d{2,3})?)\.?(?P<frmt>[a-z]+)?$")
+    available_folders = Path(INPUT_PATH_ROOT).glob("**/*")
     folders = filter(lambda x: x, map(lambda p: search_valid_folders(regexp, str(p)), available_folders))
+    #print(json.dumps(list(map(lambda x: x.group(), folders)), indent=4, ensure_ascii=False))
     return folders
 
 

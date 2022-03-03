@@ -8,13 +8,11 @@ class Session(LinkedList, AbstractSession):
     def __init__(self, data: list[dict[str, Any]], type_: ClassVar = None):
         if type_ is None:
             raise ValueError
-        self.__length = 0
-        self.__length = len(self)
-        self.__status = None
         super().__init__(items=data, type_=type_)
+        self.__status = None
 
     def is_valid_index(self, index):
-        if not 0 <= index < self.__length:
+        if not 0 <= index < self._length:
             raise IndexError
         return True
 
@@ -31,6 +29,9 @@ class Session(LinkedList, AbstractSession):
     def __str__(self):
         return str(self.to_list())
 
-    def __del__(self):
-        for file in self:
-            file.close()
+    def __delitem__(self, key):
+        if
+        if 0 < key < self._length:
+            prev = self[key - 1]
+        item = self[key]
+        item.close()

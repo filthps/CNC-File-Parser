@@ -29,7 +29,7 @@ class HellerCNCFile(CNCFile):
         Получить 'чистый' путь файла - без учёта пути служебных папок-констант
         :return:
         """
-        p = os.path.normpath(path)
+        p = os.path.normpath(p)
         p = p.replace(MACHINES_INPUT_PATH[HELLER] + os.path.sep, "")
         return p
 
@@ -55,12 +55,15 @@ class Heller(AbstractMachine):
     @classmethod
     def start(cls, data: list[dict[str, Any]]):
         session = cls.create_session(data)
-        for file in session:
-            pass
 
 
 if __name__ == "__main__":
     path = 'C:\/Users\/filps\PycharmProjects\/cnc_file_parser\/files\/heller\/9109_verh\/'
     name = 'R400'
     format_ = 'txt'
-    t = HellerCNCFile(path=path, name=name, frmt=format_)
+    #t = HellerCNCFile(path=path, name=name, frmt=format_)
+    Heller.start([{
+        'path': 'C:\/Users\/filps\PycharmProjects\/cnc_file_parser\/files\/heller\/9109_verh\/',
+        'name': 'R400',
+        'frmt': 'txt'
+    }])

@@ -2,17 +2,15 @@ import os
 import time
 from abstractions import AbstractCNCFile
 from temp import Temp
-from data_type import LinkedListItem
 
 
-class CNCFile(AbstractCNCFile, LinkedListItem):
+class CNCFile(AbstractCNCFile):
     REPLACEMENT_QUEUE = {}  # ЧТо: На_что
     INVALID_SYMBOLS = ""
     IS_FULLNAME = True  # Сохранить файл с расширением или без
     APPROACH = 3
 
     def __init__(self, path: str = None, name: str = None, frmt: str = None):
-        super(LinkedListItem, self).__init__()
         self.name = name
         self.format_ = frmt
         self.__full_path = f"{path}{name}.{frmt}"
@@ -53,6 +51,8 @@ class CNCFile(AbstractCNCFile, LinkedListItem):
     def open(self, path, mode="r"):
         try:
             origin = open(path, mode, encoding="utf-8")
+        except FileExistsError:
+            return
         except OSError:
             self.re_connect(path, mode=mode)
         else:
