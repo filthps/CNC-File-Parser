@@ -78,9 +78,6 @@ class AbstractCNCFile(Sequence):
     def get_status(self):
         pass
 
-    def get_length(self):
-        pass
-
     @abstractmethod
     def is_valid_last_modify_attr(self):
         pass

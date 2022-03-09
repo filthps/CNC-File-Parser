@@ -34,17 +34,30 @@ class LinkedList:
             self.append(LinkedListItem(inst))
 
     def append(self, elem):
-        if self._length:
-            last_element = self.forward_move(self._length)
+        if len(self):
+            last_element = self.forward_move(len(self))
             self.set_next(last_element, elem)
         else:
             self._head = self._tail = elem
 
     def is_valid_index(self, value: int):
-        if
+        if not isinstance(value, int):
+            raise TypeError
+        if value >= self._length:
+            raise IndexError
 
-    @staticmethod
-    def set_next(left_item: LinkedListItem, right_item: LinkedListItem):
+    @classmethod
+    def is_valid_node(cl, obj):
+        if not isinstance(obj, cl):
+            raise TypeError
+
+    @classmethod
+    def set_next(cls, left_item: LinkedListItem, right_item: LinkedListItem):
+        try:
+            cls.is_valid_node(left_item)
+            cls.is_valid_node(right_item)
+        except TypeError:
+            return
         left_item.next = right_item
 
     def items_gen(self):
@@ -52,10 +65,9 @@ class LinkedList:
         while next_element is not None:
             current_element = next_element.next
             yield next_element
-            if current_element is not None:
-                next_element = current_element
-            else:
+            if current_element is None:
                 break
+            next_element = current_element
 
     def __iter__(self):
         return self.items_gen()
@@ -74,17 +86,36 @@ class LinkedList:
     def forward_move(self, index):
         element = self._head
         for _ in range(index):
-            next_element = element.next
-            if next_element is None:
-                raise IndexError
-            element = next_element
+            element = element.next
         return element
 
-    def __getitem__(self, item):
-        return self.forward_move(item)
+    def __getitem__(self, index):
+        self.is_valid_index(index)
+        return self.forward_move(index)
+
+    def __delitem__(self, index):
+        self.is_valid_index(index)
+        if index == 0:
+            item = self.forward_move(index)
+            next_item = item.next
+            item.next = None
+            self._head = next_item
+            return item
+        item_prev = self.forward_move(index - 1)
+        if index == len(self) - 1:
+            item = item_prev.next
+            item_prev.next = None
+            self._tail = item_prev
+            return item
+        current_item = item_prev.next
+        next_item = current_item.next
+        item_prev.next = next_item
+        current_item.next = None
+        return current_item
+
 
     def __repr__(self):
-        return list(self.__iter__())
+        return list(self)
 
     def __str__(self):
-        return str(list(self.__iter__()))
+        return str(list(self))

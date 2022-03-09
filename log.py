@@ -35,11 +35,11 @@ class Log(AbstractLog):
 
     @classmethod
     def close(cls):
-        cls.FILE.flush()
+        cls.FILE.close()
 
     @staticmethod
     def head() -> str:
-        return f"{'-':>10}{datetime.datetime.now():%d-%m-%Y %H:%M:%S}{'-':<10}"
+        return f"{'=':>10}{datetime.datetime.now():%d-%m-%Y %H:%M:%S}{'=':<10}"
 
     @staticmethod
     def tail():

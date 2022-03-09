@@ -20,18 +20,12 @@ class Session(LinkedList, AbstractSession):
     def status(self):
         return self.__status
 
-    def to_list(self):
-        return [item for item in self]
-
     def __repr__(self):
-        return f"{type(self).__name__}({self.to_list()})"
+        return f"{type(self).__name__}({list(self)})"
 
     def __str__(self):
-        return str(self.to_list())
+        return str(list(self))
 
     def __delitem__(self, key):
-        if
-        if 0 < key < self._length:
-            prev = self[key - 1]
-        item = self[key]
+        item = super().__delitem__(key)
         item.close()

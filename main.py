@@ -69,7 +69,6 @@ def scan_folders():
                         ")*)(?P<name>[A-Z]?\d{2,5}\b?(?:\w+\b?\d{2,3})?)(?P<frmt>\.[a-z]+)?$")
     available_folders = Path(INPUT_PATH_ROOT).glob("**/*")
     folders = filter(lambda x: x, map(lambda p: search_valid_folders(regexp, str(p)), available_folders))
-    #print(json.dumps(list(map(lambda x: x.group(), folders)), indent=4, ensure_ascii=False))
     return folders
 
 

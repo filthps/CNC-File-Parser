@@ -8,23 +8,25 @@ class CNCFile(AbstractCNCFile):
     REPLACEMENT_QUEUE = {}  # ЧТо: На_что
     INVALID_SYMBOLS = ""
     IS_FULLNAME = True  # Сохранить файл с расширением или без
-    APPROACH = 3
+    APPROACH = 3  # Допустимое кол-во попыток открыть файл снова при ошибке
 
     def __init__(self, path: str = None, name: str = None, frmt: str = None):
         self.name = name
         self.format_ = frmt
-        self.__full_path = f"{path}{name}.{frmt}"
+        self.__full_path = f"{path}{name}"
+        if frmt is not None:
+            self.__full_path = f"{self.__full_path}{frmt}"
         self._length = 0
         self.__last_modify_time = None
         self.__f_size = None
         self._head_attrs = {}
         self.is_numerate = False
         self._status = False
-        self._origin = None
         self._temp = None
         self.__open_errors_counter = 0
         self._temp = Temp()
         self.__is_origin = None
+        self._origin = self.open(self.__full_path)
         self._length = len(self)
 
     def parse_head(self):
@@ -35,11 +37,13 @@ class CNCFile(AbstractCNCFile):
 
     def is_origin(self):
         """
-         Каждый новый цикл итераций по экземпляру подразумевает open(file, 'r'),
-         в связи с этим обстоятельством придётся проверить - тот ли самый файл перед нами:
-         Если вес или время последнего редактирования изменились с
-         момента первого откртия файла - это не оригинальный файл!
+         Перед записью временного файла в целевой придётся проверить:
+          1) Существует ли исходный файл
+          2) тот ли самый файл перед нами: (Если вес или время последнего редактирования изменились с
+         момента первого откртия файла - это не оригинальный файл!)
         """
+        if not os.path.exists(self.__full_path):  # Файла не существует в исходном каталоге
+            raise FileNotFoundError
         if self.__last_modify_time is None:
             attrs_obj = os.stat(self.__full_path)
             self.__last_modify_time = attrs_obj.st_mtime
@@ -48,19 +52,25 @@ class CNCFile(AbstractCNCFile):
         if attrs_obj.st_mtime != self.__last_modify_time or attrs_obj.st_size != self.__f_size:
             raise FileNotFoundError(f"Исходный файл программы - {self.__full_path} изменился. Отмена")
 
-    def open(self, path, mode="r"):
+    def open(self, path, mode="rt"):
+        """
+        Рекурсивное открытие файла
+        :param path:
+        :param mode:
+        :return:
+        """
         try:
             origin = open(path, mode, encoding="utf-8")
         except FileExistsError:
             return
         except OSError:
-            self.re_connect(path, mode=mode)
+            self.re_connect(path, mode)
         else:
             if origin.closed:
-                self.re_connect(path, mode=mode)
+                self.re_connect(path, mode)
             return origin
 
-    def re_connect(self, path, mode="r"):
+    def re_connect(self, path, mode="rt"):
         self.__open_errors_counter += 1
         if self.__open_errors_counter == self.APPROACH:
             self._status = None
@@ -72,28 +82,25 @@ class CNCFile(AbstractCNCFile):
     def is_valid_index(self, index):
         if not 0 <= index < self._length:
             raise IndexError
-        return True
 
     def get_status(self):
         return self._status
 
     def __iter__(self):
         self.is_origin()
-        self._origin = self.open(self.__full_path)
         if self._origin is None:
             return iter(tuple())
-        return self._origin
+        return iter(self._origin)
 
     def __getitem__(self, line_number):
-        if not self.is_valid_index(line_number):
-            return
+        self.is_valid_index(line_number)
         if self._status is not None:
             for index, line in enumerate(self):
                 if index == line_number:
                     item = line
                     return item
 
-    def get_lines(self, index, count_=1) -> list:
+    def get_lines(self, index: int, count_: int = 1) -> list:
         """
         :param index: индекс начала вхождения
         :param count_: количество возвращаемых строк
@@ -135,6 +142,6 @@ class CNCFile(AbstractCNCFile):
 
     @classmethod
     def get_filename(cls, name: str, format_: str):
-        if cls.IS_FULLNAME:
-            return f"{name}.{format_}"
+        if cls.IS_FULLNAME and format_ is not None:
+            return f"{name}{format_}"
         return name
