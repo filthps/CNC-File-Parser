@@ -1,5 +1,7 @@
 import os
+import re
 import time
+from typing import Iterator, Optional
 from abstractions import AbstractCNCFile
 from temp import Temp
 
@@ -10,30 +12,31 @@ class CNCFile(AbstractCNCFile):
     IS_FULLNAME = True  # Сохранить файл с расширением или без
     APPROACH = 3  # Допустимое кол-во попыток открыть файл снова при ошибке
 
-    def __init__(self, path: str = None, name: str = None, frmt: str = None):
-        self.name = name
-        self.format_ = frmt
-        self.__full_path = f"{path}{name}"
-        if frmt is not None:
-            self.__full_path = f"{self.__full_path}{frmt}"
-        self._length = 0
-        self.__last_modify_time = None
-        self.__f_size = None
-        self._head_attrs = {}
+    def __init__(self, path: str = "", name: str = "", frmt: Optional[str] = None):
+        self.name: str = name
+        self.format_: Optional[str] = frmt
+        self.__full_path: str = f"{path}{name}"
+        self._length: int = 0
+        self.__last_modify_time: Optional[int] = None
+        self._origin: Optional[os.open] = None
+        self.__f_size: int = 0
         self.is_numerate = False
         self._status = False
-        self._temp = None
-        self.__open_errors_counter = 0
+        self._temp: Optional[Temp] = None
+        self._head_index: tuple[int, int] = (0, 0)
+        self.__open_errors_counter: int = 0
+        if frmt is not None:
+            self.__full_path = f"{self.__full_path}{frmt}"
         self._temp = Temp()
-        self.__is_origin = None
         self._origin = self.open(self.__full_path)
         self._length = len(self)
+        self._head_index = self.parse_head()
 
     def parse_head(self):
-        pass
-
-    def find_head_template(self):
-        pass
+        end_index = self.find("G0") or 0
+        if not end_index:
+            end_index = self.find("G1") or 0
+        return 0, end_index
 
     def is_origin(self):
         """
@@ -76,7 +79,7 @@ class CNCFile(AbstractCNCFile):
             self._status = None
             raise FileNotFoundError
         time.sleep(1)
-        origin = self.open(path, mode=mode)
+        origin = self.open(path, mode)
         return origin
 
     def is_valid_index(self, index):
@@ -99,6 +102,19 @@ class CNCFile(AbstractCNCFile):
                 if index == line_number:
                     item = line
                     return item
+
+    def find(self, string: str = ""):
+        """
+        Найти строку файле
+
+        :param string: искомая строка
+        :return: индекс найденной строки
+        """
+        counter = 0
+        for str_ in self:
+            if str_ == string:
+                return counter
+            counter += 1
 
     def get_lines(self, index: int, count_: int = 1) -> list:
         """
