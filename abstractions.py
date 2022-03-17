@@ -61,7 +61,7 @@ class AbstractMachine(ABC):
 
     @classmethod
     @abstractmethod
-    def start(cls, data: list[dict[str, Any]]):
+    def start(cls, data: list[dict[str, Any]], origin):
         pass
 
 
@@ -120,10 +120,6 @@ class AbstractCNCFile(Sequence):
 
     @abstractmethod
     def parse_head(self):
-        pass
-
-    @abstractmethod
-    def find_head_template(self):
         pass
 
 
