@@ -67,7 +67,7 @@ class Heller(AbstractMachine):
 
     @classmethod
     def create_session(cls, data):
-        session = Session(data, type_=cls.CNC_FILE_TYPE)
+        session: Session = Session(data, type_=cls.CNC_FILE_TYPE)
         return session
 
     @classmethod
