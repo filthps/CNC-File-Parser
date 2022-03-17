@@ -1,7 +1,7 @@
 import os
 import re
 import time
-from typing import Iterator, Optional
+from typing import Optional
 from abstractions import AbstractCNCFile
 from temp import Temp
 
@@ -33,7 +33,10 @@ class CNCFile(AbstractCNCFile):
         self._head_index = self.parse_head()
 
     def parse_head(self):
-        end_index = self.find("G0") or 0
+        """
+        :return: Кортеж с 2 позициями-индексами: начало и конец 'шапки'
+        """
+        end_index = self.find("G0") or False
         if not end_index:
             end_index = self.find("G1") or 0
         return 0, end_index
@@ -58,8 +61,8 @@ class CNCFile(AbstractCNCFile):
     def open(self, path, mode="rt"):
         """
         Рекурсивное открытие файла
-        :param path:
-        :param mode:
+        :param path: строка, путь к файлу
+        :param mode: строка, режим открытия файла
         :return:
         """
         try:
@@ -67,11 +70,8 @@ class CNCFile(AbstractCNCFile):
         except FileExistsError:
             return
         except OSError:
-            self.re_connect(path, mode)
-        else:
-            if origin.closed:
-                self.re_connect(path, mode)
-            return origin
+            return self.re_connect(path, mode)
+        return origin
 
     def re_connect(self, path, mode="rt"):
         self.__open_errors_counter += 1
