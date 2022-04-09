@@ -1,19 +1,18 @@
 import json
+import os
 import re
-import importlib
 from traceback import print_exc
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
-
+from machine import Machine
+from config import INPUT_PATH_ROOT
 from decorators import *
-from config import INPUT_PATH_ROOT, MACHINES_INPUT_PATH
 
 
 @init_path_tree
 def main():
     def sort_data(data):
-        while True:
-            return {data.pop("machine"): dict(data.items())}
+        return {data.pop("machine"): dict(data.items())}
 
     def clean_dubikat(data_iterator):
         data = list(data_iterator)
@@ -32,32 +31,20 @@ def main():
     match_group_dict = map(lambda x: x.groupdict(), match_objects)
     sorted_group = map(lambda s: sort_data(s), match_group_dict)
     cleaned_data = clean_dubikat(sorted_group)
-    #with ThreadPoolExecutor(max_workers=THREADS) as executor:
-    while True:
-        try:
-            data = next(cleaned_data)
-        except StopIteration:
-            break
-        else:
-            machine_name = tuple(data.keys())[0]
-            module_name = machine_name.capitalize()
+    with ThreadPoolExecutor(max_workers=THREADS) as executor:
+        while True:
             try:
-                module = importlib.import_module(module_name)
-            except ImportError:
-                msg = f"Нет файла {module_name}! Отмена {len(data)} операций, связанных с ним."
-                raise ImportError(msg)
+                data = next(cleaned_data)
+            except StopIteration:
+                break
             else:
-                cls = getattr(module, module_name, None)
-                if cls is None:
-                    raise ImportError(f"В модуле {module_name} отсутствует класс {module_name}!"
-                                      f"Отмена {len(data)} операций, связанных с ним.")
-                func = getattr(cls, "start", None)
-                if func is None:
-                    raise ImportError(f"В модуле {module_name}, в классе {module_name} отсутствует функция 'start'!"
-                                      f"Отмена {len(data)} операций, связанных с ним.")
-                #executor.submit(func, data[machine_name])
-                func(data[machine_name])
-
+                machine_name = tuple(data.keys())[0]
+                if f"{machine_name}.py" not in os.listdir():
+                    raise ImportError(f"Нет файла {machine_name}")
+                if machine_name not in Machine.CNC_FILE_TYPE.keys():
+                    raise ImportError(f"Отсутствует модуль CNC_File для станка {machine_name}")
+                #executor.submit(Machine.start, data, machine_name=machine_name)
+                Machine.start(data.pop(machine_name), machine_name=machine_name)
 
 def scan_folders():
     def search_valid_folders(reg: re.match, path: str) -> re.match:
@@ -66,7 +53,7 @@ def scan_folders():
     regexp = re.compile(r"(?P<path>[A-Z]:" + sep + "(?:[^\*\.\"\/\\[\]:;\|,]+" + sep + ")*(?P<machine>" +
                         "|".join(MACHINES_INPUT_PATH.keys()) +
                         ")" + sep + "(?:[^\*\.\"\/\\[\]:;\|,]+" + sep +
-                        ")*)(?P<name>[A-Z]?\d{2,5}\b?(?:\w+\b?\d{2,3})?)(?P<frmt>\.[a-z]+)?$")
+                        ")*)(?P<name>[A-Z]?\d{2,5}\D?(?:\w+(?:\b)?\d{2,3})?)(?P<frmt>\.[a-z]+)?$")
     available_folders = Path(INPUT_PATH_ROOT).glob("**/*")
     folders = filter(lambda x: x, map(lambda p: search_valid_folders(regexp, str(p)), available_folders))
     return folders
