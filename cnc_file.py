@@ -1,21 +1,66 @@
 import os
-import re
 import time
-from typing import Optional
+import re
+from typing import Optional, Union, Iterator, Tuple, Any
 from abstractions import AbstractCNCFile
 from temp import Temp
+from config import TOOLS
 
 
-class CNCFile(AbstractCNCFile):
-    REPLACEMENT_QUEUE = {}  # ЧТо: На_что
+class Tool:
+    tools: dict[str, dict[tuple, tuple[int]]] = TOOLS
+
+    @classmethod
+    def start(cls, tool_name: str, header_data: dict, diameter: int):
+        """
+        Инициализация проверки
+        :param tool_name:
+        :param header_data:
+        :param diameter:
+        :return:
+        """
+        filename_data = cls.find_tool(cls.tools, tool_name, diameter)
+        if not filename_data["tool"] or not filename_data["diam"] or filename_data["tool_family_name"] is None:
+            return
+        return filename_data
+
+    @staticmethod
+    def find_tool(tool_data, tool_name: str, tool_diameter: int) -> dict[str, bool, bool, Optional[str]]:
+        """
+        Запросить из константы TOOLS семейство, наименование инструмента и диаметр
+
+        :param tool_data: архив доступного инструмента
+        :param tool_name: искомый инструмент
+        :param tool_diameter: искомый диаметр
+        :return: результирующий словарь из 3 элементов
+        """
+        tool_name = str.lower(tool_name)
+        status = {"tool": False, "diam": False, "tool_family_name": None}
+        for tool_family, tools in tool_data:
+            for tool, diam_tuple in tools:
+                if tool_name == tool:
+                    status["tool"] = True
+                    status["tool_family_name"] = tool_family
+                    if tool_diameter in diam_tuple:
+                        status["diam"] = True
+                        break
+        return status
+
+    @staticmethod
+    def compare(filename_data, filehead_data):
+        pass
+
+class CNCFile(AbstractCNCFile, Tool):
+    REPLACEMENT = {}  # ЧТо: На_что
     INVALID_SYMBOLS = ""
     IS_FULLNAME = True  # Сохранить файл с расширением или без
     APPROACH = 3  # Допустимое кол-во попыток открыть файл снова при ошибке
+    MAX_NUM: Union[int, float] = float("inf")  # Максимально допустимый номер кадра
+    LAST_SYMBOL = ""
 
     def __init__(self, path: str = "", name: str = "", frmt: Optional[str] = None):
-        self.name: str = name
-        self.format_: Optional[str] = frmt
-        self.__full_path: str = f"{path}{name}"
+        self._name: str = name
+        self._format_: Optional[str] = frmt
         self._length: int = 0
         self.__last_modify_time: Optional[int] = None
         self._origin: Optional[os.open] = None
@@ -27,10 +72,19 @@ class CNCFile(AbstractCNCFile):
         self.__open_errors_counter: int = 0
         if frmt is not None:
             self.__full_path = f"{self.__full_path}{frmt}"
+        else:
+            self.__full_path: str = f"{path}{name}"
         self._temp = Temp()
         self._origin = self.open(self.__full_path)
         self._length = len(self)
-        self._head_index = self.parse_head()
+        if self._status:
+            self._head_index = self.parse_head()
+
+
+    def parse_name(self):
+        full_name = re.match(r'(?P<name>[A-Z]?\d{2,5})_(?P<tool_name>\w+)_\w{1}(?P<diam>\d{1,3})', self._name)
+        if bool(full_name):
+            return full_name.groups()
 
     def parse_head(self):
         """
@@ -40,6 +94,13 @@ class CNCFile(AbstractCNCFile):
         if not end_index:
             end_index = self.find("G1") or 0
         return 0, end_index
+
+    def is_large(self):
+        """
+        Укладывается ли количество кадров в константу MAX_NUM - атрибут класса
+        :return: bool()
+        """
+        return True if len(self) <= type(self).MAX_NUM else False
 
     def is_origin(self):
         """
@@ -71,6 +132,8 @@ class CNCFile(AbstractCNCFile):
             return
         except OSError:
             return self.re_connect(path, mode)
+        else:
+            self._status = True
         return origin
 
     def re_connect(self, path, mode="rt"):
@@ -86,6 +149,16 @@ class CNCFile(AbstractCNCFile):
         if not 0 <= index < self._length:
             raise IndexError
 
+    def is_valid_last_modify_attr(self):
+        pass
+
+    def is_valid_tail(self, symbol=""):
+        if symbol:
+            if not self.LAST_SYMBOL == symbol:
+                self._status = False
+                return False
+        return True
+
     def get_status(self):
         return self._status
 
@@ -96,6 +169,8 @@ class CNCFile(AbstractCNCFile):
         return iter(self._origin)
 
     def __getitem__(self, line_number):
+        if line_number < 0:
+            line_number = self._length - line_number
         self.is_valid_index(line_number)
         if self._status is not None:
             for index, line in enumerate(self):
@@ -116,27 +191,26 @@ class CNCFile(AbstractCNCFile):
                 return counter
             counter += 1
 
-    def get_lines(self, index: int, count_: int = 1) -> list:
+    def get_lines(self, index: int, count_: int = 1) -> Iterator[str]:
         """
+        Извлечение среза содержимого файла
         :param index: индекс начала вхождения
         :param count_: количество возвращаемых строк
-        :return:
+        :return: список строк
         """
-        store = []
-        counter = 0
-        counter_1 = 0
-        for line in self:
-            if counter < index:
-                counter += 1
-            else:
-                if counter_1 <= count_:
-                    counter_1 += 1
-                    store.append(line)
+        def gen():
+            counter = 0
+            counter_1 = 0
+            for line in self:
+                if counter < index:
+                    counter += 1
                 else:
-                    return store
-
-    def is_valid_last_modify_attr(self):
-        pass
+                    if counter_1 <= count_:
+                        yield line
+                        counter_1 += 1
+                    else:
+                        break
+        return gen()
 
     def remove_invalid_symbols(self):
         pass

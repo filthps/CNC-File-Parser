@@ -51,7 +51,7 @@ class AbstractMachine(ABC):
 
     @classmethod
     @abstractmethod
-    def create_session(cls, data: list[dict[str, Any]]):
+    def create_session(cls, data: list[dict[str, Any]], machine_name):
         pass
 
     @classmethod
@@ -61,7 +61,7 @@ class AbstractMachine(ABC):
 
     @classmethod
     @abstractmethod
-    def start(cls, data: list[dict[str, Any]], origin):
+    def start(cls, data: list[dict[str, Any]]):
         pass
 
 
@@ -90,7 +90,22 @@ class AbstractCNCFile(Sequence):
         pass
 
     @abstractmethod
-    def is_valid_numerate(self):
+    def is_valid_tail(self, symbol):
+        """
+        Проверить, является ли файл "оборванным", что может привести к аварии на станке
+
+        :param symbol: строка, символ, которым должна заканчиваться программа
+        :return: bool()
+        """
+
+    @abstractmethod
+    def is_origin(self):
+        """
+        Из-за того, что при каждом вызове __iter__ приходится заново открывать файл,
+        придётся проверять подлинность файла (на предмет подмены) с момента первого открытия до последующих N-раз.
+
+        :return: bool()
+        """
         pass
 
     @abstractmethod
@@ -110,13 +125,11 @@ class AbstractCNCFile(Sequence):
         pass
 
     @abstractmethod
-    def is_origin(self):
+    def parse_name(self):
         """
-        Из-за того, что при каждом вызове __iter__ приходится заново открывать файл,
-        придётся проверять подлинность файла (на предмет подмены) с момента первого открытия до последующих N-раз.
-        :return: bool
+        Парсить имя файла, получить тип инструмента и диаметр
+        :return:
         """
-        pass
 
     @abstractmethod
     def parse_head(self):

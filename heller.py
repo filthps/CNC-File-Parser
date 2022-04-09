@@ -7,17 +7,23 @@ from abstractions import AbstractMachine
 from config import MACHINES_INPUT_PATH, MACHINES_OUTPUT_PATH, HELLER
 
 
+LOCAL_NAME_CNC_FILE = "HellerCNCFile"
+
+
 class HellerCNCFile(CNCFile):
     ORIGIN_ENUMERATION = ('G54', 'G55', 'G56', 'G57')
     DEFAULT_ORIGIN = 'G54'
     INVALID_SYMBOLS = "[=/:;]"
+    MAX_NUM = 1000
+    LAST_SYMBOL = ";"
+    REPLACEMENT_QUEUE = {";": ""}
 
     def __init__(self, **kwargs):
         self.__origin: str = self.DEFAULT_ORIGIN
         self.__target: Optional[os.open] = None
         super().__init__(**kwargs)
         self.__path: str = os.path.join(self.get_output_path(
-            self.get_clear_path(kwargs['path'])), self.get_filename(self.name, self.format_)
+            self.get_clear_path(kwargs['path'])), self.get_filename(self._name, self._format_)
         )
         self.__target = self.open(self.__path, "xt")
         self.__head_inner: str = ""
@@ -55,30 +61,5 @@ class HellerCNCFile(CNCFile):
         return p
 
     def add_mpf_string(self) -> str:
-        clear_name_num = re.match(r"\D*(\d+)\D*", self.name, re.S).groups()[0]
+        clear_name_num = re.match(r"\D*(\d+)\D*", self._name, re.S).groups()[0]
         return f"%mpf{clear_name_num}"
-
-    def large_10000(self):
-        pass
-
-
-class Heller(AbstractMachine):
-    CNC_FILE_TYPE = HellerCNCFile
-
-    @classmethod
-    def create_session(cls, data):
-        session: Session = Session(data, type_=cls.CNC_FILE_TYPE)
-        return session
-
-    @classmethod
-    def get_session_status(cls):
-        pass
-
-    @classmethod
-    def start(cls, data: list[dict[str, Any]], origin: Optional[str]):
-        session: Session = cls.create_session(data)
-        for file_ in session:
-            if origin:
-                file_
-            file_.create_new_head()
-            ...

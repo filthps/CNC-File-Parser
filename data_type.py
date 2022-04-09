@@ -1,4 +1,5 @@
-from typing import ClassVar, Any
+from typing import ClassVar, Any, Optional
+from cnc_file import CNCFile
 from factory import CNCFileFactory
 
 
@@ -8,7 +9,7 @@ class LinkedListItem:
         self.value = val
 
     @property
-    def next(self):
+    def next(self) -> Optional[CNCFile]:
         return self.__next
 
     @next.setter
@@ -24,9 +25,9 @@ class LinkedListItem:
 
 class LinkedList:
     def __init__(self, items=None, type_: ClassVar = None):
-        self._head = None
-        self._tail = None
-        self._length = 0
+        self._head: Optional[LinkedListItem] = None
+        self._tail: Optional[LinkedListItem] = None
+        self._length: int = 0
 
         CNCFileFactory.FILE_TYPE = type_
         for item in items:
@@ -60,16 +61,16 @@ class LinkedList:
             return
         left_item.next = right_item
 
-    def items_gen(self):
+    def items_gen(self) -> Optional[CNCFile]:
         next_element = self._head
         while next_element is not None:
             current_element = next_element.next
-            yield next_element
+            yield next_element.value
             if current_element is None:
                 break
             next_element = current_element
 
-    def __iter__(self):
+    def __iter__(self) -> CNCFile:
         return self.items_gen()
 
     def __len__(self):
@@ -112,7 +113,6 @@ class LinkedList:
         item_prev.next = next_item
         current_item.next = None
         return current_item
-
 
     def __repr__(self):
         return list(self)
