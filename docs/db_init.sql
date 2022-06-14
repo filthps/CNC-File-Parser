@@ -9,8 +9,10 @@ CREATE TABLE Machine(
     z_over integer NULL,
     x_fspeed integer NULL,
     y_fspeed integer NULL,
-    z_fspeed integer NULL
-)
+    z_fspeed integer NULL,
+    input_catalog text NOT NULL,
+    output_catalog text NOT NULL
+);
 
 
 CREATE TABLE Operation(
@@ -20,7 +22,7 @@ CREATE TABLE Operation(
     target text NOT NULL,
     after_or_before NOT NULL,
     item text NOT NULL,
-    CONSTRAINT type_choice CHECK(operation_type IN("a", "r", "d", "c"))
+    CONSTRAINT type_choice CHECK(operation_type IN("a", "r", "d", "c")),
     CONSTRAINT a_or_b CHECK(after_or_before IN("a", "b"))
 );
 
