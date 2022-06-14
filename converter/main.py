@@ -1,7 +1,4 @@
-import json
-import os
 import re
-from traceback import print_exc
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from machine import Machine
@@ -45,6 +42,7 @@ def main():
                     raise ImportError(f"Отсутствует модуль CNC_File для станка {machine_name}")
                 #executor.submit(Machine.start, data, machine_name=machine_name)
                 Machine.start(data.pop(machine_name), machine_name=machine_name)
+
 
 def scan_folders():
     def search_valid_folders(reg: re.match, path: str) -> re.match:

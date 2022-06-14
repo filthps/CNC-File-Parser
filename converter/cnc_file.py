@@ -1,7 +1,7 @@
 import os
 import time
 import re
-from typing import Optional, Union, Iterator, Tuple, Any
+from typing import Optional, Union, Iterator
 from abstractions import AbstractCNCFile
 from temp import Temp
 from config import TOOLS
@@ -46,9 +46,10 @@ class Tool:
                         break
         return status
 
-    @staticmethod
-    def compare(filename_data, filehead_data):
-        pass
+    @classmethod
+    def compare(cls, filename_data, filehead_data):
+        tool_info = cls.find_tool()
+
 
 class CNCFile(AbstractCNCFile, Tool):
     REPLACEMENT = {}  # ЧТо: На_что
@@ -79,7 +80,6 @@ class CNCFile(AbstractCNCFile, Tool):
         self._length = len(self)
         if self._status:
             self._head_index = self.parse_head()
-
 
     def parse_name(self):
         full_name = re.match(r'(?P<name>[A-Z]?\d{2,5})_(?P<tool_name>\w+)_\w{1}(?P<diam>\d{1,3})', self._name)
