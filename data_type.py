@@ -1,6 +1,6 @@
 from typing import ClassVar, Any, Optional
-from cnc_file import CNCFile
-from factory import CNCFileFactory
+from converter.cnc_file import CNCFile
+from converter.factory import CNCFileFactory
 
 
 class LinkedListItem:
@@ -37,31 +37,31 @@ class LinkedList:
     def append(self, elem):
         if len(self):
             last_element = self.forward_move(len(self))
-            self.set_next(last_element, elem)
+            self.__set_next(last_element, elem)
         else:
             self._head = self._tail = elem
 
-    def is_valid_index(self, value: int):
+    def __is_valid_index(self, value: int):
         if not isinstance(value, int):
             raise TypeError
         if value >= self._length:
             raise IndexError
 
     @classmethod
-    def is_valid_node(cl, obj):
+    def __is_valid_node(cl, obj):
         if not isinstance(obj, cl):
             raise TypeError
 
     @classmethod
-    def set_next(cls, left_item: LinkedListItem, right_item: LinkedListItem):
+    def __set_next(cls, left_item: LinkedListItem, right_item: LinkedListItem):
         try:
-            cls.is_valid_node(left_item)
-            cls.is_valid_node(right_item)
+            cls.__is_valid_node(left_item)
+            cls.__is_valid_node(right_item)
         except TypeError:
             return
         left_item.next = right_item
 
-    def items_gen(self) -> Optional[CNCFile]:
+    def __items_gen(self) -> Optional[CNCFile]:
         next_element = self._head
         while next_element is not None:
             current_element = next_element.next
@@ -71,7 +71,7 @@ class LinkedList:
             next_element = current_element
 
     def __iter__(self) -> CNCFile:
-        return self.items_gen()
+        return self.__items_gen()
 
     def __len__(self):
         if self._length:
@@ -91,11 +91,11 @@ class LinkedList:
         return element
 
     def __getitem__(self, index):
-        self.is_valid_index(index)
+        self.__is_valid_index(index)
         return self.forward_move(index)
 
     def __delitem__(self, index):
-        self.is_valid_index(index)
+        self.__is_valid_index(index)
         if index == 0:
             item = self.forward_move(index)
             next_item = item.next

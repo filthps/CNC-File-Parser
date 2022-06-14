@@ -19,13 +19,13 @@ class Tool:
         :param diameter:
         :return:
         """
-        filename_data = cls.find_tool(cls.tools, tool_name, diameter)
+        filename_data = cls.__find_tool(cls.tools, tool_name, diameter)
         if not filename_data["tool"] or not filename_data["diam"] or filename_data["tool_family_name"] is None:
             return
         return filename_data
 
     @staticmethod
-    def find_tool(tool_data, tool_name: str, tool_diameter: int) -> dict[str, bool, bool, Optional[str]]:
+    def __find_tool(tool_data, tool_name: str, tool_diameter: int) -> dict[str, bool, bool, Optional[str]]:
         """
         Запросить из константы TOOLS семейство, наименование инструмента и диаметр
 
@@ -48,7 +48,7 @@ class Tool:
 
     @classmethod
     def compare(cls, filename_data, filehead_data):
-        tool_info = cls.find_tool()
+        tool_info = cls.__find_tool()
 
 
 class CNCFile(AbstractCNCFile, Tool):
