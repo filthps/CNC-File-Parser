@@ -39,3 +39,14 @@ CREATE TABLE Task(
     FOREIGN KEY (operation_id) REFERENCES Operation (opid)
     ON DELETE SET NULL
 );
+
+CREATE TABLE User(
+    id integer PRIMARY KEY AUTOINCREMENT,
+    username text NOT NULL,
+    password blob
+);
+
+CREATE TABLE Stat(
+    id blob DEFAULT (randomblob(16)) PRIMARY KEY
+
+);
