@@ -7,16 +7,19 @@
     <x>0</x>
     <y>0</y>
     <width>1101</width>
-    <height>878</height>
+    <height>882</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>MainWindow</string>
   </property>
-  <widget class="QWidget" name="centralwidget">
+  <widget class="QWidget" name="main_page">
+   <property name="enabled">
+    <bool>true</bool>
+   </property>
    <layout class="QHBoxLayout" name="horizontalLayout_2">
     <item>
-     <widget class="QStackedWidget" name="stackedWidget">
+     <widget class="QStackedWidget" name="main_widget">
       <property name="enabled">
        <bool>true</bool>
       </property>
@@ -35,68 +38,125 @@
       <property name="currentIndex">
        <number>1</number>
       </property>
-      <widget class="QWidget" name="page">
-       <widget class="QWidget" name="layoutWidget">
-        <property name="geometry">
-         <rect>
-          <x>110</x>
-          <y>340</y>
-          <width>569</width>
-          <height>43</height>
-         </rect>
-        </property>
-        <layout class="QHBoxLayout" name="horizontalLayout">
-         <item>
-          <widget class="QCommandLinkButton" name="to_converter">
-           <property name="text">
-            <string>Авто-конвертер</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QCommandLinkButton" name="to_sapr">
-           <property name="enabled">
-            <bool>false</bool>
-           </property>
-           <property name="text">
-            <string>САПР</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QCommandLinkButton" name="to_options">
-           <property name="enabled">
-            <bool>true</bool>
-           </property>
-           <property name="text">
-            <string>Настройки</string>
-           </property>
-           <property name="checkable">
-            <bool>false</bool>
-           </property>
-           <property name="checked">
-            <bool>false</bool>
-           </property>
-           <property name="autoExclusive">
-            <bool>false</bool>
-           </property>
-          </widget>
-         </item>
-        </layout>
-       </widget>
+      <widget class="QWidget" name="main">
+       <layout class="QVBoxLayout" name="verticalLayout_24">
+        <item>
+         <layout class="QVBoxLayout" name="verticalLayout_23">
+          <item>
+           <spacer name="verticalSpacer">
+            <property name="orientation">
+             <enum>Qt::Vertical</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>40</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayout">
+            <item>
+             <spacer name="horizontalSpacer">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+            <item>
+             <widget class="QCommandLinkButton" name="to_converter">
+              <property name="text">
+               <string>Авто-конвертер</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QCommandLinkButton" name="to_sapr">
+              <property name="enabled">
+               <bool>false</bool>
+              </property>
+              <property name="text">
+               <string>САПР</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QCommandLinkButton" name="commandLinkButton_8">
+              <property name="text">
+               <string>Калькулятор режимов</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QCommandLinkButton" name="to_options">
+              <property name="enabled">
+               <bool>true</bool>
+              </property>
+              <property name="text">
+               <string>Настройки</string>
+              </property>
+              <property name="checkable">
+               <bool>false</bool>
+              </property>
+              <property name="checked">
+               <bool>false</bool>
+              </property>
+              <property name="autoExclusive">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="horizontalSpacer_2">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <spacer name="verticalSpacer_2">
+            <property name="orientation">
+             <enum>Qt::Vertical</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>40</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </item>
+       </layout>
       </widget>
-      <widget class="QWidget" name="page_2">
-       <widget class="QTabWidget" name="tabWidget">
+      <widget class="QWidget" name="options">
+       <widget class="QTabWidget" name="root_tab_widget">
         <property name="geometry">
          <rect>
           <x>40</x>
           <y>40</y>
-          <width>891</width>
-          <height>451</height>
+          <width>826</width>
+          <height>723</height>
          </rect>
         </property>
         <property name="currentIndex">
-         <number>0</number>
+         <number>1</number>
         </property>
         <widget class="QWidget" name="options">
          <attribute name="title">
@@ -133,7 +193,7 @@
                <rect>
                 <x>440</x>
                 <y>10</y>
-                <width>241</width>
+                <width>281</width>
                 <height>31</height>
                </rect>
               </property>
@@ -260,6 +320,181 @@
                </item>
               </layout>
              </widget>
+             <widget class="QGroupBox" name="groupBox_8">
+              <property name="geometry">
+               <rect>
+                <x>400</x>
+                <y>170</y>
+                <width>178</width>
+                <height>132</height>
+               </rect>
+              </property>
+              <property name="title">
+               <string>Расход по осям</string>
+              </property>
+              <layout class="QVBoxLayout" name="verticalLayout_21">
+               <item>
+                <layout class="QHBoxLayout" name="horizontalLayout_37">
+                 <item>
+                  <widget class="QLabel" name="label_23">
+                   <property name="text">
+                    <string>X</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLineEdit" name="lineEdit_11"/>
+                 </item>
+                </layout>
+               </item>
+               <item>
+                <layout class="QHBoxLayout" name="horizontalLayout_38">
+                 <item>
+                  <widget class="QLabel" name="label_24">
+                   <property name="text">
+                    <string>Y</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLineEdit" name="lineEdit_12"/>
+                 </item>
+                </layout>
+               </item>
+               <item>
+                <layout class="QHBoxLayout" name="horizontalLayout_39">
+                 <item>
+                  <widget class="QLabel" name="label_25">
+                   <property name="text">
+                    <string>Z</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLineEdit" name="lineEdit_13"/>
+                 </item>
+                </layout>
+               </item>
+              </layout>
+             </widget>
+             <widget class="Line" name="line_14">
+              <property name="geometry">
+               <rect>
+                <x>440</x>
+                <y>160</y>
+                <width>118</width>
+                <height>3</height>
+               </rect>
+              </property>
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+             </widget>
+             <widget class="Line" name="line_15">
+              <property name="geometry">
+               <rect>
+                <x>440</x>
+                <y>320</y>
+                <width>118</width>
+                <height>3</height>
+               </rect>
+              </property>
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+             </widget>
+             <widget class="QGroupBox" name="groupBox_9">
+              <property name="geometry">
+               <rect>
+                <x>450</x>
+                <y>360</y>
+                <width>291</width>
+                <height>132</height>
+               </rect>
+              </property>
+              <property name="title">
+               <string>Максимально-допустимые подачи по осям (F)</string>
+              </property>
+              <layout class="QVBoxLayout" name="verticalLayout_22">
+               <item>
+                <layout class="QHBoxLayout" name="horizontalLayout_40">
+                 <item>
+                  <widget class="QLabel" name="label_26">
+                   <property name="text">
+                    <string>X</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLineEdit" name="lineEdit_14"/>
+                 </item>
+                </layout>
+               </item>
+               <item>
+                <layout class="QHBoxLayout" name="horizontalLayout_41">
+                 <item>
+                  <widget class="QLabel" name="label_27">
+                   <property name="text">
+                    <string>Y</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLineEdit" name="lineEdit_15"/>
+                 </item>
+                </layout>
+               </item>
+               <item>
+                <layout class="QHBoxLayout" name="horizontalLayout_42">
+                 <item>
+                  <widget class="QLabel" name="label_28">
+                   <property name="text">
+                    <string>Z</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLineEdit" name="lineEdit_16"/>
+                 </item>
+                </layout>
+               </item>
+              </layout>
+             </widget>
+             <widget class="Line" name="line_16">
+              <property name="geometry">
+               <rect>
+                <x>550</x>
+                <y>500</y>
+                <width>118</width>
+                <height>3</height>
+               </rect>
+              </property>
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+             </widget>
+             <widget class="QWidget" name="layoutWidget">
+              <property name="geometry">
+               <rect>
+                <x>400</x>
+                <y>520</y>
+                <width>417</width>
+                <height>26</height>
+               </rect>
+              </property>
+              <layout class="QHBoxLayout" name="horizontalLayout_43">
+               <item>
+                <widget class="QLabel" name="label_29">
+                 <property name="text">
+                  <string>Максимально-допустимые обороты шпинделя</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLineEdit" name="lineEdit_17"/>
+               </item>
+              </layout>
+             </widget>
             </widget>
             <widget class="QWidget" name="tab_2">
              <attribute name="title">
@@ -274,7 +509,7 @@
               <item>
                <widget class="QTabWidget" name="tabWidget_2">
                 <property name="currentIndex">
-                 <number>1</number>
+                 <number>0</number>
                 </property>
                 <widget class="QWidget" name="add_operation_list">
                  <attribute name="title">
@@ -391,7 +626,7 @@
                      <enum>QFrame::Plain</enum>
                     </property>
                     <property name="currentIndex">
-                     <number>1</number>
+                     <number>2</number>
                     </property>
                     <widget class="QWidget" name="add_operation_first">
                      <layout class="QVBoxLayout" name="verticalLayout_5">
@@ -793,13 +1028,13 @@
                           <property name="title">
                            <string>Искомый</string>
                           </property>
-                          <widget class="QWidget" name="">
+                          <widget class="QWidget" name="layoutWidget">
                            <property name="geometry">
                             <rect>
                              <x>20</x>
                              <y>30</y>
-                             <width>140</width>
-                             <height>42</height>
+                             <width>160</width>
+                             <height>49</height>
                             </rect>
                            </property>
                            <layout class="QVBoxLayout" name="verticalLayout_20">
@@ -1015,8 +1250,8 @@
                             <rect>
                              <x>10</x>
                              <y>30</y>
-                             <width>140</width>
-                             <height>42</height>
+                             <width>160</width>
+                             <height>49</height>
                             </rect>
                            </property>
                            <layout class="QVBoxLayout" name="verticalLayout_40">
@@ -1405,8 +1640,8 @@
                             <rect>
                              <x>20</x>
                              <y>30</y>
-                             <width>140</width>
-                             <height>42</height>
+                             <width>160</width>
+                             <height>49</height>
                             </rect>
                            </property>
                            <layout class="QVBoxLayout" name="verticalLayout_42">
@@ -1460,8 +1695,8 @@
                             <rect>
                              <x>60</x>
                              <y>30</y>
-                             <width>57</width>
-                             <height>42</height>
+                             <width>65</width>
+                             <height>49</height>
                             </rect>
                            </property>
                            <layout class="QVBoxLayout" name="verticalLayout_41">
@@ -1740,8 +1975,8 @@
                             <rect>
                              <x>10</x>
                              <y>30</y>
-                             <width>140</width>
-                             <height>42</height>
+                             <width>160</width>
+                             <height>49</height>
                             </rect>
                            </property>
                            <layout class="QVBoxLayout" name="verticalLayout_43">
@@ -1948,8 +2183,8 @@
                             <rect>
                              <x>10</x>
                              <y>30</y>
-                             <width>81</width>
-                             <height>42</height>
+                             <width>92</width>
+                             <height>49</height>
                             </rect>
                            </property>
                            <layout class="QVBoxLayout" name="verticalLayout_44">
@@ -2084,18 +2319,252 @@
               </item>
              </layout>
             </widget>
-            <widget class="QWidget" name="tab_3">
+            <widget class="QWidget" name="options_merging">
              <attribute name="title">
               <string>Привязать</string>
              </attribute>
+             <layout class="QVBoxLayout" name="verticalLayout_27">
+              <item>
+               <layout class="QHBoxLayout" name="horizontalLayout_45">
+                <item>
+                 <spacer name="horizontalSpacer_3">
+                  <property name="orientation">
+                   <enum>Qt::Horizontal</enum>
+                  </property>
+                  <property name="sizeHint" stdset="0">
+                   <size>
+                    <width>168</width>
+                    <height>20</height>
+                   </size>
+                  </property>
+                 </spacer>
+                </item>
+                <item>
+                 <layout class="QHBoxLayout" name="horizontalLayout_44">
+                  <item>
+                   <widget class="QLabel" name="label_30">
+                    <property name="text">
+                     <string>Станок</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QComboBox" name="comboBox"/>
+                  </item>
+                 </layout>
+                </item>
+                <item>
+                 <spacer name="horizontalSpacer_4">
+                  <property name="orientation">
+                   <enum>Qt::Horizontal</enum>
+                  </property>
+                  <property name="sizeHint" stdset="0">
+                   <size>
+                    <width>418</width>
+                    <height>20</height>
+                   </size>
+                  </property>
+                 </spacer>
+                </item>
+               </layout>
+              </item>
+              <item>
+               <widget class="Line" name="line_17">
+                <property name="orientation">
+                 <enum>Qt::Horizontal</enum>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <layout class="QHBoxLayout" name="horizontalLayout_48">
+                <item>
+                 <spacer name="horizontalSpacer_53">
+                  <property name="orientation">
+                   <enum>Qt::Horizontal</enum>
+                  </property>
+                  <property name="sizeHint" stdset="0">
+                   <size>
+                    <width>40</width>
+                    <height>20</height>
+                   </size>
+                  </property>
+                 </spacer>
+                </item>
+                <item>
+                 <layout class="QVBoxLayout" name="verticalLayout_25">
+                  <item>
+                   <widget class="QLabel" name="label_31">
+                    <property name="font">
+                     <font>
+                      <pointsize>18</pointsize>
+                      <weight>75</weight>
+                      <bold>true</bold>
+                     </font>
+                    </property>
+                    <property name="text">
+                     <string>Задачи</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QListWidget" name="listWidget_8">
+                    <property name="dragEnabled">
+                     <bool>true</bool>
+                    </property>
+                    <property name="dragDropMode">
+                     <enum>QAbstractItemView::DragDrop</enum>
+                    </property>
+                    <property name="defaultDropAction">
+                     <enum>Qt::MoveAction</enum>
+                    </property>
+                    <item>
+                     <property name="text">
+                      <string>ываываыва</string>
+                     </property>
+                    </item>
+                   </widget>
+                  </item>
+                  <item>
+                   <layout class="QHBoxLayout" name="horizontalLayout_46">
+                    <item>
+                     <widget class="QPushButton" name="pushButton_5">
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="QPushButton" name="pushButton_6">
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                    </item>
+                   </layout>
+                  </item>
+                  <item>
+                   <widget class="QListWidget" name="listWidget_6">
+                    <property name="dragEnabled">
+                     <bool>true</bool>
+                    </property>
+                    <property name="dragDropMode">
+                     <enum>QAbstractItemView::DragDrop</enum>
+                    </property>
+                    <property name="defaultDropAction">
+                     <enum>Qt::MoveAction</enum>
+                    </property>
+                    <item>
+                     <property name="text">
+                      <string>ываываыва</string>
+                     </property>
+                    </item>
+                   </widget>
+                  </item>
+                 </layout>
+                </item>
+                <item>
+                 <widget class="Line" name="line_18">
+                  <property name="orientation">
+                   <enum>Qt::Vertical</enum>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <layout class="QVBoxLayout" name="verticalLayout_26">
+                  <item>
+                   <widget class="QLabel" name="label_32">
+                    <property name="font">
+                     <font>
+                      <pointsize>18</pointsize>
+                      <weight>75</weight>
+                      <bold>true</bold>
+                     </font>
+                    </property>
+                    <property name="text">
+                     <string>Операции</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QListWidget" name="listWidget_9">
+                    <property name="dragEnabled">
+                     <bool>true</bool>
+                    </property>
+                    <property name="dragDropMode">
+                     <enum>QAbstractItemView::DragDrop</enum>
+                    </property>
+                    <property name="defaultDropAction">
+                     <enum>Qt::MoveAction</enum>
+                    </property>
+                    <item>
+                     <property name="text">
+                      <string>ываываыва</string>
+                     </property>
+                    </item>
+                   </widget>
+                  </item>
+                  <item>
+                   <layout class="QHBoxLayout" name="horizontalLayout_47">
+                    <item>
+                     <widget class="QPushButton" name="pushButton_7">
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="QPushButton" name="pushButton_8">
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                    </item>
+                   </layout>
+                  </item>
+                  <item>
+                   <widget class="QListWidget" name="listWidget_7">
+                    <property name="dragEnabled">
+                     <bool>true</bool>
+                    </property>
+                    <property name="dragDropMode">
+                     <enum>QAbstractItemView::DragDrop</enum>
+                    </property>
+                    <property name="defaultDropAction">
+                     <enum>Qt::MoveAction</enum>
+                    </property>
+                    <item>
+                     <property name="text">
+                      <string>ываываыва</string>
+                     </property>
+                    </item>
+                   </widget>
+                  </item>
+                 </layout>
+                </item>
+                <item>
+                 <spacer name="horizontalSpacer_54">
+                  <property name="orientation">
+                   <enum>Qt::Horizontal</enum>
+                  </property>
+                  <property name="sizeHint" stdset="0">
+                   <size>
+                    <width>40</width>
+                    <height>20</height>
+                   </size>
+                  </property>
+                 </spacer>
+                </item>
+               </layout>
+              </item>
+             </layout>
             </widget>
            </widget>
           </item>
          </layout>
         </widget>
-        <widget class="QWidget" name="current_tab">
+        <widget class="QWidget" name="convertation_tab">
          <attribute name="title">
-          <string>Tab 1</string>
+          <string>Конвертация</string>
          </attribute>
          <widget class="QCommandLinkButton" name="converter_launch">
           <property name="geometry">
@@ -2146,7 +2615,7 @@
      <x>0</x>
      <y>0</y>
      <width>1101</width>
-     <height>21</height>
+     <height>26</height>
     </rect>
    </property>
   </widget>
