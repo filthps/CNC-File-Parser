@@ -1,19 +1,26 @@
 import sys
-from PySide2.QtWidgets import QMainWindow, QApplication, QTabWidget, QWidget
+from PySide2.QtWidgets import QMainWindow, QApplication, QTabWidget, QStackedWidget
+from ui import Ui_MainWindow as Ui
+from signals import MainPage
 
 
-class Main(QMainWindow):
+class Tools:
+    @staticmethod
+    def __get_widget_index_by_tab_name(widget_instance: QTabWidget, tab_name: str) -> int:
+        page = widget_instance.findChild(QStackedWidget, tab_name)
+        return widget_instance.indexOf(page)
+
+
+class Main(QMainWindow, Tools, MainPage):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
 
         def init_ui():
-            converter_widget = QWidget()
-            converter_widget.tex
-            main_tab_widget = QTabWidget()
-            main_tab_widget.addTab()
-            main_tab_widget.move(15, 10)
-
+            self.ui = Ui()
+            self.ui.setupUi(self)
         init_ui()
+        self.converter_main_page(self.ui)
+        self.set_initial_page(self.ui)
 
 
 if __name__ == "__main__":
