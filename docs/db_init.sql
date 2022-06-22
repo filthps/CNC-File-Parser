@@ -1,6 +1,5 @@
 PRAGMA foreign_keys = ON;
 
-
 CREATE TABLE Machine(
     machine_id integer PRIMARY KEY AUTOINCREMENT,
     machine_name text NOT NULL,
@@ -12,6 +11,8 @@ CREATE TABLE Machine(
     z_fspeed integer NULL,
     input_catalog text NOT NULL,
     output_catalog text NOT NULL
+    CONSTRAINT check_input_catalog CHECK (input_catalog NOT LIKE "")
+    CONSTRAINT check_output_catalog CHECK (output_catalog NOT LIKE "")
 );
 
 

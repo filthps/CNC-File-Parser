@@ -19,13 +19,17 @@ class SQLQuery:
         self.inner += f"INSERT INTO {table_name} VALUES {str(values)}\n"
         return self.inner
 
-    def select(self, values: Iterable, table_name: str):
+    def select(self, table_name: str, values: Union[Iterable, str]):
+        if type(values) is str:
+            if not values == "*":
+                raise ValueError
         self.short_names.update({table_name: table_name.upper()[:3]})
         self.inner += f"SELECT {', '.join(values)} FROM {table_name} AS {self.short_names[table_name]}\n"
         return self.inner
 
     def where(self, field_name: str, operator: str, value: str):
         if not self.is_group:
+            value = value if not isinstance(value, str) else f"'{value}'"
             self.inner += f"WHERE {field_name} {operator} {value}\n"
 
     def having(self):
@@ -44,21 +48,45 @@ class SQLQuery:
 
 class Database:
     def __init__(self, location: str):
-        self.db = sqlite3.connect(location)
-        self.db.cursor()
+        self.path = location
+        self.db = None
 
-    def commit(self, query: SQLQuery):
-        self.is_valid_query(query)
+        def test():
+            self.__open()
+            self.__close()
+        test()
+
+    def commit(self, q: SQLQuery):
+        self.is_valid_query(q)
+        cursor = self.__open()
+        cursor.execute(str(q))
+        self.db.commit()
+        self.__close()
+
+    def fetch(self, q: SQLQuery):
+        self.is_valid_query(q)
+        cursor = self.__open()
+        cursor.execute(str(q))
+        val = cursor.fetchone()
+        self.__close()
+        return val
 
     @staticmethod
     def is_valid_query(val):
-        if not isinstance(SQLQuery, val):
+        if not isinstance(val, SQLQuery):
             raise sqlite3.DataError
+
+    def __open(self):
+        self.db = sqlite3.connect(self.path)
+        return self.db.cursor()
+
+    def __close(self):
+        self.db.close()
 
 
 if __name__ == "__main__":
     db = Database("database.db")
     query = SQLQuery()
-    query.select(["machine_id"], "Machine")
-    query.where("machine_id", "!=", "1")
-    print(query)
+    query.select("Machine", ["machine_name"])
+    query.where("machine_id", "=", "2")
+    print(db.fetch(query))
