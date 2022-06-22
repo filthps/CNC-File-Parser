@@ -3,9 +3,9 @@ from typing import Union, Iterable
 
 
 class SQLQuery:
-    def __init__(self, body: str=None):
+    def __init__(self, body: str = ""):
         self.short_names = {}
-        self.inner = ""
+        self.inner = body
         self.__group = False
 
     @property
