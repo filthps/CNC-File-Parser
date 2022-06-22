@@ -27,8 +27,9 @@ class SQLQuery:
     def where(self, field_name: str, value: str, operator: str):
         self.inner += f"WHERE {field_name} {operator} {value}\n"
 
-    def join(self, join_type: str, select_inner: "SQLQuery", var1, var2):
-        self.inner += f"{join_type.upper()} JOIN {select_inner}\nON {var1} = {var2}"
+    def join(self, join_type: str, select: "SQLQuery", var1, var2):
+        Database.is_valid_query(select)
+        self.inner += f"{join_type.upper()} JOIN {select}\nON {var1} = {var2}\n"
 
     def __str__(self):
         return self.inner
