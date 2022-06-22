@@ -24,10 +24,10 @@ class Main(QMainWindow, Tools):
             self.set_icon_buttons(self.ui, "move_left", "static/img/arrow-left.png")
 
         def init_navigation():
-            self.navigation = Navigation(ui=self.ui)
+            self.navigation = Navigation(self.ui)
 
         def init_actions():
-            self.actions = Actions(ui=self.ui)
+            self.actions = Actions(self, self.ui)
 
         def init_filter():
             self.ui.root_tab_widget.installEventFilter(self)
@@ -41,9 +41,11 @@ class Main(QMainWindow, Tools):
 
     def eventFilter(self, watched: QObject, event: QEvent):
         def nav_to_home_page():
-            if watched.currentIndex() == 0:
+            if watched.objectName() == "root_tab_widget" and watched.currentIndex() == 0:
                 self.navigation.nav_home_page()
-        nav_to_home_page()
+                return True
+            return False
+        return nav_to_home_page()
 
 
 if __name__ == "__main__":

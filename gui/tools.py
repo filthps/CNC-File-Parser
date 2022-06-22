@@ -1,4 +1,4 @@
-from typing import Union, Iterator
+from typing import Union, Iterator, Optional
 from itertools import count
 from PySide2.QtWidgets import QTabWidget, QStackedWidget, QPushButton, QInputDialog, QListWidgetItem
 from PySide2.QtGui import QIcon
@@ -42,9 +42,10 @@ class Tools:
 
 
 class Constructor:
+    def __init__(self, instance):
+        self.instance = instance
 
-    @staticmethod
-    def get_dialog_create_machine(instance, ui: Ui):
-        machine_name, is_submit = QInputDialog.getText(instance, "Добавление станка", "Введите название станка")
+    def get_dialog_create_machine(self) -> Optional[QListWidgetItem]:
+        machine_name, is_submit = QInputDialog.getText(self.instance, "Добавление станка", "Введите название станка")
         if is_submit:
-            ui.add_machine_list_0.addItem(QListWidgetItem(machine_name))
+            return QListWidgetItem(machine_name)

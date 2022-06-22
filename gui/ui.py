@@ -120,7 +120,6 @@ class Ui_MainWindow(object):
         self.verticalLayout_19 = QVBoxLayout()
         self.verticalLayout_19.setObjectName(u"verticalLayout_19")
         self.add_machine_list_0 = QListWidget(self.options_tab_machines)
-        QListWidgetItem(self.add_machine_list_0)
         self.add_machine_list_0.setObjectName(u"add_machine_list_0")
 
         self.verticalLayout_19.addWidget(self.add_machine_list_0)
@@ -1557,13 +1556,6 @@ class Ui_MainWindow(object):
         self.commandLinkButton_8.setText(QCoreApplication.translate("MainWindow", u"\u041a\u0430\u043b\u044c\u043a\u0443\u043b\u044f\u0442\u043e\u0440 \u0440\u0435\u0436\u0438\u043c\u043e\u0432", None))
         self.to_options.setText(QCoreApplication.translate("MainWindow", u"\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438", None))
         self.root_tab_widget.setTabText(self.root_tab_widget.indexOf(self.tab_3), QCoreApplication.translate("MainWindow", u"\u0413\u043b\u0430\u0432\u043d\u0430\u044f", None))
-
-        __sortingEnabled = self.add_machine_list_0.isSortingEnabled()
-        self.add_machine_list_0.setSortingEnabled(False)
-        ___qlistwidgetitem = self.add_machine_list_0.item(0)
-        ___qlistwidgetitem.setText(QCoreApplication.translate("MainWindow", u"\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0441\u0442\u0430\u043d\u043e\u043a", None));
-        self.add_machine_list_0.setSortingEnabled(__sortingEnabled)
-
         self.remove_button_0.setText("")
         self.add_button_0.setText("")
         self.label_20.setText(QCoreApplication.translate("MainWindow", u"\u0425\u0430\u0440\u0430\u043a\u0442\u0435\u0440\u0438\u0441\u0442\u0438\u043a\u0438", None))
@@ -1656,37 +1648,37 @@ class Ui_MainWindow(object):
         self.label_30.setText(QCoreApplication.translate("MainWindow", u"\u0421\u0442\u0430\u043d\u043e\u043a", None))
         self.label_31.setText(QCoreApplication.translate("MainWindow", u"\u0417\u0430\u0434\u0430\u0447\u0438", None))
 
-        __sortingEnabled1 = self.listWidget_8.isSortingEnabled()
+        __sortingEnabled = self.listWidget_8.isSortingEnabled()
         self.listWidget_8.setSortingEnabled(False)
-        ___qlistwidgetitem1 = self.listWidget_8.item(0)
-        ___qlistwidgetitem1.setText(QCoreApplication.translate("MainWindow", u"\u044b\u0432\u0430\u044b\u0432\u0430\u044b\u0432\u0430", None));
-        self.listWidget_8.setSortingEnabled(__sortingEnabled1)
+        ___qlistwidgetitem = self.listWidget_8.item(0)
+        ___qlistwidgetitem.setText(QCoreApplication.translate("MainWindow", u"\u044b\u0432\u0430\u044b\u0432\u0430\u044b\u0432\u0430", None));
+        self.listWidget_8.setSortingEnabled(__sortingEnabled)
 
         self.remove_button_1.setText("")
         self.add_button_1.setText("")
 
-        __sortingEnabled2 = self.listWidget_6.isSortingEnabled()
+        __sortingEnabled1 = self.listWidget_6.isSortingEnabled()
         self.listWidget_6.setSortingEnabled(False)
-        ___qlistwidgetitem2 = self.listWidget_6.item(0)
-        ___qlistwidgetitem2.setText(QCoreApplication.translate("MainWindow", u"\u044b\u0432\u0430\u044b\u0432\u0430\u044b\u0432\u0430", None));
-        self.listWidget_6.setSortingEnabled(__sortingEnabled2)
+        ___qlistwidgetitem1 = self.listWidget_6.item(0)
+        ___qlistwidgetitem1.setText(QCoreApplication.translate("MainWindow", u"\u044b\u0432\u0430\u044b\u0432\u0430\u044b\u0432\u0430", None));
+        self.listWidget_6.setSortingEnabled(__sortingEnabled1)
 
         self.label_32.setText(QCoreApplication.translate("MainWindow", u"\u041e\u043f\u0435\u0440\u0430\u0446\u0438\u0438", None))
 
-        __sortingEnabled3 = self.listWidget_9.isSortingEnabled()
+        __sortingEnabled2 = self.listWidget_9.isSortingEnabled()
         self.listWidget_9.setSortingEnabled(False)
-        ___qlistwidgetitem3 = self.listWidget_9.item(0)
-        ___qlistwidgetitem3.setText(QCoreApplication.translate("MainWindow", u"\u044b\u0432\u0430\u044b\u0432\u0430\u044b\u0432\u0430", None));
-        self.listWidget_9.setSortingEnabled(__sortingEnabled3)
+        ___qlistwidgetitem2 = self.listWidget_9.item(0)
+        ___qlistwidgetitem2.setText(QCoreApplication.translate("MainWindow", u"\u044b\u0432\u0430\u044b\u0432\u0430\u044b\u0432\u0430", None));
+        self.listWidget_9.setSortingEnabled(__sortingEnabled2)
 
         self.remove_button_2.setText("")
         self.add_button_2.setText("")
 
-        __sortingEnabled4 = self.listWidget_7.isSortingEnabled()
+        __sortingEnabled3 = self.listWidget_7.isSortingEnabled()
         self.listWidget_7.setSortingEnabled(False)
-        ___qlistwidgetitem4 = self.listWidget_7.item(0)
-        ___qlistwidgetitem4.setText(QCoreApplication.translate("MainWindow", u"\u044b\u0432\u0430\u044b\u0432\u0430\u044b\u0432\u0430", None));
-        self.listWidget_7.setSortingEnabled(__sortingEnabled4)
+        ___qlistwidgetitem3 = self.listWidget_7.item(0)
+        ___qlistwidgetitem3.setText(QCoreApplication.translate("MainWindow", u"\u044b\u0432\u0430\u044b\u0432\u0430\u044b\u0432\u0430", None));
+        self.listWidget_7.setSortingEnabled(__sortingEnabled3)
 
         self.converter_options.setTabText(self.converter_options.indexOf(self.options_merging), QCoreApplication.translate("MainWindow", u"\u041f\u0440\u0438\u0432\u044f\u0437\u0430\u0442\u044c", None))
         self.root_tab_widget.setTabText(self.root_tab_widget.indexOf(self.options1), QCoreApplication.translate("MainWindow", u"\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438", None))

@@ -232,13 +232,7 @@
                 <item>
                  <layout class="QVBoxLayout" name="verticalLayout_19">
                   <item>
-                   <widget class="QListWidget" name="add_machine_list_0">
-                    <item>
-                     <property name="text">
-                      <string>Добавить станок</string>
-                     </property>
-                    </item>
-                   </widget>
+                   <widget class="QListWidget" name="add_machine_list_0"/>
                   </item>
                   <item>
                    <layout class="QHBoxLayout" name="horizontalLayout_36">
