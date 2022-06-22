@@ -2,6 +2,7 @@ from PySide2.QtWidgets import QListWidgetItem
 from ui import Ui_MainWindow as Ui
 from database import Database, SQLQuery
 from tools import Constructor
+from threads.threads import DatabaseTread
 
 
 class Navigation:
@@ -12,12 +13,12 @@ class Navigation:
         def set_initial_page():
             self.set_initial_page()
 
-        def connect_signals():
+        def connect_ui_signals():
             ui.to_converter.clicked.connect(self.nav_converter_main_page)
             ui.to_options.clicked.connect(self.nav_options_page)
             ui.add_machine_list_0.itemClicked.connect(self.nav_list_add_machine_list_0)
         set_initial_page()
-        connect_signals()
+        connect_ui_signals()
 
     def set_initial_page(self):
         self.ui.main_widget.setCurrentIndex(0)
@@ -34,13 +35,7 @@ class Navigation:
         self.ui.root_tab_widget.setCurrentIndex(1)
 
     def nav_list_add_machine_list_0(self, item: QListWidgetItem):
-        machine_name = item.text()
-        get_machine = SQLQuery()
-        get_machine.select("Machine", ["machine_name"])
-        get_machine.where("machine_name", "=", machine_name)
-        print(get_machine)
-        value = self.db.fetch(get_machine)
-        print(value)
+        ...
 
 
 class Actions(Constructor):
@@ -61,3 +56,23 @@ class Actions(Constructor):
 
     def remove_machine(self):
         pass
+
+
+class DB:
+    """ Экземпляр - это сеанс работы с базой """
+    def __init__(self, instance):
+        self.result = None
+        self.instance = instance
+        self.thread = None
+
+        def init_thread():
+            return DatabaseTread()
+
+        def init_signals():
+            ...
+
+        self.thread = init_thread()
+
+
+    def fetch_data(self, result):
+        ...
