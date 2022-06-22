@@ -1,10 +1,13 @@
+from PySide2.QtWidgets import QListWidgetItem
 from ui import Ui_MainWindow as Ui
+from database import Database, SQLQuery
 from tools import Constructor
 
 
 class Navigation:
-    def __init__(self, ui: Ui):
-        self.ui: Ui = ui
+    def __init__(self, ui: Ui, db: Database):
+        self.ui = ui
+        self.db = db
 
         def set_initial_page():
             self.set_initial_page()
@@ -30,19 +33,25 @@ class Navigation:
         self.ui.main_widget.setCurrentIndex(1)
         self.ui.root_tab_widget.setCurrentIndex(1)
 
-    def nav_list_add_machine_list_0(self):
-        # todo: БД
-
+    def nav_list_add_machine_list_0(self, item: QListWidgetItem):
+        machine_name = item.text()
+        get_machine = SQLQuery()
+        get_machine.select("Machine", ["machine_name"])
+        get_machine.where("machine_name", "=", machine_name)
+        print(get_machine)
+        value = self.db.fetch(get_machine)
+        print(value)
 
 
 class Actions(Constructor):
-    def __init__(self, instance, ui: Ui):
+    def __init__(self, instance, ui: Ui, db: Database):
         self.ui: Ui = ui
+        self.db = db
         super().__init__(instance)
 
         def connect_signals():
             ui.add_button_0.clicked.connect(self.add_machine)
-            ui.remove_button_0.clicked.connect(self.remove_machine)
+            #ui.remove_button_0.clicked.connect(self.remove_machine)
         connect_signals()
 
     def add_machine(self):
