@@ -1,0 +1,13 @@
+#QMainWindow {
+    background: url("../../static/img/background.jpg");
+    color: white;
+}
+#to_options {
+    color: white;
+    background-color: black;
+}
+#converter_options {
+    display: none;
+    color: white;
+    background-color: black;
+}
