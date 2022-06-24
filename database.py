@@ -1,5 +1,6 @@
 import sqlite3
-from typing import Union, Iterable
+from typing import Union, Iterable, Callable, Optional
+from threads import DatabaseThread
 
 
 class SQLQuery:
@@ -47,46 +48,47 @@ class SQLQuery:
 
 
 class Database:
+    """
+    Каждый экземпляр - подключаемая база данных,
+    работающая через свой создаваемый поток
+    """
     def __init__(self, location: str):
-        self.path = location
-        self.db = None
+        self._path = location
+        self.__thread = DatabaseThread
+        self._db = None
 
         def test():
             self.__open()
             self.__close()
         test()
 
-    def commit(self, q: SQLQuery):
+    def _commit(self, q: SQLQuery, callback: Optional[Callable] = None):
         self.is_valid_query(q)
         cursor = self.__open()
         cursor.execute(str(q))
-        self.db.commit()
+        self._db.commit()
         self.__close()
-
-    def fetch(self, q: SQLQuery):
-        self.is_valid_query(q)
-        cursor = self.__open()
-        cursor.execute(str(q))
-        val = cursor.fetchone()
-        self.__close()
-        return val
 
     @staticmethod
     def is_valid_query(val):
         if not isinstance(val, SQLQuery):
             raise sqlite3.DataError
 
+    def __init_thread_signals(self, callback: Callable):
+        self.__thread.signal.connect(self._commit)
+
     def __open(self):
-        self.db = sqlite3.connect(self.path)
-        return self.db.cursor()
+        self.__init_thread()
+        self._db = sqlite3.connect(self.__path)
+        return self._db.cursor()
 
     def __close(self):
-        self.db.close()
+        self._db.close()
 
 
 if __name__ == "__main__":
     db = Database("database.db")
     query = SQLQuery()
-    query.select("Machine", ["machine_name"])
-    query.where("machine_id", "=", "2")
-    print(db.fetch(query))
+    query.select("Machine", "*")
+    query.where("machine_id", "=", "1")
+    print(db)

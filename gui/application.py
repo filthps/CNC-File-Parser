@@ -2,7 +2,7 @@ import sys
 from PySide2.QtWidgets import QMainWindow, QApplication
 from PySide2.QtCore import QEvent, QObject
 from gui.ui import Ui_MainWindow as Ui
-from threads import DBConnector
+from database import Database
 from gui.signals import Navigation, Actions
 from tools import Tools
 
@@ -20,13 +20,13 @@ class Main(QMainWindow, Tools):
 
             def init_stylesheets():
                 self.setStyleSheet(self.load_stylesheet("static/css/style.css"))
-            init_buttons()
-            init_stylesheets()
             self.ui = Ui()
             self.ui.setupUi(self)
+            init_buttons()
+            init_stylesheets()
 
         def init_database():
-            self.db = DBConnector(self, self.ul)
+            self.db = Database("database.db")
 
         def init_navigation():
             self.navigation = Navigation(self.ui, self.db)
