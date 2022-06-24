@@ -2,7 +2,7 @@ from PySide2.QtWidgets import QListWidgetItem
 from ui import Ui_MainWindow as Ui
 from database import Database, SQLQuery
 from tools import Constructor
-from threads.threads import DatabaseTread
+from threads import DatabaseTread
 
 
 class Navigation:
@@ -56,23 +56,3 @@ class Actions(Constructor):
 
     def remove_machine(self):
         pass
-
-
-class DB:
-    """ Экземпляр - это сеанс работы с базой """
-    def __init__(self, instance):
-        self.result = None
-        self.instance = instance
-        self.thread = None
-
-        def init_thread():
-            return DatabaseTread()
-
-        def init_signals():
-            ...
-
-        self.thread = init_thread()
-
-
-    def fetch_data(self, result):
-        ...

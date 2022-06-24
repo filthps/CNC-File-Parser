@@ -2,9 +2,8 @@ import sys
 from PySide2.QtWidgets import QMainWindow, QApplication
 from PySide2.QtCore import QEvent, QObject
 from gui.ui import Ui_MainWindow as Ui
-from threads.threads import DatabaseTread
-from gui.signals import Navigation, Actions, DB
-from database import Database, SQLQuery
+from threads import DBConnector
+from gui.signals import Navigation, Actions
 from tools import Tools
 
 
@@ -12,26 +11,22 @@ class Main(QMainWindow, Tools):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
 
-        def init_database():
-            self.db_signals = DB(self)
-            self.db = Database("/database.db")
-
-        def init_threads():
-            self.db_thread = DatabaseTread()
-            self.db_thread.db_signal.connect(lambda: self.db_signals.fetch_data)  # Получаем данные с потока
-
         def init_ui():
             def init_buttons():
                 self.set_icon_buttons(self.ui, "add_button", "static/img/plus.png")
                 self.set_icon_buttons(self.ui, "remove_button", "static/img/minus.png")
                 self.set_icon_buttons(self.ui, "move_right", "static/img/arrow-right.png")
                 self.set_icon_buttons(self.ui, "move_left", "static/img/arrow-left.png")
+
+            def init_stylesheets():
+                self.setStyleSheet(self.load_stylesheet("static/css/style.css"))
+            init_buttons()
+            init_stylesheets()
             self.ui = Ui()
             self.ui.setupUi(self)
-            init_buttons()
 
-        def init_stylesheets():
-            self.setStyleSheet(self.load_stylesheet("static/css/style.css"))
+        def init_database():
+            self.db = DBConnector(self, self.ul)
 
         def init_navigation():
             self.navigation = Navigation(self.ui, self.db)
@@ -42,10 +37,8 @@ class Main(QMainWindow, Tools):
         def init_filter():
             self.ui.root_tab_widget.installEventFilter(self)
 
-        init_database()
-        init_threads()
         init_ui()
-        init_stylesheets()
+        init_database()
         init_navigation()
         init_filter()
         init_actions()
