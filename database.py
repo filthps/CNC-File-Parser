@@ -1,5 +1,6 @@
 import sqlite3
-from typing import Union, Iterable
+from typing import Union, Iterable, Callable
+from threads import Thread
 
 
 class SQLQuery:
@@ -47,23 +48,28 @@ class SQLQuery:
 
 
 class Database:
+    """
+    Каждый экземпляр - подключаемая база данных,
+    работающая через свой создаваемый паоток
+    """
     def __init__(self, location: str):
-        self.path = location
-        self.db = None
+        self.__path = location
+        self.__thread = None
+        self.__db = None
 
         def test():
             self.__open()
             self.__close()
         test()
 
-    def commit(self, q: SQLQuery):
+    def commit(self, q: SQLQuery, callback: Callable):
         self.is_valid_query(q)
         cursor = self.__open()
         cursor.execute(str(q))
         self.db.commit()
         self.__close()
 
-    def fetch(self, q: SQLQuery):
+    def fetch(self, q: SQLQuery, callback: Callable):
         self.is_valid_query(q)
         cursor = self.__open()
         cursor.execute(str(q))
@@ -76,7 +82,12 @@ class Database:
         if not isinstance(val, SQLQuery):
             raise sqlite3.DataError
 
+    def __init_thread(self):
+        self.__thread = Thread()
+        self.__thread.signal.connect()
+
     def __open(self):
+        self.__init_thread()
         self.db = sqlite3.connect(self.path)
         return self.db.cursor()
 
@@ -87,6 +98,6 @@ class Database:
 if __name__ == "__main__":
     db = Database("database.db")
     query = SQLQuery()
-    query.select("Machine", ["machine_name"])
-    query.where("machine_id", "=", "2")
+    query.select("Machine", "*")
+    query.where("machine_id", "=", "1")
     print(db.fetch(query))

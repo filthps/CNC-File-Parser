@@ -2,7 +2,6 @@ from PySide2.QtWidgets import QListWidgetItem
 from ui import Ui_MainWindow as Ui
 from database import Database, SQLQuery
 from tools import Constructor
-from threads import DatabaseTread
 
 
 class Navigation:
