@@ -1,6 +1,6 @@
 import sqlite3
 from typing import Union, Iterable, Callable, Optional
-from threads import DatabaseThread
+from threads import Thread
 
 
 class SQLQuery:

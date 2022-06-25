@@ -1,7 +1,7 @@
 from PySide2.QtCore import QThread, Signal, Qt
 
 
-class DatabaseThread(QThread):
+class Thread(QThread):
     signal = Signal(str)
 
     def push(self):
@@ -12,5 +12,4 @@ class DatabaseThread(QThread):
         self.result = result
 
     def run(self) -> None:
-
         self.signal.emit("result")
