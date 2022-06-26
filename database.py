@@ -1,6 +1,7 @@
+import os
 import sqlite3
 from typing import Union, Iterable, Callable, Optional
-from threads import Thread
+from PySide2.QtCore import QThread, Signal
 
 
 class SQLQuery:
@@ -47,39 +48,52 @@ class SQLQuery:
         return f"{type(self)}({self.inner})"
 
 
-class Database:
-    """
-    Каждый экземпляр - подключаемая база данных,
-    работающая через свой создаваемый поток
-    """
+class Database(QThread):
+    signal_ = Signal(str, object)
+
     def __init__(self, location: str):
-        self._path = location
-        self.__thread = DatabaseThread
+        super().__init__()
         self._db = None
+        self._path = location
+        self._query: Optional[SQLQuery] = None
+        self._callback: Optional[Callable] = None
+
+        def check_database_location():
+            if not os.path.exists(location):
+                raise ConnectionError
 
         def test():
             self.__open()
             self.__close()
+
+        check_database_location()
         test()
 
-    def _commit(self, q: SQLQuery, callback: Optional[Callable] = None):
-        self.is_valid_query(q)
+    def run(self) -> None:
+        val = self._commit()
+        self.signal_.emit(val)
+
+    def connect_(self, query: SQLQuery, callback: Optional[Callable] = None):
+        self.is_valid_query(query)
+        self._query = query
+        self._callback = callback
+        self.signal_.connect(self._callback)
+        self.start()
+
+    def _commit(self):
         cursor = self.__open()
-        cursor.execute(str(q))
-        self._db.commit()
+        print(str(self._query))
+        val = cursor.execute(str(self._query))
         self.__close()
+        return val
 
     @staticmethod
     def is_valid_query(val):
         if not isinstance(val, SQLQuery):
             raise sqlite3.DataError
 
-    def __init_thread_signals(self, callback: Callable):
-        self.__thread.signal.connect(self._commit)
-
     def __open(self):
-        self.__init_thread()
-        self._db = sqlite3.connect(self.__path)
+        self._db = sqlite3.connect(self._path)
         return self._db.cursor()
 
     def __close(self):
@@ -88,7 +102,3 @@ class Database:
 
 if __name__ == "__main__":
     db = Database("database.db")
-    query = SQLQuery()
-    query.select("Machine", "*")
-    query.where("machine_id", "=", "1")
-    print(db)

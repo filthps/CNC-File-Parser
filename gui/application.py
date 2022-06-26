@@ -10,6 +10,10 @@ from tools import Tools
 class Main(QMainWindow, Tools):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
+        self.db = None
+        self.navigation = None
+        self.actions = None
+        self.ui = None
 
         def init_ui():
             def init_buttons():
@@ -26,7 +30,7 @@ class Main(QMainWindow, Tools):
             init_stylesheets()
 
         def init_database():
-            self.db = Database("database.db")
+            self.db = Database("../database.db")
 
         def init_navigation():
             self.navigation = Navigation(self.ui, self.db)
@@ -45,8 +49,11 @@ class Main(QMainWindow, Tools):
 
     def eventFilter(self, watched: QObject, event: QEvent):
         def nav_to_home_page():
-            if watched.objectName() == "root_tab_widget" and watched.currentIndex() == 0:
-                self.navigation.nav_home_page()
+            if watched.objectName() == "root_tab_widget":
+                if watched.currentIndex() == 0:
+                    self.navigation.nav_home_page()
+            if watched.objectName() == "converter_options":
+                pass
             return QMainWindow.eventFilter(self, watched, event)
 
         return nav_to_home_page()

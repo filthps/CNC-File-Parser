@@ -39,6 +39,7 @@ class Navigation:
 
 class Actions(Constructor):
     def __init__(self, instance, ui: Ui, db: Database):
+        self.main_app = instance
         self.ui: Ui = ui
         self.db = db
         super().__init__(instance)
@@ -49,9 +50,11 @@ class Actions(Constructor):
         connect_signals()
 
     def add_machine(self):
-        # todo: БД
         item = self.get_dialog_create_machine()
-        self.ui.add_machine_list_0.addItem(item if item is not None else False)
+        if item is not None:
+            query = SQLQuery()
+            query.insert("Machine", (item.text(),))
+            self.db.connect_(query, lambda: self.ui.add_machine_list_0.addItem(item))
 
     def remove_machine(self):
         pass

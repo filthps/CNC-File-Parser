@@ -3,15 +3,15 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE Machine(
     machine_id integer PRIMARY KEY AUTOINCREMENT,
     machine_name text NOT NULL,
-    x_over integer NULL,
-    y_over integer NULL,
-    z_over integer NULL,
-    x_fspeed integer NULL,
-    y_fspeed integer NULL,
-    z_fspeed integer NULL,
+    x_over integer NULL DEFAULT NULL,
+    y_over integer NULL DEFAULT NULL,
+    z_over integer NULL DEFAULT NULL,
+    x_fspeed integer NULL DEFAULT NULL,
+    y_fspeed integer NULL DEFAULT NULL,
+    z_fspeed integer NULL DEFAULT NULL,
     input_catalog text NOT NULL,
-    output_catalog text NOT NULL
-    CONSTRAINT check_input_catalog CHECK (input_catalog NOT LIKE "")
+    output_catalog text NOT NULL,
+    CONSTRAINT check_input_catalog CHECK (input_catalog NOT LIKE ""),
     CONSTRAINT check_output_catalog CHECK (output_catalog NOT LIKE "")
 );
 
