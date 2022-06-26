@@ -1,4 +1,4 @@
-from typing import ClassVar, Any, Optional
+from typing import Any, Optional, Iterable
 from converter.cnc_file import CNCFile
 from converter.factory import CNCFileFactory
 
@@ -24,15 +24,13 @@ class LinkedListItem:
 
 
 class LinkedList:
-    def __init__(self, items=None, type_: ClassVar = None):
+    def __init__(self, items=None, items_: Iterable[Any] = tuple()):
         self._head: Optional[LinkedListItem] = None
         self._tail: Optional[LinkedListItem] = None
         self._length: int = 0
 
-        CNCFileFactory.FILE_TYPE = type_
-        for item in items:
-            inst = CNCFileFactory.create(item)
-            self.append(LinkedListItem(inst))
+        for item in items_:
+            self.append(LinkedListItem(item))
 
     def append(self, elem):
         if len(self):
