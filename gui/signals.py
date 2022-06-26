@@ -42,19 +42,36 @@ class Actions(Constructor):
         self.main_app = instance
         self.ui: Ui = ui
         self.db = db
-        super().__init__(instance)
+        super().__init__(instance, ui)
 
         def connect_signals():
             ui.add_button_0.clicked.connect(self.add_machine)
-            #ui.remove_button_0.clicked.connect(self.remove_machine)
+            ui.remove_button_0.clicked.connect(self.remove_machine)
+            ui.add_machine_list_0.currentItemChanged.connect(lambda current, prev: print(current.text()))
         connect_signals()
+
+    def select_machine(self):
+        ...
 
     def add_machine(self):
         item = self.get_dialog_create_machine()
         if item is not None:
             query = SQLQuery()
-            query.insert("Machine", (item.text(),))
-            self.db.connect_(query, lambda: self.ui.add_machine_list_0.addItem(item))
+            machine_name = item.text()
+            query.insert("Machine", (machine_name,))
+            self.main_app.query_list.append(query)
+            self.ui.add_machine_list_0.addItem(QListWidgetItem(machine_name))
 
     def remove_machine(self):
-        pass
+        def get_selected_item() -> QListWidgetItem:
+            return self.ui.add_machine_list_0.currentRow()
+
+        def ok():
+            query = SQLQuery()
+            query.delete("Machine", "machine_name", "=", get_selected_item().getText())
+            self._unlock_ui()
+
+        dialog = self.get_confirm_dialog("Удалить станок?", "Внимание! Информация о свойствах станка будетм утеряна",
+                                         cancell_callback=self._unlock_ui, ok_callback=ok)
+        self._lock_ui()
+        dialog.show()

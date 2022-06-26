@@ -2,7 +2,7 @@ import sys
 from PySide2.QtWidgets import QMainWindow, QApplication
 from PySide2.QtCore import QEvent, QObject
 from gui.ui import Ui_MainWindow as Ui
-from database import Database
+from database import Database, SQLQueryContainer
 from gui.signals import Navigation, Actions
 from tools import Tools
 
@@ -31,6 +31,7 @@ class Main(QMainWindow, Tools):
 
         def init_database():
             self.db = Database("../database.db")
+            self.query_list = SQLQueryContainer()
 
         def init_navigation():
             self.navigation = Navigation(self.ui, self.db)
@@ -50,7 +51,7 @@ class Main(QMainWindow, Tools):
     def eventFilter(self, watched: QObject, event: QEvent):
         def nav_to_home_page():
             if watched.objectName() == "root_tab_widget":
-                if watched.currentIndex() == 0:
+                if hasattr(watched, "currentIndex") and watched.currentIndex() == 0:
                     self.navigation.nav_home_page()
             if watched.objectName() == "converter_options":
                 pass
