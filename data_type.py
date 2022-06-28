@@ -1,6 +1,5 @@
 from typing import Any, Optional, Iterable
 from converter.cnc_file import CNCFile
-from converter.factory import CNCFileFactory
 
 
 class LinkedListItem:
@@ -24,20 +23,26 @@ class LinkedListItem:
 
 
 class LinkedList:
-    def __init__(self, items=None, items_: Iterable[Any] = tuple()):
-        self._head: Optional[LinkedListItem] = None
-        self._tail: Optional[LinkedListItem] = None
-        self._length: int = 0
+    NODE_TYPE = LinkedListItem
 
-        for item in items_:
-            self.append(LinkedListItem(item))
+    def __init__(self, items_: Iterable[Any] = tuple(), node=None):
+        if node is not None:
+            self.NODE_TYPE = node
+        self._head = None
+        self._tail = None
+        self._length: int = 0
+        self._initial(items_)
+
+    def _initial(self, items):
+        for item in items:
+            self.append(item)
 
     def append(self, elem):
         if len(self):
             last_element = self.forward_move(len(self))
-            self.__set_next(last_element, elem)
+            self.__set_next(last_element, self._wrap_element(elem))
         else:
-            self._head = self._tail = elem
+            self._head = self._tail = self._wrap_element(elem)
 
     def __is_valid_index(self, value: int):
         if not isinstance(value, int):
@@ -47,8 +52,12 @@ class LinkedList:
 
     @classmethod
     def __is_valid_node(cl, obj):
-        if not isinstance(obj, cl):
+        if not isinstance(obj, cl.NODE_TYPE):
             raise TypeError
+
+    @classmethod
+    def _wrap_element(cls, element):
+        return cls.NODE_TYPE(element)
 
     @classmethod
     def __set_next(cls, left_item: LinkedListItem, right_item: LinkedListItem):
@@ -72,7 +81,7 @@ class LinkedList:
         return self.__items_gen()
 
     def __len__(self):
-        if self._length:
+        if not self._length:
             return self._length
         self._length = sum((1 for _ in self))
         return self._length
@@ -117,3 +126,64 @@ class LinkedList:
 
     def __str__(self):
         return str(list(self))
+
+
+class LinkedListDictionary(LinkedList):
+    _append = LinkedList.append
+
+    def __init__(self, items: dict):
+        super().__init__(items.values(), node=self.NODE_TYPE)
+        self.__keys = LinkedList(items.keys())
+
+    def update(self, key, elem):
+        self.__keys.append(key)
+        if len(self):
+            last_element = self.forward_move(len(self))
+            self.__set_next(last_element, self._wrap_element(elem))
+        else:
+            self._head = self._tail = self._wrap_element(elem)
+
+    def items(self):
+        return self.gen()
+
+    def keys(self):
+        return self.__keys.__iter__()
+
+    def values(self):
+        return super().__iter__()
+
+    def gen(self):
+        key_next_item = self.__keys._head
+        value_next_item = self._head
+        print()
+        while True:
+            if key_next_item is None or value_next_item is None:
+                return
+            yield key_next_item, value_next_item
+            key_next_item = key_next_item.next
+            value_next_item = value_next_item.next
+
+    def __iter__(self):
+        return self.keys()
+
+    def __getitem__(self, item: str):
+        if not item == self.__key:
+            raise KeyError
+        return self.value
+
+    def __setitem__(self, key, value):
+        if not isinstance(key, (str, bool, tuple, int)):
+            raise KeyError
+        self.__keys.append(key)
+        self._append(value)
+
+    def __str__(self):
+        d = {}
+        for k, v in self.items():
+            d.update({str(k): str(v)})
+        return str(d)
+
+
+if __name__ == "__main__":
+    d = LinkedListDictionary({"q": "sdfsdfsdf", 123: "sdfsdfsdf"})
+    print(d)
