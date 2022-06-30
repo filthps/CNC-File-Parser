@@ -25,7 +25,7 @@ class LinkedListItem:
 class LinkedList:
     NODE_TYPE = LinkedListItem
 
-    def __init__(self, items_: Iterable[Any] = tuple(), node=None):
+    def __init__(self, *items_, node=None):
         if node is not None:
             self.NODE_TYPE = node
         self._head = None
@@ -121,6 +121,12 @@ class LinkedList:
         current_item.next = None
         return current_item
 
+    def __contains__(self, item):
+        for i in self:
+            if i == item:
+                return True
+        return False
+
     def __repr__(self):
         return list(self)
 
@@ -131,17 +137,44 @@ class LinkedList:
 class LinkedListDictionary(LinkedList):
     _append = LinkedList.append
 
-    def __init__(self, items: dict):
-        super().__init__(items.values(), node=self.NODE_TYPE)
-        self.__keys = LinkedList(items.keys())
+    def __init__(self, *values: tuple):
+        super().__init__()
+        self.__keys = LinkedList(*self.__get_items(values, 0))
+        self.__values = LinkedList(*self.__get_items(values, 1))
 
-    def update(self, key, elem):
-        self.__keys.append(key)
-        if len(self):
-            last_element = self.forward_move(len(self))
-            self.__set_next(last_element, self._wrap_element(elem))
-        else:
-            self._head = self._tail = self._wrap_element(elem)
+    @staticmethod
+    def __get_items(items, index):
+        return (item[index] for item in items)
+
+    def get(self, item, alt_val=None):
+        v = None
+        for key, value in self.items():
+            if str(key) == str(item):
+                v = value
+        return v or alt_val
+
+    def update(self, item: tuple):
+        self.__setitem__(item)
+
+    def pop(self, item):
+        item = self.get(item)
+        if item is not None:
+            self.__delitem__()
+        return item
+
+    @staticmethod
+    def __find_index(container, elem):
+        counter = 0
+        for i in container:
+            if i == elem:
+                break
+            counter += 1
+        if counter:
+            return counter
+        return
+
+    def __append(self):
+        raise KeyError
 
     def items(self):
         return self.gen()
@@ -150,12 +183,11 @@ class LinkedListDictionary(LinkedList):
         return self.__keys.__iter__()
 
     def values(self):
-        return super().__iter__()
+        return self.__values.__iter__()
 
     def gen(self):
         key_next_item = self.__keys._head
-        value_next_item = self._head
-        print()
+        value_next_item = self.__values._head
         while True:
             if key_next_item is None or value_next_item is None:
                 return
@@ -167,23 +199,37 @@ class LinkedListDictionary(LinkedList):
         return self.keys()
 
     def __getitem__(self, item: str):
-        if not item == self.__key:
+        if item not in self.__keys:
             raise KeyError
-        return self.value
+        for key, value in self.items():
+            if str(key) == str(item):
+                return value
 
-    def __setitem__(self, key, value):
-        if not isinstance(key, (str, bool, tuple, int)):
-            raise KeyError
-        self.__keys.append(key)
-        self._append(value)
+    def __setitem__(self, val: tuple):
+        if not isinstance(val, tuple):
+            raise TypeError
+        if not len(val) == 2:
+            raise ValueError
+        self.__keys.append(val[0])
+        self._append(val[1])
+
+    def __delitem__(self, key):
+        key_index = self.__find_index(self.keys(), key)
+        self.__keys.__delitem__(key_index)
+        self.__values.__delitem__(key_index)
 
     def __str__(self):
-        d = {}
+        s = ""
         for k, v in self.items():
-            d.update({str(k): str(v)})
-        return str(d)
+            s += str((str(k), str(v),))
+        return s
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}({str(self)})"
 
 
 if __name__ == "__main__":
-    d = LinkedListDictionary({"q": "sdfsdfsdf", 123: "sdfsdfsdf"})
+    d = LinkedListDictionary(("q", "sdfsdfsdf"), (123, "sdfsdfsdf"), ("test", "strt"))
+    print(d)
+    d.update(("232", "sdfsdfsdf"))
     print(d)
