@@ -2,7 +2,7 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE Machine(
     machine_id integer PRIMARY KEY AUTOINCREMENT,
-    machine_name text NOT NULL,
+    machine_name text NOT NULL UNIQUE,
     x_over integer NULL DEFAULT NULL,
     y_over integer NULL DEFAULT NULL,
     z_over integer NULL DEFAULT NULL,
