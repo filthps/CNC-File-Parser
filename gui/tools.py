@@ -1,13 +1,21 @@
+import os
 from typing import Union, Iterator, Optional, Sequence
 from itertools import count, cycle
+from pathlib import Path
 from PySide2.QtCore import Qt
 from PySide2.QtWidgets import QTabWidget, QStackedWidget, QPushButton, QInputDialog, QDialogButtonBox, \
-    QListWidgetItem, QListWidget, QDialog, QLabel, QVBoxLayout, QHBoxLayout
-from PySide2.QtGui import QIcon
-from gui.ui import Ui_MainWindow as Ui
+    QListWidgetItem, QListWidget, QDialog, QLabel, QVBoxLayout, QHBoxLayout, QTreeWidgetItem, QTreeWidget
+from PySide2.QtGui import QIcon, QColor
+from gui.ui import Ui_main_window as Ui
+from config import PROJECT_PATH
 
 
 class Tools:
+
+    @staticmethod
+    def set_not_complete_edit_attributes(widget) -> None:
+        widget.setBackgroundColor(QColor(204, 204, 204))
+        widget.setToolTip("Закончите редактирование.")
 
     @staticmethod
     def __get_widget_index_by_tab_name(widget_instance: Union[QTabWidget, QStackedWidget], tab_name: str) -> int:
@@ -78,9 +86,14 @@ class AbstractDialog(QDialog):
 
 
 class Constructor:
+    DEFAULT_PATH = os.path.abspath(os.sep)
+
     def __init__(self, instance, ui: Ui):
         self.instance = instance
         self.main_ui = ui
+
+    def is_valid(self):
+        ...
 
     def get_dialog_create_machine(self) -> Optional[QListWidgetItem]:
         machine_name, is_submit = QInputDialog.getText(self.instance, "Добавление станка", "Введите название станка")
@@ -109,6 +122,53 @@ class Constructor:
         h_layout.addWidget(dialog)
         dialog.setStandardButtons(ok_button | cancell_button)
         window.setWindowTitle(title_text)
+        set_signals()
+        return window
+
+    def get_folder_choice_dialog(self, window_title="", cancell_callback=None, ok_callback=None):
+        window = QDialog()
+        v_box = QVBoxLayout(window)
+        window.setFocus()
+        window.setWindowTitle(window_title)
+        tree = QTreeWidget(window)
+        buttons = QDialogButtonBox(tree)
+        ok_button, cancell_button = QDialogButtonBox.Ok, QDialogButtonBox.Cancel
+        buttons.setStandardButtons(ok_button | cancell_button)
+        v_box.addWidget(tree)
+        v_box.addWidget(buttons)
+
+        def create_items(path, level):
+            dirs = os.listdir(path)
+            for dir_ in dirs:
+                item = QTreeWidgetItem()
+                item.setText(level, os.path.join(self.DEFAULT_PATH, dir_))
+                yield item
+
+        def add_items(item: Union[QTreeWidgetItem, str], level=0):
+            def get_full_path():
+                path = []
+                item_ = item
+                while item_ is not None:
+                    path.append(item_.text(level))
+                    item_ = item_.parent()
+                return os.path.join(*path)
+            items = create_items(item if isinstance(item, str) else get_full_path(), level)
+            tree.addTopLevelItems(tuple(items))
+
+        def accept_folder():
+            accepted_item = tree.currentItem()
+            print(accepted_item)
+
+        def reject():
+            window.close()
+            self._unlock_ui()
+
+        def set_signals():
+            buttons.accepted.connect(accept_folder)
+            buttons.rejected.connect(lambda: reject)
+            window.rejected.connect(lambda: reject)
+            tree.itemDoubleClicked.connect(lambda obj, level: add_items(obj, level))
+        add_items(self.DEFAULT_PATH)
         set_signals()
         return window
 
