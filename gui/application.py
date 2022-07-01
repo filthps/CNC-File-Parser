@@ -28,9 +28,18 @@ class Main(QMainWindow, Tools):
             init_buttons()
 
         def init_styles():
+            self.screen = app.primaryScreen()
             self.background_image = QPixmap("static/img/background.jpg")
             self.setStyleSheet(self.load_stylesheet("static/style.css"))
-            self.setGeometry(QRect(0, 0, self.background_image.width(), self.background_image.height()))
+            screen_size = self.screen.size()
+            start_point_x = (screen_size.width() - self.background_image.width()) / 2
+            start_point_y = (screen_size.height() - self.background_image.height()) / 2
+            self.setGeometry(QRect(
+                start_point_x / 2,
+                start_point_y / 2,
+                start_point_x + self.background_image.width(),
+                start_point_y + self.background_image.height()
+            ))
 
         def init_database():
             self.db = Database("../database.db")
