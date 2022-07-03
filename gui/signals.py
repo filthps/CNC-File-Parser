@@ -40,18 +40,3 @@ class Navigation:
 
 class Actions(machines_page.OptionsPageActions):
     pass
-
-
-class DataLoader:
-    """ Начальное заполнение виджетов данными """
-    def __init__(self, instance, ui, db):
-        self.main_app_instance = instance
-        self.ui = ui
-        self.db = db
-
-    @staticmethod
-    def set_items_to_q_list_widget(widget: [QListWidget], items) -> None:
-        """ Загрузить из базы и вставить данные в QListWidget, создав и вставив в него QListWidgetItem"""
-        for i in items:
-            list_item = QListWidgetItem(str(i))
-            widget.addItem(list_item)

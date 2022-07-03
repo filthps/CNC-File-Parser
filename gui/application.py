@@ -1,10 +1,11 @@
 import sys
+from typing import Union
 from PySide2.QtWidgets import QMainWindow, QApplication
 from PySide2.QtCore import QEvent, QObject, Qt, QRect
 from PySide2.QtGui import QPixmap, QBrush
 from gui.ui import Ui_main_window as Ui
-from database import Database, SQLQueryContainer
-from gui.signals import Navigation, Actions, DataLoader
+from database import Database, SQLQueryContainer, SQLQuery
+from gui.signals import Navigation, Actions
 from tools import Tools
 
 
@@ -58,16 +59,12 @@ class Main(QMainWindow, Tools):
         def init_actions():
             self.actions = Actions(self, self.ui, self.db)
 
-        def init_form_loader():
-            self.loader = DataLoader(self, self.ui, self.db)
-
         init_ui()
         init_styles()
         init_database()
         init_navigation()
         init_filter()
         init_actions()
-        init_form_loader()
 
     def resizeEvent(self, event) -> None:
         pal = self.palette()
@@ -86,17 +83,36 @@ class Main(QMainWindow, Tools):
         self.setPalette(pal)
         super().resizeEvent(event)
 
+    def save(self):
+        """ Освободить очередь, записать в базу данных"""
+
+        def get_query(d: Union[dict, SQLQuery, SQLQueryContainer]):
+            if isinstance(d, (SQLQuery, SQLQueryContainer,)):  # Базовый случай
+                return d
+            keys = tuple(d.keys())
+            if keys:
+                values = d.pop(keys[0])
+                return get_query(values)
+            return
+
+        for value in self.query_commit_list.values():
+            queries = get_query(value)
+            print(queries)
+            if queries.is_complete:
+                self.db.connect_(queries)
+
     def eventFilter(self, watched: QObject, event: QEvent):
-        def nav_to_home_page():
-            if watched.objectName() == "root_tab_widget":
-                if hasattr(watched, "currentIndex") and watched.currentIndex() == 0:
-                    self.navigation.nav_home_page()
-            if watched.objectName() == "converter_options":
-                pass
-            return QMainWindow.eventFilter(self, watched, event)
-
-        return nav_to_home_page()
-
+        if event.type() == QEvent.MouseButtonPress:
+            def nav_to_home_page():
+                if watched.objectName() == "root_tab_widget":
+                    if hasattr(watched, "currentIndex") and watched.currentIndex() == 0:
+                        self.navigation.nav_home_page()
+                    self.save()
+                if watched.objectName() == "converter_options":
+                    pass
+            nav_to_home_page()
+            self.save()
+        return QMainWindow.eventFilter(self, watched, event)
 
 
 if __name__ == "__main__":

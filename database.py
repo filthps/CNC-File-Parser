@@ -85,6 +85,12 @@ class SQLQuery:
         self._inner = f"INSERT INTO {table_name} VALUES $\n"
         return self._inner
 
+    def update(self, table_name, params: dict):
+        self.__commit = True
+        self._set_values("".join(params.items()))
+        self._table_name = table_name
+        self._inner = f"UPDATE TABLE {table_name}\nSET $\n"
+
     def insert_column_value(self, value, index=-1):
         self._values.insert(index, value)
         self.autocheck__complete()
@@ -163,7 +169,7 @@ class SQLQueryContainer(LinkedListDictionary):
 
 
 class Database(QThread):
-    signal_ = Signal(tuple)
+    signal_ = Signal(None, tuple)
 
     def __init__(self, location: str):
         super().__init__()
@@ -193,7 +199,10 @@ class Database(QThread):
             traceback.print_exc()
             print(f"\n{'-' * 10}\n", str(self._query))
         else:
-            self.signal_.emit(tuple(val))
+            if val is None:
+                self.signal_.emit(val)
+            else:
+                self.signal_.emit(tuple(val))
         finally:
             self.__close()
 

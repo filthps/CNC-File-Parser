@@ -5,17 +5,12 @@ from pathlib import Path
 from PySide2.QtCore import Qt
 from PySide2.QtWidgets import QTabWidget, QStackedWidget, QPushButton, QInputDialog, QDialogButtonBox, \
     QListWidgetItem, QListWidget, QDialog, QLabel, QVBoxLayout, QHBoxLayout, QTreeWidgetItem, QTreeWidget, QLineEdit
-from PySide2.QtGui import QIcon, QColor, QCloseEvent
+from PySide2.QtGui import QIcon, QCloseEvent
 from gui.ui import Ui_main_window as Ui
 from config import PROJECT_PATH
 
 
 class Tools:
-
-    @staticmethod
-    def set_not_complete_edit_attributes(widget) -> None:
-        widget.setBackgroundColor(QColor(204, 204, 204))
-        widget.setToolTip("Закончите редактирование.")
 
     @staticmethod
     def __get_widget_index_by_tab_name(widget_instance: Union[QTabWidget, QStackedWidget], tab_name: str) -> int:
