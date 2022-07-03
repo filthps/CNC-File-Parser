@@ -1,7 +1,8 @@
-from PySide2.QtWidgets import QListWidget, QListWidgetItem
+from PySide2.QtWidgets import QListWidget, QListWidgetItem, QLineEdit
 from ui import Ui_main_window as Ui
 from database import Database, SQLQuery
 from tools import Constructor, Tools
+from options import machines_page
 
 
 class Navigation:
@@ -37,69 +38,8 @@ class Navigation:
         ...
 
 
-class Actions(Constructor, Tools):
-    def __init__(self, instance, ui: Ui, db: Database):
-        self.main_app = instance
-        self.ui: Ui = ui
-        self.db = db
-        super().__init__(instance, ui)
-
-        def connect_signals():
-            ui.add_button_0.clicked.connect(self.add_machine)
-            ui.remove_button_0.clicked.connect(self.remove_machine)
-            ui.add_machine_list_0.currentItemChanged.connect(lambda current, prev: self.select_machine(current))
-            ui.add_machine_input.clicked.connect(self.choice_folder)
-            #ui.add_machine_output.clicked.connect()
-        connect_signals()
-
-    def choice_folder(self):
-        dialog = self.get_folder_choice_dialog()
-        dialog.show()
-        self._lock_ui()
-
-    def select_machine(self, machine_item: QListWidgetItem):
-        def update_machines_list(values):
-            ...
-        query = SQLQuery()
-        query.select("Machine", "*")
-        query.where("machine_name", "=", machine_item.text())
-        self.db.connect_(query, lambda val: update_machines_list(val))
-
-    def add_machine(self):
-        item = self.get_dialog_create_machine()
-        if item is not None:
-            query = SQLQuery(commit=True, complete=False)
-            machine_name = item.text()
-            query.insert("Machine",
-                         (None, machine_name, None, None, None, None, None, None))
-            item = QListWidgetItem(machine_name)
-            add_machines_queries = self.main_app.query_commit_list.get(
-                "add_machine_list_0",
-                self.main_app.query_commit_list.__class__(commit_=True)
-            )
-            add_machines_queries.update((item.text(), query))
-            self.set_not_complete_edit_attributes(item)
-            self.ui.add_machine_list_0.addItem(item)
-
-    def remove_machine(self):
-        def get_selected_item() -> QListWidgetItem:
-            return self.ui.add_machine_list_0.currentRow()
-
-        def ok():
-            query = SQLQuery()
-            query.delete("Machine", "machine_name", "=", get_selected_item().getText())
-            self._unlock_ui()
-
-        dialog = self.get_confirm_dialog("Удалить станок?", "Внимание! Информация о свойствах станка будетм утеряна",
-                                         cancell_callback=self._unlock_ui, ok_callback=ok)
-        self._lock_ui()
-        dialog.show()
-
-    def add_machine_input_path(self):
-        ...
-
-    def add_machine_output_path(self):
-        ...
+class Actions(machines_page.OptionsPageActions):
+    pass
 
 
 class DataLoader:

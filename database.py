@@ -8,7 +8,7 @@ from data_type import LinkedListDictionary
 
 class SQLQuery:
     """Экземпляр запроса - один запрос"""
-    def __init__(self, body: str = "", commit=False, complete=True):
+    def __init__(self, body: str = "", commit=False, complete=True, not_null_indexes=tuple()):
         self.short_names = {}
         self._values = []
         self._table_name = None
@@ -17,6 +17,19 @@ class SQLQuery:
         self._closed = self._set_closed() if body else False
         self.__commit = commit
         self.__ready = complete
+        self._not_null_indexes = not_null_indexes
+
+    def autocheck__complete(self):
+        if not self._not_null_indexes:
+            return
+        status = True
+        for index in self._not_null_indexes:
+            if len(self._values) > index:
+                if self._values[index] == 'null':
+                    status = False
+                    break
+        if status:
+            self.__ready = True
 
     def edit(self, *t: tuple):
         for v in t:
@@ -68,19 +81,18 @@ class SQLQuery:
         self.__commit = True
         self._table_name = table_name
         self._set_values(values)
+        self.autocheck__complete()
         self._inner = f"INSERT INTO {table_name} VALUES $\n"
         return self._inner
 
-    def append_column_values(self, values: Iterable, index: Optional[int] = None):
-        """
-        Добавить значение N в конец (row_1, row_2..., N)
-        """
-        values = list(self._values)
-        map(lambda v: self._values.append(v), values)
+    def insert_column_value(self, value, index=-1):
+        self._values.insert(index, value)
+        self.autocheck__complete()
 
     def select(self, table_name: str, values: Union[Iterable, str], special=False):
         self._table_name = table_name
         self._set_values(values)
+        self.autocheck__complete()
         if type(values) is str:
             if not special:
                 if not values == "*":
@@ -102,7 +114,7 @@ class SQLQuery:
         self._check_closed()
         self._set_closed()
         self._inner = f"DELETE FROM {table_name}\n"
-        self._inner += self.where(field_name, operator, value)
+        self.where(field_name, operator, value)
 
     @staticmethod
     def _parse_values(value: str) -> str:
@@ -114,6 +126,12 @@ class SQLQuery:
 
     def __repr__(self):
         return f"{type(self)}({str(self)})"
+
+    def __iter__(self):
+        return iter(self._values)
+
+    def __getitem__(self, item):
+        return self._values[item]
 
 
 class SQLQueryContainer(LinkedListDictionary):
@@ -141,7 +159,7 @@ class SQLQueryContainer(LinkedListDictionary):
 
     def update(self, elem):
         self.is_valid(elem)
-        super().append(elem)
+        super().update(elem)
 
 
 class Database(QThread):
@@ -175,7 +193,7 @@ class Database(QThread):
             traceback.print_exc()
             print(f"\n{'-' * 10}\n", str(self._query))
         else:
-            self.signal_.emit(str(val))
+            self.signal_.emit(tuple(val))
         finally:
             self.__close()
 
@@ -212,3 +230,14 @@ class Database(QThread):
 
     def is_open(self):
         return True if self._db is not None else False
+
+
+if __name__ == "__main__":
+    query = SQLQuery()
+    container = SQLQueryContainer(commit_=True)
+    container.update(
+        ("gsdf", container.__class__(
+            ("dfgdfg", query), commit_=True)
+         )
+    )
+    print(container)

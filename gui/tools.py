@@ -4,8 +4,8 @@ from itertools import count, cycle
 from pathlib import Path
 from PySide2.QtCore import Qt
 from PySide2.QtWidgets import QTabWidget, QStackedWidget, QPushButton, QInputDialog, QDialogButtonBox, \
-    QListWidgetItem, QListWidget, QDialog, QLabel, QVBoxLayout, QHBoxLayout, QTreeWidgetItem, QTreeWidget
-from PySide2.QtGui import QIcon, QColor
+    QListWidgetItem, QListWidget, QDialog, QLabel, QVBoxLayout, QHBoxLayout, QTreeWidgetItem, QTreeWidget, QLineEdit
+from PySide2.QtGui import QIcon, QColor, QCloseEvent
 from gui.ui import Ui_main_window as Ui
 from config import PROJECT_PATH
 
@@ -56,7 +56,7 @@ class AbstractDialog(QDialog):
     Диалоговое окно с возможностью контроля слота нажатия клавиш клавиатуры.
     Навигация по кнопкам
     """
-    def __init__(self, parent=None, buttons: Optional[Sequence[QPushButton]] = None):
+    def __init__(self, parent=None, buttons: Optional[Sequence[QPushButton]] = None, init_callback=None, close_callback=None):
         super().__init__(parent)
         if buttons is not None:
             button: QDialogButtonBox = buttons[0]
@@ -66,6 +66,14 @@ class AbstractDialog(QDialog):
         left_orientation.reverse()
         self._left = cycle(left_orientation)
         self._right = cycle(buttons)
+        self._close_callback = close_callback
+        self._open_callback = init_callback
+
+    def set_close_callback(self, value):
+        self._close_callback = value
+
+    def set_open_callback(self, value):
+        self._open_callback = value
 
     def keyPressEvent(self, event):
         if event == Qt.Key_Left:
@@ -74,6 +82,12 @@ class AbstractDialog(QDialog):
         if event == Qt.Key_Right:
             button = self.__get_button(self._right)
             self.__set_active(button)
+
+    def closeEvent(self, event) -> None:
+        self._close_callback() if self._close_callback else None
+
+    def showEvent(self, event) -> None:
+        self._open_callback() if self._open_callback else None
 
     @staticmethod
     def __get_button(buttons: cycle):
@@ -92,27 +106,75 @@ class Constructor:
         self.instance = instance
         self.main_ui = ui
 
-    def is_valid(self):
-        ...
+    def get_prompt_dialog(self, title_text, label_text="", cancel_callback=None, ok_callback=None) -> Optional[QListWidgetItem]:
+        """ Всплывающее окно с текстом, 2 кнопками и полем ввода
+        ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+        ░░░░░░░░████████████████████░░░░
+        ░░░░░░░░██░░░░░░░░░░░░░░░░██░░░░
+        ░░░░░░░░██░░████████████░░██░░░░
+        ░░░░░░░░██░░██░░░░░░░░██░░██░░░░
+        ░░░░░░░░██░░████████████░░██░░░░
+        ░░░░░░░░██░░░░░░░░░░░░░░░░██░░░░
+        ░░░░░░░░██░░░░░░░░░░░░░░░░██░░░░
+        ░░░░░░░░██░░████░░░░████░░██░░░░
+        ░░░░░░░░██░░░░░░░░░░░░░░░░██░░░░
+        ░░░░░░░░████████████████████░░░░
+        ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+        """
+        def get_value():
+            return ok_callback(input_.text())
 
-    def get_dialog_create_machine(self) -> Optional[QListWidgetItem]:
-        machine_name, is_submit = QInputDialog.getText(self.instance, "Добавление станка", "Введите название станка")
-        if is_submit:
-            return QListWidgetItem(machine_name)
+        def set_signals():
+            dialog.accepted.connect(get_value if ok_callback is not None else None)
+            dialog.rejected.connect(cancel_callback)
+            dialog.rejected.connect(lambda: window.close())
+        input_ = QLineEdit()
+        ok_button, cancel_button = QDialogButtonBox.Ok, QDialogButtonBox.Cancel
+        window = AbstractDialog(self.instance, buttons=(ok_button, cancel_button))
+        window.set_open_callback(self._lock_ui)
+        window.set_close_callback(self._unlock_ui)
+        window.setWindowTitle(title_text)
+        v_layout = QVBoxLayout(window)
+        v_layout.addWidget(input_)
+        if label_text:
+            label = QLabel()
+            label.setText(label_text)
+            dialog = QDialogButtonBox(label)
+        else:
+            dialog = QDialogButtonBox(input_)
+        v_layout.addWidget(dialog)
+        dialog.setStandardButtons(ok_button | cancel_button)
+        set_signals()
+        return window
 
-    def get_confirm_dialog(self, title_text, label_text, cancell_callback=None, ok_callback=None):
-        """ Всплывающее окно с текстом и 2 кнопками"""
+    def get_confirm_dialog(self, title_text, label_text, cancel_callback=None, ok_callback=None):
+        """ Всплывающее окно с текстом и 2 кнопками
+        ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+        ░░░░░░░░████████████████████░░░░
+        ░░░░░░░░██░░░░░░░░░░░░░░░░██░░░░
+        ░░░░░░░░██░░░░░░░░░░░░░░░░██░░░░
+        ░░░░░░░░██░░░░░░░░░░░░░░░░██░░░░
+        ░░░░░░░░██░░░░░░░░░░░░░░░░██░░░░
+        ░░░░░░░░██░░░░░░░░░░░░░░░░██░░░░
+        ░░░░░░░░██░░░░░░░░░░░░░░░░██░░░░
+        ░░░░░░░░██░░████░░░░████░░██░░░░
+        ░░░░░░░░██░░░░░░░░░░░░░░░░██░░░░
+        ░░░░░░░░████████████████████░░░░
+        ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+        """
         def set_signals():
             def keyboard_navigation(event):
                 if event.event() == Qt.Key_Left:
                     dialog.Ok.setFocus()
             dialog.accepted.connect(ok_callback)
-            dialog.rejected.connect(cancell_callback)
+            dialog.rejected.connect(cancel_callback)
             dialog.rejected.connect(lambda: window.close())
-            window.finished.connect(cancell_callback)
+            window.finished.connect(cancel_callback)
             window.keyPressEvent(lambda x: keyboard_navigation(x))
-        ok_button, cancell_button = QDialogButtonBox.Ok, QDialogButtonBox.Cancel
-        window = AbstractDialog(self.instance, buttons=(ok_button, cancell_button,))
+        ok_button, cancel_button = QDialogButtonBox.Ok, QDialogButtonBox.Cancel
+        window = AbstractDialog(self.instance, buttons=(ok_button, cancel_button,),
+                                close_callback=self._unlock_ui, init_callback=self._lock_ui)
+
         h_layout = QVBoxLayout(window)
         window.setFocus()
         label = QLabel(window)
@@ -120,20 +182,41 @@ class Constructor:
         label.setText(label_text)
         dialog = QDialogButtonBox(label)
         h_layout.addWidget(dialog)
-        dialog.setStandardButtons(ok_button | cancell_button)
+        dialog.setStandardButtons(ok_button | cancel_button)
         window.setWindowTitle(title_text)
         set_signals()
         return window
 
-    def get_folder_choice_dialog(self, window_title="", cancell_callback=None, ok_callback=None):
-        window = QDialog()
+    def get_folder_choice_dialog(self, window_title="", cancel_callback=None, ok_callback=None):
+        """ Вабор файла в дереве каталогов
+        ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+        ░░████████████████████████████░░
+        ░░██░░░░░░░░░░░░░░░░░░░░░░░░██░░
+        ░░██░░░░░░░░░░████░░░░░░░░░░██░░
+        ░░██░░████░░░░░░░░░░░░░░░░░░██░░
+        ░░██░░░░░░░░░░████░░░░░░░░░░██░░
+        ░░██░░░░░░░░░░░░░░░░░░░░░░░░██░░
+        ░░██░░████░░░░████░░░░░░░░░░██░░
+        ░░██░░░░░░░░░░░░░░░░░░░░░░░░██░░
+        ░░██░░░░░░░░░░████░░░░░░░░░░██░░
+        ░░██░░░░░░░░░░░░░░░░░░░░░░░░██░░
+        ░░██░░░░░░░░░░░░░░░░░░░░░░░░██░░
+        ░░██░░██████░░░░░░░░██████░░██░░
+        ░░██░░░░░░░░░░░░░░░░░░░░░░░░██░░
+        ░░████████████████████████████░░
+        ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+        """
+        current_column = 0
+        ok_button, cancel_button = QDialogButtonBox.Ok, QDialogButtonBox.Cancel
+        window = AbstractDialog(self.instance, buttons=(ok_button, cancel_button,),
+                                close_callback=self._unlock_ui, init_callback=self._lock_ui)
         v_box = QVBoxLayout(window)
         window.setFocus()
         window.setWindowTitle(window_title)
         tree = QTreeWidget(window)
         buttons = QDialogButtonBox(tree)
-        ok_button, cancell_button = QDialogButtonBox.Ok, QDialogButtonBox.Cancel
-        buttons.setStandardButtons(ok_button | cancell_button)
+        ok_button, cancel_button = QDialogButtonBox.Ok, QDialogButtonBox.Cancel
+        buttons.setStandardButtons(ok_button | cancel_button)
         v_box.addWidget(tree)
         v_box.addWidget(buttons)
 
@@ -141,32 +224,32 @@ class Constructor:
             dirs = os.listdir(path)
             for dir_ in dirs:
                 item = QTreeWidgetItem()
-                item.setText(level, os.path.join(self.DEFAULT_PATH, dir_))
                 yield item
+                item.setText(level, os.path.join(self.DEFAULT_PATH, dir_))
 
-        def add_items(item: Union[QTreeWidgetItem, str], level=0):
+        def add_items(item: Union[QTreeWidgetItem, str], level=current_column):
             def get_full_path():
+                nonlocal current_column
                 path = []
                 item_ = item
                 while item_ is not None:
                     path.append(item_.text(level))
                     item_ = item_.parent()
+                current_column += 1
                 return os.path.join(*path)
             items = create_items(item if isinstance(item, str) else get_full_path(), level)
             tree.addTopLevelItems(tuple(items))
 
         def accept_folder():
-            accepted_item = tree.currentItem()
-            print(accepted_item)
-
-        def reject():
-            window.close()
+            accepted_item: QListWidgetItem = tree.currentItem()
             self._unlock_ui()
+            window.close()
+            return ok_callback(accepted_item.text(current_column))
 
         def set_signals():
-            buttons.accepted.connect(accept_folder)
-            buttons.rejected.connect(lambda: reject)
-            window.rejected.connect(lambda: reject)
+            buttons.accepted.connect(accept_folder if ok_callback is not None else None)
+            buttons.rejected.connect(cancel_callback)
+            buttons.rejected.connect(lambda: window.close())
             tree.itemDoubleClicked.connect(lambda obj, level: add_items(obj, level))
         add_items(self.DEFAULT_PATH)
         set_signals()

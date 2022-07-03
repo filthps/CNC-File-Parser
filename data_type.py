@@ -28,8 +28,8 @@ class LinkedList:
     def __init__(self, *items_, node=None):
         if node is not None:
             self.NODE_TYPE = node
-        self._head = None
-        self._tail = None
+        self.head = None
+        self.tail = None
         self._length: int = 0
         self._initial(items_)
 
@@ -42,7 +42,7 @@ class LinkedList:
             last_element = self.forward_move(len(self))
             self.__set_next(last_element, self._wrap_element(elem))
         else:
-            self._head = self._tail = self._wrap_element(elem)
+            self.head = self.tail = self._wrap_element(elem)
 
     def __is_valid_index(self, value: int):
         if not isinstance(value, int):
@@ -69,7 +69,7 @@ class LinkedList:
         left_item.next = right_item
 
     def __items_gen(self) -> Optional[CNCFile]:
-        next_element = self._head
+        next_element = self.head
         while next_element is not None:
             current_element = next_element.next
             yield next_element.value
@@ -92,7 +92,7 @@ class LinkedList:
         return False
 
     def forward_move(self, index):
-        element = self._head
+        element = self.head
         for _ in range(index):
             element = element.next
         return element
@@ -107,13 +107,13 @@ class LinkedList:
             item = self.forward_move(index)
             next_item = item.next
             item.next = None
-            self._head = next_item
+            self.head = next_item
             return item
         item_prev = self.forward_move(index - 1)
         if index == len(self) - 1:
             item = item_prev.next
             item_prev.next = None
-            self._tail = item_prev
+            self.tail = item_prev
             return item
         current_item = item_prev.next
         next_item = current_item.next
@@ -134,13 +134,16 @@ class LinkedList:
         return str(list(self))
 
 
-class LinkedListDictionary(LinkedList):
-    _append = LinkedList.append
+class LinkedListDictionary:
 
     def __init__(self, *values: tuple):
-        super().__init__()
         self.__keys = LinkedList(*self.__get_items(values, 0))
         self.__values = LinkedList(*self.__get_items(values, 1))
+
+    @staticmethod
+    def is_valid(v):
+        if not isinstance(v, tuple):
+            raise TypeError
 
     @staticmethod
     def __get_items(items, index):
@@ -159,7 +162,7 @@ class LinkedListDictionary(LinkedList):
     def pop(self, item):
         item = self.get(item)
         if item is not None:
-            self.__delitem__()
+            del self[item]
         return item
 
     @staticmethod
@@ -173,9 +176,6 @@ class LinkedListDictionary(LinkedList):
             return counter
         return
 
-    def __append(self):
-        raise KeyError
-
     def items(self):
         return self.gen()
 
@@ -186,8 +186,8 @@ class LinkedListDictionary(LinkedList):
         return self.__values.__iter__()
 
     def gen(self):
-        key_next_item = self.__keys._head
-        value_next_item = self.__values._head
+        key_next_item = self.__keys.head
+        value_next_item = self.__values.head
         while True:
             if key_next_item is None or value_next_item is None:
                 return
@@ -206,17 +206,24 @@ class LinkedListDictionary(LinkedList):
                 return value
 
     def __setitem__(self, val: tuple):
+        self.is_valid(val)
         if not isinstance(val, tuple):
             raise TypeError
         if not len(val) == 2:
             raise ValueError
         self.__keys.append(val[0])
-        self._append(val[1])
+        self.__values.append(val[1])
 
     def __delitem__(self, key):
         key_index = self.__find_index(self.keys(), key)
-        self.__keys.__delitem__(key_index)
-        self.__values.__delitem__(key_index)
+        del self.__keys[key_index]
+        del self.__values[key_index]
+
+    def __contains__(self, item):
+        for i in self:
+            if item == i:
+                return True
+        return False
 
     def __str__(self):
         s = ""
@@ -230,6 +237,7 @@ class LinkedListDictionary(LinkedList):
 
 if __name__ == "__main__":
     d = LinkedListDictionary(("q", "sdfsdfsdf"), (123, "sdfsdfsdf"), ("test", "strt"))
-    print(d)
+    print(d.items())
     d.update(("232", "sdfsdfsdf"))
-    print(d)
+    print(d.items())
+    print("232" in d)

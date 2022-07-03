@@ -31,20 +31,23 @@ class Main(QMainWindow, Tools):
             self.screen = app.primaryScreen()
             self.background_image = QPixmap("static/img/background.jpg")
             self.setStyleSheet(self.load_stylesheet("static/style.css"))
-            screen_size = self.screen.size()
-            start_point_x = (screen_size.width() - self.background_image.width()) / 2
-            start_point_y = (screen_size.height() - self.background_image.height()) / 2
-            self.setGeometry(QRect(
-                start_point_x / 2,
-                start_point_y / 2,
-                start_point_x + self.background_image.width(),
-                start_point_y + self.background_image.height()
-            ))
+
+            def set_window_geometry():
+                screen_size = self.screen.size()
+                start_point_x = (screen_size.width() - self.background_image.width()) / 2
+                start_point_y = (screen_size.height() - self.background_image.height()) / 2
+                self.setGeometry(QRect(
+                    start_point_x / 2,
+                    start_point_y / 2,
+                    start_point_x + self.background_image.width(),
+                    start_point_y + self.background_image.height()
+                ))
+            set_window_geometry()
 
         def init_database():
             self.db = Database("../database.db")
-            self.query_fetch_list = SQLQueryContainer()
-            self.query_commit_list = SQLQueryContainer(commit_=True)
+            self.query_fetch_list = {}
+            self.query_commit_list = {}
 
         def init_navigation():
             self.navigation = Navigation(self.ui, self.db)
