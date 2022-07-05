@@ -39,7 +39,7 @@
        </size>
       </property>
       <property name="currentIndex">
-       <number>0</number>
+       <number>1</number>
       </property>
       <widget class="QWidget" name="main">
        <property name="autoFillBackground">
@@ -207,7 +207,7 @@
         <item>
          <widget class="QTabWidget" name="root_tab_widget">
           <property name="currentIndex">
-           <number>1</number>
+           <number>0</number>
           </property>
           <widget class="QWidget" name="tab_3">
            <attribute name="title">
@@ -225,7 +225,7 @@
                <string notr="true"/>
               </property>
               <property name="currentIndex">
-               <number>0</number>
+               <number>2</number>
               </property>
               <widget class="QWidget" name="options_tab_machines">
                <attribute name="title">
@@ -503,11 +503,6 @@
                 </item>
                </layout>
               </widget>
-              <widget class="QWidget" name="tab_2">
-               <attribute name="title">
-                <string>Задачи</string>
-               </attribute>
-              </widget>
               <widget class="QWidget" name="tab">
                <attribute name="title">
                 <string>Операции</string>
@@ -516,7 +511,7 @@
                 <item>
                  <widget class="QTabWidget" name="tabWidget_2">
                   <property name="currentIndex">
-                   <number>0</number>
+                   <number>1</number>
                   </property>
                   <widget class="QWidget" name="add_operation_list">
                    <attribute name="title">
@@ -2373,78 +2368,6 @@
                 </item>
                 <item>
                  <layout class="QHBoxLayout" name="horizontalLayout_48">
-                  <item>
-                   <layout class="QVBoxLayout" name="verticalLayout_25">
-                    <item>
-                     <widget class="QLabel" name="label_31">
-                      <property name="font">
-                       <font>
-                        <pointsize>18</pointsize>
-                        <weight>75</weight>
-                        <bold>true</bold>
-                       </font>
-                      </property>
-                      <property name="text">
-                       <string>Задачи</string>
-                      </property>
-                     </widget>
-                    </item>
-                    <item>
-                     <widget class="QListWidget" name="listWidget_8">
-                      <property name="dragEnabled">
-                       <bool>true</bool>
-                      </property>
-                      <property name="dragDropMode">
-                       <enum>QAbstractItemView::DragDrop</enum>
-                      </property>
-                      <property name="defaultDropAction">
-                       <enum>Qt::MoveAction</enum>
-                      </property>
-                      <item>
-                       <property name="text">
-                        <string>ываываыва</string>
-                       </property>
-                      </item>
-                     </widget>
-                    </item>
-                    <item>
-                     <layout class="QHBoxLayout" name="horizontalLayout_46">
-                      <item>
-                       <widget class="QPushButton" name="remove_button_1">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item>
-                       <widget class="QPushButton" name="add_button_1">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                     </layout>
-                    </item>
-                    <item>
-                     <widget class="QListWidget" name="listWidget_6">
-                      <property name="dragEnabled">
-                       <bool>true</bool>
-                      </property>
-                      <property name="dragDropMode">
-                       <enum>QAbstractItemView::DragDrop</enum>
-                      </property>
-                      <property name="defaultDropAction">
-                       <enum>Qt::MoveAction</enum>
-                      </property>
-                      <item>
-                       <property name="text">
-                        <string>ываываыва</string>
-                       </property>
-                      </item>
-                     </widget>
-                    </item>
-                   </layout>
-                  </item>
                   <item>
                    <widget class="Line" name="line_18">
                     <property name="orientation">

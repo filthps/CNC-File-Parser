@@ -70,7 +70,3 @@ class AddMachinePageValidation:
             self.__set_not_complete_edit_attributes(self.current_machine)
         else:
             self.__set_complete_edit_attributes(self.current_machine)
-
-
-
-
