@@ -8,15 +8,16 @@ class AddMachinePageValidation:
     INVALID_VALUES = {
         "lineEdit_10": re.compile(r"|\d"),
         "lineEdit_21": re.compile(r"|\d"),
-        "lineEdit_11": re.compile(r"\D"),
-        "lineEdit_12": re.compile(r"\D"),
-        "lineEdit_13": re.compile(r"\D"),
-        "lineEdit_14": re.compile(r"\D"),
-        "lineEdit_15": re.compile(r"\D"),
-        "lineEdit_16": re.compile(r"\D")
+        "lineEdit_11": re.compile(r"\d"),
+        "lineEdit_12": re.compile(r"\d"),
+        "lineEdit_13": re.compile(r"\d"),
+        "lineEdit_14": re.compile(r"\d"),
+        "lineEdit_15": re.compile(r"\d"),
+        "lineEdit_16": re.compile(r"\d")
     }
 
     def __init__(self, ui):
+        self.__is_valid = False
         self.ui: Ui_main_window = ui
         self.current_machine = None
 
@@ -32,6 +33,10 @@ class AddMachinePageValidation:
             ui.lineEdit_15.textChanged.connect(self.refresh)
             ui.lineEdit_16.textChanged.connect(self.refresh)
         connect_signals()
+
+    @property
+    def is_valid(self):
+        return self.__is_valid
 
     @staticmethod
     def __set_not_complete_edit_attributes(widget: QTreeWidgetItem):
@@ -66,7 +71,9 @@ class AddMachinePageValidation:
                     valid = False
                 else:
                     self.__set_valid_text_field(field)
-        if not valid:
-            self.__set_not_complete_edit_attributes(self.current_machine)
-        else:
-            self.__set_complete_edit_attributes(self.current_machine)
+        self.__is_valid = valid
+        if self.current_machine is not None:
+            if not valid:
+                self.__set_not_complete_edit_attributes(self.current_machine)
+            else:
+                self.__set_complete_edit_attributes(self.current_machine)

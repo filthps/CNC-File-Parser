@@ -101,6 +101,41 @@ class Constructor:
         self.instance = instance
         self.main_ui = ui
 
+    def get_alert_dialog(self, title_text, label_text="", callback=None):
+        """ Всплывающее окно с текстом и  кнопкой
+        ░░░░██████████████████████████░░
+        ░░░░██░░░░░░░░░░░░░░░░░░░░░░██░░
+        ░░░░██░░░░░░░░░░░░░░░░░░░░░░██░░
+        ░░░░██░░░░░░░░░░░░░░░░░░░░░░██░░
+        ░░░░██░░░░░░░░░░░░░░░░░░░░░░██░░
+        ░░░░██░░░░░░░░░░░░░░░░░░░░░░██░░
+        ░░░░██░░░░░░░░░░░░░░░░░░░░░░██░░
+        ░░░░██░░░░░░░░░░░░░░░░░░░░░░██░░
+        ░░░░██░░░░░░░░░░░░░░░░░░░░░░██░░
+        ░░░░██░░░░░░░░░░░░░░░░░░░░░░██░░
+        ░░░░██░░░░░░░░██████░░░░░░░░██░░
+        ░░░░██░░░░░░░░░░░░░░░░░░░░░░██░░
+        ░░░░██░░░░░░░░░░░░░░░░░░░░░░██░░
+        ░░░░██████████████████████████░░
+        """
+        def set_signals():
+            dialog.accepted.connect(callback)
+            dialog.rejected.connect(lambda: window.close())
+        ok_button = QDialogButtonBox.Ok
+        window = AbstractDialog(self.instance, buttons=(ok_button,),
+                                close_callback=self._unlock_ui, init_callback=self._lock_ui)
+        h_layout = QVBoxLayout(window)
+        window.setFocus()
+        label = QLabel(window)
+        h_layout.addWidget(label)
+        label.setText(label_text)
+        dialog = QDialogButtonBox(label)
+        h_layout.addWidget(dialog)
+        dialog.setStandardButtons(ok_button)
+        window.setWindowTitle(title_text)
+        set_signals()
+        return window
+
     def get_prompt_dialog(self, title_text, label_text="", cancel_callback=None, ok_callback=None) -> Optional[QListWidgetItem]:
         """ Всплывающее окно с текстом, 2 кнопками и полем ввода
         ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
@@ -158,14 +193,10 @@ class Constructor:
         ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
         """
         def set_signals():
-            def keyboard_navigation(event):
-                if event.event() == Qt.Key_Left:
-                    dialog.Ok.setFocus()
             dialog.accepted.connect(ok_callback)
             dialog.rejected.connect(cancel_callback)
             dialog.rejected.connect(lambda: window.close())
             window.finished.connect(cancel_callback)
-            window.keyPressEvent(lambda x: keyboard_navigation(x))
         ok_button, cancel_button = QDialogButtonBox.Ok, QDialogButtonBox.Cancel
         window = AbstractDialog(self.instance, buttons=(ok_button, cancel_button,),
                                 close_callback=self._unlock_ui, init_callback=self._lock_ui)

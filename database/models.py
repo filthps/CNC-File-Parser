@@ -32,7 +32,7 @@ class Machine(db.Model):
     spindele_speed = Column(Integer, nullable=True)
     input_catalog = Column(String, nullable=False)
     output_catalog = Column(String, nullable=False)
-    operations = relationship('Operation', secondary=AssociationTable)
+    operations = relationship('Operation', secondary=AssociationTable, backref=db.backref('operations', lazy=True))
     __table__args = (
         CheckConstraint('input_catalog!=""'),
         CheckConstraint('output_catalog!=""'),
@@ -41,7 +41,7 @@ class Machine(db.Model):
 
 class Operation(db.Model):
     __tablename__ = 'operation'
-    machines = relationship('Machine', secondary=AssociationTable)
+    machines = relationship('Machine', secondary=AssociationTable, backref=db.backref('machines', lazy=True))
     opid = Column(String, primary_key=True, default=get_uuid)
     operation_type = Column(String, nullable=False)
     operation_name = Column(String, nullable=False)
@@ -55,4 +55,6 @@ class Operation(db.Model):
 
 
 if __name__ == "__main__":
-    print(Machine.query.all())
+    db.drop_all()
+    db.create_all()
+

@@ -361,9 +361,6 @@ class Ui_main_window(object):
         self.horizontalLayout_51.addLayout(self.verticalLayout_24)
 
         self.converter_options.addTab(self.options_tab_machines, "")
-        self.tab_2 = QWidget()
-        self.tab_2.setObjectName(u"tab_2")
-        self.converter_options.addTab(self.tab_2, "")
         self.tab = QWidget()
         self.tab.setObjectName(u"tab")
         self.verticalLayout_3 = QVBoxLayout(self.tab)
@@ -1403,50 +1400,6 @@ class Ui_main_window(object):
 
         self.horizontalLayout_48 = QHBoxLayout()
         self.horizontalLayout_48.setObjectName(u"horizontalLayout_48")
-        self.verticalLayout_25 = QVBoxLayout()
-        self.verticalLayout_25.setObjectName(u"verticalLayout_25")
-        self.label_31 = QLabel(self.options_merging)
-        self.label_31.setObjectName(u"label_31")
-        self.label_31.setFont(font1)
-
-        self.verticalLayout_25.addWidget(self.label_31)
-
-        self.listWidget_8 = QListWidget(self.options_merging)
-        QListWidgetItem(self.listWidget_8)
-        self.listWidget_8.setObjectName(u"listWidget_8")
-        self.listWidget_8.setDragEnabled(True)
-        self.listWidget_8.setDragDropMode(QAbstractItemView.DragDrop)
-        self.listWidget_8.setDefaultDropAction(Qt.MoveAction)
-
-        self.verticalLayout_25.addWidget(self.listWidget_8)
-
-        self.horizontalLayout_46 = QHBoxLayout()
-        self.horizontalLayout_46.setObjectName(u"horizontalLayout_46")
-        self.remove_button_1 = QPushButton(self.options_merging)
-        self.remove_button_1.setObjectName(u"remove_button_1")
-
-        self.horizontalLayout_46.addWidget(self.remove_button_1)
-
-        self.add_button_1 = QPushButton(self.options_merging)
-        self.add_button_1.setObjectName(u"add_button_1")
-
-        self.horizontalLayout_46.addWidget(self.add_button_1)
-
-
-        self.verticalLayout_25.addLayout(self.horizontalLayout_46)
-
-        self.listWidget_6 = QListWidget(self.options_merging)
-        QListWidgetItem(self.listWidget_6)
-        self.listWidget_6.setObjectName(u"listWidget_6")
-        self.listWidget_6.setDragEnabled(True)
-        self.listWidget_6.setDragDropMode(QAbstractItemView.DragDrop)
-        self.listWidget_6.setDefaultDropAction(Qt.MoveAction)
-
-        self.verticalLayout_25.addWidget(self.listWidget_6)
-
-
-        self.horizontalLayout_48.addLayout(self.verticalLayout_25)
-
         self.line_18 = QFrame(self.options_merging)
         self.line_18.setObjectName(u"line_18")
         self.line_18.setFrameShape(QFrame.VLine)
@@ -1540,10 +1493,10 @@ class Ui_main_window(object):
 
         self.retranslateUi(main_window)
 
-        self.main_widget.setCurrentIndex(0)
-        self.root_tab_widget.setCurrentIndex(1)
-        self.converter_options.setCurrentIndex(0)
-        self.tabWidget_2.setCurrentIndex(0)
+        self.main_widget.setCurrentIndex(1)
+        self.root_tab_widget.setCurrentIndex(0)
+        self.converter_options.setCurrentIndex(2)
+        self.tabWidget_2.setCurrentIndex(1)
         self.stackedWidget_2.setCurrentIndex(6)
 
 
@@ -1575,7 +1528,6 @@ class Ui_main_window(object):
         self.label_28.setText(QCoreApplication.translate("main_window", u"Z", None))
         self.label_29.setText(QCoreApplication.translate("main_window", u"\u041c\u0430\u043a\u0441\u0438\u043c\u0430\u043b\u044c\u043d\u043e-\u0434\u043e\u043f\u0443\u0441\u0442\u0438\u043c\u044b\u0435 \u043e\u0431\u043e\u0440\u043e\u0442\u044b \u0448\u043f\u0438\u043d\u0434\u0435\u043b\u044f", None))
         self.converter_options.setTabText(self.converter_options.indexOf(self.options_tab_machines), QCoreApplication.translate("main_window", u"\u0421\u0442\u0430\u043d\u043a\u0438", None))
-        self.converter_options.setTabText(self.converter_options.indexOf(self.tab_2), QCoreApplication.translate("main_window", u"\u0417\u0430\u0434\u0430\u0447\u0438", None))
         self.label_18.setText(QCoreApplication.translate("main_window", u"\u0414\u0435\u0439\u0441\u0442\u0432\u0443\u044e\u0449\u0438\u0435", None))
         self.move_right_0.setText("")
         self.move_left_0.setText("")
@@ -1647,39 +1599,22 @@ class Ui_main_window(object):
         self.tabWidget_2.setTabText(self.tabWidget_2.indexOf(self.add_operation_first), QCoreApplication.translate("main_window", u"\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c", None))
         self.converter_options.setTabText(self.converter_options.indexOf(self.tab), QCoreApplication.translate("main_window", u"\u041e\u043f\u0435\u0440\u0430\u0446\u0438\u0438", None))
         self.label_30.setText(QCoreApplication.translate("main_window", u"\u0421\u0442\u0430\u043d\u043e\u043a", None))
-        self.label_31.setText(QCoreApplication.translate("main_window", u"\u0417\u0430\u0434\u0430\u0447\u0438", None))
-
-        __sortingEnabled = self.listWidget_8.isSortingEnabled()
-        self.listWidget_8.setSortingEnabled(False)
-        ___qlistwidgetitem = self.listWidget_8.item(0)
-        ___qlistwidgetitem.setText(QCoreApplication.translate("main_window", u"\u044b\u0432\u0430\u044b\u0432\u0430\u044b\u0432\u0430", None));
-        self.listWidget_8.setSortingEnabled(__sortingEnabled)
-
-        self.remove_button_1.setText("")
-        self.add_button_1.setText("")
-
-        __sortingEnabled1 = self.listWidget_6.isSortingEnabled()
-        self.listWidget_6.setSortingEnabled(False)
-        ___qlistwidgetitem1 = self.listWidget_6.item(0)
-        ___qlistwidgetitem1.setText(QCoreApplication.translate("main_window", u"\u044b\u0432\u0430\u044b\u0432\u0430\u044b\u0432\u0430", None));
-        self.listWidget_6.setSortingEnabled(__sortingEnabled1)
-
         self.label_32.setText(QCoreApplication.translate("main_window", u"\u041e\u043f\u0435\u0440\u0430\u0446\u0438\u0438", None))
 
-        __sortingEnabled2 = self.listWidget_9.isSortingEnabled()
+        __sortingEnabled = self.listWidget_9.isSortingEnabled()
         self.listWidget_9.setSortingEnabled(False)
-        ___qlistwidgetitem2 = self.listWidget_9.item(0)
-        ___qlistwidgetitem2.setText(QCoreApplication.translate("main_window", u"\u044b\u0432\u0430\u044b\u0432\u0430\u044b\u0432\u0430", None));
-        self.listWidget_9.setSortingEnabled(__sortingEnabled2)
+        ___qlistwidgetitem = self.listWidget_9.item(0)
+        ___qlistwidgetitem.setText(QCoreApplication.translate("main_window", u"\u044b\u0432\u0430\u044b\u0432\u0430\u044b\u0432\u0430", None));
+        self.listWidget_9.setSortingEnabled(__sortingEnabled)
 
         self.remove_button_2.setText("")
         self.add_button_2.setText("")
 
-        __sortingEnabled3 = self.listWidget_7.isSortingEnabled()
+        __sortingEnabled1 = self.listWidget_7.isSortingEnabled()
         self.listWidget_7.setSortingEnabled(False)
-        ___qlistwidgetitem3 = self.listWidget_7.item(0)
-        ___qlistwidgetitem3.setText(QCoreApplication.translate("main_window", u"\u044b\u0432\u0430\u044b\u0432\u0430\u044b\u0432\u0430", None));
-        self.listWidget_7.setSortingEnabled(__sortingEnabled3)
+        ___qlistwidgetitem1 = self.listWidget_7.item(0)
+        ___qlistwidgetitem1.setText(QCoreApplication.translate("main_window", u"\u044b\u0432\u0430\u044b\u0432\u0430\u044b\u0432\u0430", None));
+        self.listWidget_7.setSortingEnabled(__sortingEnabled1)
 
         self.converter_options.setTabText(self.converter_options.indexOf(self.options_merging), QCoreApplication.translate("main_window", u"\u041f\u0440\u0438\u0432\u044f\u0437\u0430\u0442\u044c", None))
         self.root_tab_widget.setTabText(self.root_tab_widget.indexOf(self.options1), QCoreApplication.translate("main_window", u"\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438", None))
