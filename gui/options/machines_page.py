@@ -1,4 +1,3 @@
-from sqlalchemy import select
 from PySide2.QtCore import Slot
 from PySide2.QtWidgets import QListWidgetItem, QLineEdit
 from database.models import Machine
@@ -158,6 +157,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
         [getattr(self.ui, field_name).setText("") for field_name in self.__UI__TO_SQL_COLUMN_LINK]
 
     def push_items(self):
+        """ SQL INSERT добавить сессию """
         session = self.main_app.initialize_session()
         while self.items:
             machine_name, data = self.items.popitem()
@@ -166,6 +166,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
         session.close()
 
     def update_items(self):
+        """ SQL UPDATE """
         session = self.main_app.initialize_session()
         while self.items:
             machine_name, data = self.items.popitem()

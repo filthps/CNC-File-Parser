@@ -152,7 +152,9 @@ class Constructor:
         ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
         """
         def get_value():
-            return ok_callback(input_.text())
+            value = input_.text()
+            if value:
+                return ok_callback(input_.text())
 
         def set_signals():
             dialog.accepted.connect(get_value if ok_callback is not None else None)

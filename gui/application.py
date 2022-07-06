@@ -50,7 +50,8 @@ class Main(QMainWindow, Tools):
 
         def init_database():
             self.database = create_engine("sqlite:///../database.db")
-            self.session_factory = sessionmaker(bind=self.database, autoflush=False, autocommit=False, expire_on_commit=True)
+            self.session_factory = sessionmaker(bind=self.database, autoflush=False, autocommit=False,
+                                                expire_on_commit=True)
 
         def init_navigation():
             self.navigation = Navigation(self.ui)
