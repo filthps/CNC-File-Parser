@@ -1,6 +1,6 @@
 from PySide2.QtWidgets import QListWidgetItem
 from ui import Ui_main_window as Ui
-from options import machines_page
+from options import machines_page, bind_page
 
 
 class Navigation:
@@ -35,5 +35,9 @@ class Navigation:
         ...
 
 
-class Actions(machines_page.OptionsPageActions):
-    pass
+class Actions:
+    def __init__(self, app, ui: Ui):
+        self.options_pages = {
+            "CreateMachinePage": machines_page.OptionsPageCreateMachine(app, ui),
+            "OptionsPageBind": bind_page.OptionsPageBind(ui, app),
+        }

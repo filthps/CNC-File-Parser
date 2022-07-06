@@ -1,5 +1,4 @@
-from itertools import repeat
-from sqlalchemy import select, Table, insert, update, delete
+from sqlalchemy import select
 from PySide2.QtCore import Slot
 from PySide2.QtWidgets import QListWidgetItem, QLineEdit
 from database.models import Machine
@@ -8,7 +7,7 @@ from gui.tools import Constructor, Tools
 from gui.validation import AddMachinePageValidation
 
 
-class OptionsPageActions(Constructor, Tools):
+class OptionsPageCreateMachine(Constructor, Tools):
     __UI__TO_SQL_COLUMN_LINK = {"lineEdit_10": "input_catalog", "lineEdit_21": "output_catalog",
                                 "lineEdit_11": "x_over", "lineEdit_12": "y_over", "lineEdit_13": "z_over",
                                 "lineEdit_14": "x_fspeed", "lineEdit_15": "y_fspeed", "lineEdit_16": "z_fspeed",
@@ -16,7 +15,6 @@ class OptionsPageActions(Constructor, Tools):
 
     def __init__(self, main_app_instance, ui: Ui):
         self.validator = None
-        self.valid_machines = set()
         self.items = {}  # Словарное представление для **распаковки в сессию базы данных
         self.main_app = main_app_instance
         self.ui = ui
@@ -36,6 +34,9 @@ class OptionsPageActions(Constructor, Tools):
             ui.lineEdit_16.editingFinished.connect(lambda: self.update_field("lineEdit_16"))
             ui.lineEdit_17.editingFinished.connect(lambda: self.update_field("lineEdit_17"))
 
+        def init_validator():
+            self.validator = AddMachinePageValidation(self.ui)
+
         def initialization():
             """ Загрузить данные из базы данных """
             machines = Machine.query.all()
@@ -46,20 +47,18 @@ class OptionsPageActions(Constructor, Tools):
                 item = QListWidgetItem(name)
                 self.ui.add_machine_list_0.addItem(item)
                 self.ui.add_machine_list_0.setCurrentItem(item)
-        connect_signals()
-        initialization()
 
-        def init_validator():
-            self.validator = AddMachinePageValidation(self.ui)
+        connect_signals()
         init_validator()
+        initialization()
 
     def get_selected_item(self) -> QListWidgetItem:
         return self.ui.add_machine_list_0.currentItem()
 
     def get_machine_from_database(self, machine_name) -> dict:
-        query = select(Machine).where(machine_name == machine_name)
-        machine = self.main_app.database.execute(query).fetchone()
-        return machine
+        machine = Machine.query.filter_by(machine_name=machine_name).first()
+        if machine is not None:
+            return machine.__dict__
 
     def __update_form(self, values: dict):
         """ Обновление полей в интерфейсе """
@@ -83,10 +82,14 @@ class OptionsPageActions(Constructor, Tools):
         обновить все поля свойств станка (поля - Характеристики)"""
         if machine_item is not None:
             name = machine_item.text()
+            self.clear_fields()
             data = self.get_machine_from_database(name)
+            if data is not None:
+                self.__update_form(data)
             item_ = self.items.get(name)
-            if data is not None and item_ is not None:
+            if item_ is not None:
                 self.__update_form(item_)
+            self.validator.refresh()
 
     @Slot()
     def add_machine(self):
@@ -120,7 +123,6 @@ class OptionsPageActions(Constructor, Tools):
             item_name = item.text()
             Machine.query.filter_by(machine_name=item_name).delete()
             self.items.pop(item_name)
-            self.valid_machines.remove(item_name)
             self.clear_fields()
             dialog.close()
             self.ui.add_machine_list_0.takeItem(self.ui.add_machine_list_0.row(item))
@@ -144,15 +146,12 @@ class OptionsPageActions(Constructor, Tools):
             machine = self.items[machine_name]
             machine.update({self.__UI__TO_SQL_COLUMN_LINK[field_name]: getattr(self.ui, field_name).text()})
         if self.validator.is_valid:
-            self.valid_machines.add(self.get_selected_item().text())
             if not update:
                 self.push_items()
             else:
                 self.update_items()
         else:
             name = self.get_selected_item().text()
-            if name in self.valid_machines:
-                self.valid_machines.remove(name)
 
     def clear_fields(self):
         """ Поставить пустые значения во все поля ХАРАКТЕРИСТИКИ """
