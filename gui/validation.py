@@ -8,12 +8,12 @@ class AddMachinePageValidation:
     INVALID_VALUES = {
         "lineEdit_10": re.compile(r"|\d"),
         "lineEdit_21": re.compile(r"|\d"),
-        "lineEdit_11": re.compile(r"\d"),
-        "lineEdit_12": re.compile(r"\d"),
-        "lineEdit_13": re.compile(r"\d"),
-        "lineEdit_14": re.compile(r"\d"),
-        "lineEdit_15": re.compile(r"\d"),
-        "lineEdit_16": re.compile(r"\d")
+        "lineEdit_11": re.compile(r"\D"),
+        "lineEdit_12": re.compile(r"\D"),
+        "lineEdit_13": re.compile(r"\D"),
+        "lineEdit_14": re.compile(r"\D"),
+        "lineEdit_15": re.compile(r"\D"),
+        "lineEdit_16": re.compile(r"\D")
     }
 
     def __init__(self, ui):

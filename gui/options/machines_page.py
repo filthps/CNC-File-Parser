@@ -39,8 +39,13 @@ class OptionsPageActions(Constructor, Tools):
         def initialization():
             """ Загрузить данные из базы данных """
             machines = Machine.query.all()
-            print(machines)
-
+            for machine in machines:
+                data = machine.__dict__
+                name = data.pop('machine_name')
+                self.__update_form(data)
+                item = QListWidgetItem(name)
+                self.ui.add_machine_list_0.addItem(item)
+                self.ui.add_machine_list_0.setCurrentItem(item)
         connect_signals()
         initialization()
 
@@ -79,9 +84,9 @@ class OptionsPageActions(Constructor, Tools):
         if machine_item is not None:
             name = machine_item.text()
             data = self.get_machine_from_database(name)
-            if data is not None:
-                print(data)
-                self.__update_form(data)
+            item_ = self.items.get(name)
+            if data is not None and item_ is not None:
+                self.__update_form(item_)
 
     @Slot()
     def add_machine(self):
@@ -127,17 +132,23 @@ class OptionsPageActions(Constructor, Tools):
     @Slot(str)
     def update_field(self, field_name):
         """ Обновление записей в базе, при изменении полей-характеристик """
+        update = False
         active_machine = self.get_selected_item()
         if active_machine is not None:
             machine_name = active_machine.text()
             machine = self.items.get(machine_name)
             if machine is None:
+                if self.get_machine_from_database(machine_name) is not None:
+                    update = True
                 self.items.update({machine_name: {'machine_name': machine_name}})
             machine = self.items[machine_name]
             machine.update({self.__UI__TO_SQL_COLUMN_LINK[field_name]: getattr(self.ui, field_name).text()})
         if self.validator.is_valid:
             self.valid_machines.add(self.get_selected_item().text())
-            self.push_items()
+            if not update:
+                self.push_items()
+            else:
+                self.update_items()
         else:
             name = self.get_selected_item().text()
             if name in self.valid_machines:
@@ -151,7 +162,17 @@ class OptionsPageActions(Constructor, Tools):
         session = self.main_app.initialize_session()
         while self.items:
             machine_name, data = self.items.popitem()
-            print(data)
             session.add(Machine(**data))
+        session.commit()
+        session.close()
+
+    def update_items(self):
+        session = self.main_app.initialize_session()
+        while self.items:
+            machine_name, data = self.items.popitem()
+            del data['machine_name']
+            query = Machine.query.filter_by(machine_name=machine_name).first()
+            [setattr(query, k, v) for k, v in data.items()]
+            session.add(query)
         session.commit()
         session.close()
