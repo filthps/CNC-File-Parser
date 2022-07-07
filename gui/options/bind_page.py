@@ -14,13 +14,14 @@ class OptionsPageBind(Constructor, Tools):
             self.ui.bind_choice_machine.activated.connect(
                 lambda: self.change_machine(self.ui.bind_choice_machine.currentText())
             )
-
-        def initialization():
-            machine = Machine.query.first()
-            if machine is not None:
-                self.change_machine(machine.__dict__['machine_name'])
         connect_signals()
-        initialization()
+        self.initialization()
+
+    def initialization(self):
+        machines = Machine.query.all()
+        field = self.ui.bind_choice_machine
+        field.clear()
+        [field.insertItem(0, m.__dict__['machine_name']) for m in machines]
 
     @Slot(str)
     def change_machine(self, machine_name):

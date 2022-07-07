@@ -41,3 +41,10 @@ class Actions:
             "CreateMachinePage": machines_page.OptionsPageCreateMachine(app, ui),
             "OptionsPageBind": bind_page.OptionsPageBind(ui, app),
         }
+
+    def re_init(self):
+        """ Пройтись по всем экземплярам страниц и сделать следующее:
+        1) Очистить формы
+        2) Запросить из базы данных свежие данные
+        3) Вставить данные в формы"""
+        [instance.initialization() for instance in self.options_pages.values()]

@@ -1,11 +1,10 @@
 import os
 from typing import Union, Iterator, Optional, Sequence
 from itertools import count, cycle
-from pathlib import Path
 from PySide2.QtCore import Qt
 from PySide2.QtWidgets import QTabWidget, QStackedWidget, QPushButton, QInputDialog, QDialogButtonBox, \
     QListWidgetItem, QListWidget, QDialog, QLabel, QVBoxLayout, QHBoxLayout, QTreeWidgetItem, QTreeWidget, QLineEdit
-from PySide2.QtGui import QIcon, QCloseEvent
+from PySide2.QtGui import QIcon
 from gui.ui import Ui_main_window as Ui
 from config import PROJECT_PATH
 
@@ -212,74 +211,6 @@ class Constructor:
         h_layout.addWidget(dialog)
         dialog.setStandardButtons(ok_button | cancel_button)
         window.setWindowTitle(title_text)
-        set_signals()
-        return window
-
-    def get_folder_choice_dialog(self, window_title="", cancel_callback=None, ok_callback=None):
-        """ Вабор файла в дереве каталогов
-        ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
-        ░░████████████████████████████░░
-        ░░██░░░░░░░░░░░░░░░░░░░░░░░░██░░
-        ░░██░░░░░░░░░░████░░░░░░░░░░██░░
-        ░░██░░████░░░░░░░░░░░░░░░░░░██░░
-        ░░██░░░░░░░░░░████░░░░░░░░░░██░░
-        ░░██░░░░░░░░░░░░░░░░░░░░░░░░██░░
-        ░░██░░████░░░░████░░░░░░░░░░██░░
-        ░░██░░░░░░░░░░░░░░░░░░░░░░░░██░░
-        ░░██░░░░░░░░░░████░░░░░░░░░░██░░
-        ░░██░░░░░░░░░░░░░░░░░░░░░░░░██░░
-        ░░██░░░░░░░░░░░░░░░░░░░░░░░░██░░
-        ░░██░░██████░░░░░░░░██████░░██░░
-        ░░██░░░░░░░░░░░░░░░░░░░░░░░░██░░
-        ░░████████████████████████████░░
-        ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
-        """
-        current_column = 0
-        ok_button, cancel_button = QDialogButtonBox.Ok, QDialogButtonBox.Cancel
-        window = AbstractDialog(self.instance, buttons=(ok_button, cancel_button,),
-                                close_callback=self._unlock_ui, init_callback=self._lock_ui)
-        v_box = QVBoxLayout(window)
-        window.setFocus()
-        window.setWindowTitle(window_title)
-        tree = QTreeWidget(window)
-        buttons = QDialogButtonBox(tree)
-        ok_button, cancel_button = QDialogButtonBox.Ok, QDialogButtonBox.Cancel
-        buttons.setStandardButtons(ok_button | cancel_button)
-        v_box.addWidget(tree)
-        v_box.addWidget(buttons)
-
-        def create_items(path, level):
-            dirs = os.listdir(path)
-            for dir_ in dirs:
-                item = QTreeWidgetItem()
-                yield item
-                item.setText(level, os.path.join(self.DEFAULT_PATH, dir_))
-
-        def add_items(item: Union[QTreeWidgetItem, str], level=current_column):
-            def get_full_path():
-                nonlocal current_column
-                path = []
-                item_ = item
-                while item_ is not None:
-                    path.append(item_.text(level))
-                    item_ = item_.parent()
-                current_column += 1
-                return os.path.join(*path)
-            items = create_items(item if isinstance(item, str) else get_full_path(), level)
-            tree.addTopLevelItems(tuple(items))
-
-        def accept_folder():
-            accepted_item: QListWidgetItem = tree.currentItem()
-            self._unlock_ui()
-            window.close()
-            return ok_callback(accepted_item.text(current_column))
-
-        def set_signals():
-            buttons.accepted.connect(accept_folder if ok_callback is not None else None)
-            buttons.rejected.connect(cancel_callback)
-            buttons.rejected.connect(lambda: window.close())
-            tree.itemDoubleClicked.connect(lambda obj, level: add_items(obj, level))
-        add_items(self.DEFAULT_PATH)
         set_signals()
         return window
 

@@ -1,5 +1,7 @@
+from typing import Optional
 from PySide2.QtCore import Slot
 from PySide2.QtWidgets import QListWidgetItem, QLineEdit
+from PySide2.QtWidgets import QFileDialog
 from database.models import Machine
 from gui.ui import Ui_main_window as Ui
 from gui.tools import Constructor, Tools
@@ -36,35 +38,46 @@ class OptionsPageCreateMachine(Constructor, Tools):
         def init_validator():
             self.validator = AddMachinePageValidation(self.ui)
 
-        def initialization():
-            """ Загрузить данные из базы данных """
-            machines = Machine.query.all()
-            for machine in machines:
-                data = machine.__dict__
-                name = data.pop('machine_name')
-                self.__update_form(data)
-                item = QListWidgetItem(name)
-                self.ui.add_machine_list_0.addItem(item)
-                self.ui.add_machine_list_0.setCurrentItem(item)
-
-        connect_signals()
         init_validator()
-        initialization()
+        self.initialization()
+        connect_signals()
+
+    def initialization(self):
+        def clear_all():
+            self.ui.add_machine_list_0.clear()
+            self.__update_form()
+        clear_all()
+        """ Загрузить данные из базы данных """
+        machines = Machine.query.all()
+        item_ = None
+        for machine in machines:
+            data = machine.__dict__
+            name = data.pop('machine_name')
+            self.__update_form(data)
+            item = QListWidgetItem(name)
+            item_ = item
+            self.ui.add_machine_list_0.addItem(item)
+        if item_ is not None:
+            self.ui.add_machine_list_0.setCurrentItem(item_)
 
     def get_selected_item(self) -> QListWidgetItem:
         return self.ui.add_machine_list_0.currentItem()
 
-    def get_machine_from_database(self, machine_name) -> dict:
+    @staticmethod
+    def get_machine_from_database(machine_name) -> dict:
         machine = Machine.query.filter_by(machine_name=machine_name).first()
         if machine is not None:
             return machine.__dict__
 
-    def __update_form(self, values: dict):
+    def __update_form(self, values: Optional[dict] = None):
         """ Обновление полей в интерфейсе """
         for ui_field, orm_field in self.__UI__TO_SQL_COLUMN_LINK.items():
-            value = values.get(orm_field)
-            if value is not None:
-                getattr(self.ui, ui_field).setText(value)
+            if values is not None:
+                value = values.get(orm_field)
+                if value is not None:
+                    getattr(self.ui, ui_field).setText(str(value))
+            else:
+                getattr(self.ui, ui_field).setText("")
 
     @Slot(str)
     def choice_folder(self, output_line_edit_widget: str):
@@ -72,8 +85,9 @@ class OptionsPageCreateMachine(Constructor, Tools):
             field: QLineEdit = getattr(self.ui, output_line_edit_widget)
             field.setText(value)
             self.update_field(output_line_edit_widget)
-        dialog = self.get_folder_choice_dialog(ok_callback=update_field)
-        dialog.show()
+        dialog = QFileDialog.getExistingDirectory()
+        if dialog:
+            update_field(dialog)
 
     @Slot(object)
     def select_machine(self, machine_item: QListWidgetItem):
@@ -83,12 +97,17 @@ class OptionsPageCreateMachine(Constructor, Tools):
             name = machine_item.text()
             self.clear_fields()
             data = self.get_machine_from_database(name)
-            if data is not None:
+            if data is None:
+                item_ = self.items.get(name)
+                if item_ is not None:
+                    self.__update_form(item_)
+                    self.validator.refresh()
+                else:
+                    self.initialization()
+                    return
+            else:
                 self.__update_form(data)
-            item_ = self.items.get(name)
-            if item_ is not None:
-                self.__update_form(item_)
-            self.validator.refresh()
+                self.validator.refresh()
 
     @Slot()
     def add_machine(self):
@@ -120,7 +139,8 @@ class OptionsPageCreateMachine(Constructor, Tools):
         def ok():
             item: QListWidgetItem = self.get_selected_item()
             item_name = item.text()
-            Machine.query.filter_by(machine_name=item_name).delete()
+            if self.get_machine_from_database(item_name) is not None:
+                Machine.query.filter_by(machine_name=item_name).delete()
             self.items.pop(item_name)
             self.clear_fields()
             dialog.close()
@@ -158,21 +178,19 @@ class OptionsPageCreateMachine(Constructor, Tools):
 
     def push_items(self):
         """ SQL INSERT добавить сессию """
-        session = self.main_app.initialize_session()
+        session = self.main_app.db_session
         while self.items:
             machine_name, data = self.items.popitem()
             session.add(Machine(**data))
         session.commit()
-        session.close()
 
     def update_items(self):
         """ SQL UPDATE """
-        session = self.main_app.initialize_session()
+        session = self.main_app.db_session
         while self.items:
             machine_name, data = self.items.popitem()
             del data['machine_name']
             query = Machine.query.filter_by(machine_name=machine_name).first()
             [setattr(query, k, v) for k, v in data.items()]
             session.add(query)
-        session.commit()
-        session.close()
+            session.commit()

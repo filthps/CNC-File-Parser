@@ -3,11 +3,13 @@ from PySide2.QtWidgets import QMainWindow, QApplication
 from PySide2.QtCore import QEvent, QObject, Qt, QRect
 from PySide2.QtGui import QPixmap, QBrush
 from sqlalchemy import create_engine
-from sqlalchemy.orm import scoped_session  # Будем считать, что это замена QThread
+from sqlalchemy.orm import scoped_session, Session  # Будем считать, что это замена QThread
 from sqlalchemy.orm import sessionmaker
+from database.models import db
 from gui.ui import Ui_main_window as Ui
 from gui.signals import Navigation, Actions
 from tools import Tools
+from traceback import print_stack
 
 
 class Main(QMainWindow, Tools):
@@ -49,9 +51,7 @@ class Main(QMainWindow, Tools):
             set_window_geometry()
 
         def init_database():
-            self.database = create_engine("sqlite:///../database.db")
-            self.session_factory = sessionmaker(bind=self.database, autoflush=False, autocommit=False,
-                                                expire_on_commit=True)
+            self.database = db
 
         def init_navigation():
             self.navigation = Navigation(self.ui)
@@ -68,11 +68,15 @@ class Main(QMainWindow, Tools):
         init_navigation()
         init_filter()
         init_actions()
+        self.initialize_session()
 
     def initialize_session(self):
-        session = scoped_session(self.session_factory)
+        session = db.session
         self.db_session = session
         return session
+
+    def save(self):
+        self.db_session.commit()
 
     def resizeEvent(self, event) -> None:
         pal = self.palette()
@@ -101,6 +105,8 @@ class Main(QMainWindow, Tools):
                 if watched.objectName() == "converter_options":
                     ...
             nav_to_home_page()
+            self.save()
+            self.actions.re_init()
         return QMainWindow.eventFilter(self, watched, event)
 
 
