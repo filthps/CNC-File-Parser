@@ -55,9 +55,11 @@ class Navigation:
 
 class Actions:
     def __init__(self, app, ui: Ui):
+        self.app = app
+        self.ui = ui
         self.options_pages = {
-            "CreateMachinePage": machines_page.OptionsPageCreateMachine(app, ui),
-            "OptionsPageBind": bind_page.OptionsPageBind(ui, app),
+            "CreateMachinePage": machines_page.OptionsPageCreateMachine(self.app, self.ui),
+            "OptionsPageBind": bind_page.OptionsPageBind(self.ui, self.app),
         }
 
     def re_init(self):
@@ -65,4 +67,7 @@ class Actions:
         1) Очистить формы
         2) Запросить из базы данных свежие данные
         3) Вставить данные в формы"""
-        [instance.initialization() for instance in self.options_pages.values()]
+        for instance in self.options_pages.values():
+            method = getattr(instance, "initialization")
+            if method is not None:
+                method()

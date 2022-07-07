@@ -1,26 +1,30 @@
 import sys
+import sqlite3
 from PySide2.QtWidgets import QMainWindow, QApplication
-from PySide2.QtCore import QEvent, QObject, Qt, QRect
+from PySide2.QtCore import Qt, QRect
 from PySide2.QtGui import QPixmap, QBrush
-from sqlalchemy import create_engine
-from sqlalchemy.orm import scoped_session, Session  # Будем считать, что это замена QThread
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy_utils import database_exists
 from database.models import db
 from gui.ui import Ui_main_window as Ui
 from gui.signals import Navigation, Actions
 from tools import Tools
-from traceback import print_stack
+from database.models import DATABASE_PATH
 
 
 class Main(QMainWindow, Tools):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
-        self.session_factory = None
         self.db_session = None
         self.database = None
         self.navigation = None
         self.actions = None
         self.ui = None
+
+        def init_database():
+            if not database_exists(DATABASE_PATH):
+                raise sqlite3.DatabaseError("База данных не найдена!")
+            self.database = db
+            self.db_session = self.database.session
 
         def init_ui():
             def init_buttons():
@@ -34,7 +38,7 @@ class Main(QMainWindow, Tools):
             init_buttons()
 
         def init_styles():
-            self.screen = app.primaryScreen()
+            self.screen = application.primaryScreen()
             self.background_image = QPixmap("static/img/background.jpg")
             self.setStyleSheet(self.load_stylesheet("static/style.css"))
 
@@ -50,9 +54,6 @@ class Main(QMainWindow, Tools):
                 ))
             set_window_geometry()
 
-        def init_database():
-            self.database = db
-
         def init_navigation():
             self.navigation = Navigation(self, self.ui)
 
@@ -62,18 +63,12 @@ class Main(QMainWindow, Tools):
         def init_actions():
             self.actions = Actions(self, self.ui)
 
+        init_database()
         init_ui()
         init_styles()
-        init_database()
         init_navigation()
         init_filter()
         init_actions()
-        self.initialize_session()
-
-    def initialize_session(self):
-        session = db.session
-        self.db_session = session
-        return session
 
     def save(self):
         self.db_session.commit()
@@ -97,7 +92,7 @@ class Main(QMainWindow, Tools):
 
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
+    application = QApplication(sys.argv)
     main_window = Main()
     main_window.show()
-    sys.exit(app.exec_())
+    sys.exit(application.exec_())

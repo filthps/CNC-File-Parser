@@ -43,11 +43,13 @@ class OptionsPageCreateMachine(Constructor, Tools):
         connect_signals()
 
     def initialization(self):
+        """ Обновить данные из базы данных """
         def clear_all():
-            self.ui.add_machine_list_0.clear()
+            item = self.ui.add_machine_list_0.takeItem(0)
+            while item is not None:
+                item = self.ui.add_machine_list_0.takeItem(0)
             self.__update_form()
         clear_all()
-        """ Загрузить данные из базы данных """
         machines = Machine.query.all()
         item_ = None
         for machine in machines:
@@ -140,8 +142,11 @@ class OptionsPageCreateMachine(Constructor, Tools):
             item: QListWidgetItem = self.get_selected_item()
             item_name = item.text()
             if self.get_machine_from_database(item_name) is not None:
+                print(True)
                 Machine.query.filter_by(machine_name=item_name).delete()
-            self.items.pop(item_name)
+            stored = self.items.get(item_name)
+            if stored is not None:
+                del stored
             self.clear_fields()
             dialog.close()
             self.ui.add_machine_list_0.takeItem(self.ui.add_machine_list_0.row(item))
@@ -169,8 +174,6 @@ class OptionsPageCreateMachine(Constructor, Tools):
                 self.push_items()
             else:
                 self.update_items()
-        else:
-            name = self.get_selected_item().text()
 
     def clear_fields(self):
         """ Поставить пустые значения во все поля ХАРАКТЕРИСТИКИ """

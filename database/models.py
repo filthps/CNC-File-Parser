@@ -4,8 +4,10 @@ from sqlalchemy import Integer, String, Column, CheckConstraint
 from sqlalchemy.orm import relationship
 from flask_sqlalchemy import SQLAlchemy
 
+
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + '../database.db'
+DATABASE_PATH = 'sqlite:///' + '../database.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_PATH
 db = SQLAlchemy(app)
 
 
