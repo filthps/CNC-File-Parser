@@ -54,7 +54,7 @@ class Main(QMainWindow, Tools):
             self.database = db
 
         def init_navigation():
-            self.navigation = Navigation(self.ui)
+            self.navigation = Navigation(self, self.ui)
 
         def init_filter():
             self.ui.root_tab_widget.installEventFilter(self)
@@ -94,20 +94,6 @@ class Main(QMainWindow, Tools):
                          )
         self.setPalette(pal)
         super().resizeEvent(event)
-
-    def eventFilter(self, watched: QObject, event: QEvent):
-        if event.type() == QEvent.LayoutRequest:
-            def nav_to_home_page():
-                if watched.objectName() == "root_tab_widget":
-                    if hasattr(watched, "currentIndex"):
-                        if watched.currentIndex() == 0:
-                            self.navigation.nav_home_page()
-                if watched.objectName() == "converter_options":
-                    ...
-            nav_to_home_page()
-            self.save()
-            self.actions.re_init()
-        return QMainWindow.eventFilter(self, watched, event)
 
 
 if __name__ == "__main__":
