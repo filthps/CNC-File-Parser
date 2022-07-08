@@ -379,10 +379,10 @@ class Ui_main_window(object):
 
         self.verticalLayout_16.addWidget(self.label_18)
 
-        self.listWidget = QListWidget(self.add_operation_list)
-        self.listWidget.setObjectName(u"listWidget")
+        self.disabled_operations_list = QListWidget(self.add_operation_list)
+        self.disabled_operations_list.setObjectName(u"disabled_operations_list")
 
-        self.verticalLayout_16.addWidget(self.listWidget)
+        self.verticalLayout_16.addWidget(self.disabled_operations_list)
 
 
         self.horizontalLayout_35.addLayout(self.verticalLayout_16)
@@ -416,10 +416,10 @@ class Ui_main_window(object):
 
         self.verticalLayout_17.addWidget(self.label_19)
 
-        self.listWidget_2 = QListWidget(self.add_operation_list)
-        self.listWidget_2.setObjectName(u"listWidget_2")
+        self.enabled_operations_list = QListWidget(self.add_operation_list)
+        self.enabled_operations_list.setObjectName(u"enabled_operations_list")
 
-        self.verticalLayout_17.addWidget(self.listWidget_2)
+        self.verticalLayout_17.addWidget(self.enabled_operations_list)
 
 
         self.horizontalLayout_35.addLayout(self.verticalLayout_17)
@@ -462,61 +462,29 @@ class Ui_main_window(object):
 
         self.verticalLayout_5.addLayout(self.horizontalLayout_5)
 
+        self.line_16 = QFrame(self.add_operation_first1)
+        self.line_16.setObjectName(u"line_16")
+        self.line_16.setFrameShape(QFrame.HLine)
+        self.line_16.setFrameShadow(QFrame.Sunken)
+
+        self.verticalLayout_5.addWidget(self.line_16)
+
+        self.verticalLayout_4 = QVBoxLayout()
+        self.verticalLayout_4.setObjectName(u"verticalLayout_4")
+        self.verticalSpacer_3 = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
+
+        self.verticalLayout_4.addItem(self.verticalSpacer_3)
+
         self.horizontalLayout_4 = QHBoxLayout()
         self.horizontalLayout_4.setObjectName(u"horizontalLayout_4")
         self.horizontalSpacer_6 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
 
         self.horizontalLayout_4.addItem(self.horizontalSpacer_6)
 
-        self.checkBox = QCheckBox(self.add_operation_first1)
-        self.checkBox.setObjectName(u"checkBox")
-        self.checkBox.setChecked(True)
-
-        self.horizontalLayout_4.addWidget(self.checkBox)
-
-        self.horizontalSpacer_5 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
-
-        self.horizontalLayout_4.addItem(self.horizontalSpacer_5)
-
-
-        self.verticalLayout_5.addLayout(self.horizontalLayout_4)
-
-        self.line = QFrame(self.add_operation_first1)
-        self.line.setObjectName(u"line")
-        self.line.setLayoutDirection(Qt.LeftToRight)
-        self.line.setFrameShape(QFrame.HLine)
-        self.line.setFrameShadow(QFrame.Sunken)
-
-        self.verticalLayout_5.addWidget(self.line)
-
-        self.horizontalLayout_3 = QHBoxLayout()
-        self.horizontalLayout_3.setObjectName(u"horizontalLayout_3")
-        self.horizontalSpacer_7 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
-
-        self.horizontalLayout_3.addItem(self.horizontalSpacer_7)
-
-        self.safetly_operations_select_label = QLabel(self.add_operation_first1)
-        self.safetly_operations_select_label.setObjectName(u"safetly_operations_select_label")
-
-        self.horizontalLayout_3.addWidget(self.safetly_operations_select_label)
-
-        self.safetly_operations_select = QComboBox(self.add_operation_first1)
-        self.safetly_operations_select.addItem("")
-        self.safetly_operations_select.addItem("")
-        self.safetly_operations_select.addItem("")
-        self.safetly_operations_select.addItem("")
-        self.safetly_operations_select.addItem("")
-        self.safetly_operations_select.addItem("")
-        self.safetly_operations_select.addItem("")
-        self.safetly_operations_select.addItem("")
-        self.safetly_operations_select.setObjectName(u"safetly_operations_select")
-
-        self.horizontalLayout_3.addWidget(self.safetly_operations_select)
-
         self.operations_select = QLabel(self.add_operation_first1)
         self.operations_select.setObjectName(u"operations_select")
 
-        self.horizontalLayout_3.addWidget(self.operations_select)
+        self.horizontalLayout_4.addWidget(self.operations_select)
 
         self.operations_select_2 = QComboBox(self.add_operation_first1)
         self.operations_select_2.addItem("")
@@ -529,47 +497,50 @@ class Ui_main_window(object):
         self.operations_select_2.setObjectName(u"operations_select_2")
         self.operations_select_2.setEnabled(True)
         self.operations_select_2.setFrame(True)
+        self.operations_select_2.setModelColumn(0)
 
-        self.horizontalLayout_3.addWidget(self.operations_select_2)
+        self.horizontalLayout_4.addWidget(self.operations_select_2)
+
+        self.horizontalSpacer_5 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+
+        self.horizontalLayout_4.addItem(self.horizontalSpacer_5)
+
+
+        self.verticalLayout_4.addLayout(self.horizontalLayout_4)
+
+        self.line = QFrame(self.add_operation_first1)
+        self.line.setObjectName(u"line")
+        self.line.setLayoutDirection(Qt.LeftToRight)
+        self.line.setFrameShape(QFrame.HLine)
+        self.line.setFrameShadow(QFrame.Sunken)
+
+        self.verticalLayout_4.addWidget(self.line)
+
+        self.horizontalLayout_3 = QHBoxLayout()
+        self.horizontalLayout_3.setObjectName(u"horizontalLayout_3")
+        self.horizontalSpacer_7 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+
+        self.horizontalLayout_3.addItem(self.horizontalSpacer_7)
+
+        self.checkBox = QCheckBox(self.add_operation_first1)
+        self.checkBox.setObjectName(u"checkBox")
+        self.checkBox.setChecked(True)
+
+        self.horizontalLayout_3.addWidget(self.checkBox)
 
         self.horizontalSpacer_8 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
 
         self.horizontalLayout_3.addItem(self.horizontalSpacer_8)
 
 
-        self.verticalLayout_5.addLayout(self.horizontalLayout_3)
-
-        self.horizontalLayout_6 = QHBoxLayout()
-        self.horizontalLayout_6.setObjectName(u"horizontalLayout_6")
-        self.horizontalSpacer_11 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
-
-        self.horizontalLayout_6.addItem(self.horizontalSpacer_11)
-
-        self.verticalLayout_4 = QVBoxLayout()
-        self.verticalLayout_4.setObjectName(u"verticalLayout_4")
-        self.verticalSpacer_3 = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
-
-        self.verticalLayout_4.addItem(self.verticalSpacer_3)
-
-        self.commandLinkButton = QCommandLinkButton(self.add_operation_first1)
-        self.commandLinkButton.setObjectName(u"commandLinkButton")
-        self.commandLinkButton.setEnabled(False)
-
-        self.verticalLayout_4.addWidget(self.commandLinkButton)
+        self.verticalLayout_4.addLayout(self.horizontalLayout_3)
 
         self.verticalSpacer_4 = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
 
         self.verticalLayout_4.addItem(self.verticalSpacer_4)
 
 
-        self.horizontalLayout_6.addLayout(self.verticalLayout_4)
-
-        self.horizontalSpacer_12 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
-
-        self.horizontalLayout_6.addItem(self.horizontalSpacer_12)
-
-
-        self.verticalLayout_5.addLayout(self.horizontalLayout_6)
+        self.verticalLayout_5.addLayout(self.verticalLayout_4)
 
         self.stackedWidget_2.addWidget(self.add_operation_first1)
         self.page_6 = QWidget()
@@ -1359,8 +1330,8 @@ class Ui_main_window(object):
         self.converter_options.addTab(self.tab, "")
         self.options_merging = QWidget()
         self.options_merging.setObjectName(u"options_merging")
-        self.verticalLayout_27 = QVBoxLayout(self.options_merging)
-        self.verticalLayout_27.setObjectName(u"verticalLayout_27")
+        self.verticalLayout_25 = QVBoxLayout(self.options_merging)
+        self.verticalLayout_25.setObjectName(u"verticalLayout_25")
         self.horizontalLayout_45 = QHBoxLayout()
         self.horizontalLayout_45.setObjectName(u"horizontalLayout_45")
         self.horizontalSpacer_3 = QSpacerItem(168, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
@@ -1389,31 +1360,33 @@ class Ui_main_window(object):
         self.horizontalLayout_45.addItem(self.horizontalSpacer_4)
 
 
-        self.verticalLayout_27.addLayout(self.horizontalLayout_45)
+        self.verticalLayout_25.addLayout(self.horizontalLayout_45)
 
         self.line_17 = QFrame(self.options_merging)
         self.line_17.setObjectName(u"line_17")
         self.line_17.setFrameShape(QFrame.HLine)
         self.line_17.setFrameShadow(QFrame.Sunken)
 
-        self.verticalLayout_27.addWidget(self.line_17)
+        self.verticalLayout_25.addWidget(self.line_17)
 
-        self.horizontalLayout_48 = QHBoxLayout()
-        self.horizontalLayout_48.setObjectName(u"horizontalLayout_48")
-        self.line_18 = QFrame(self.options_merging)
-        self.line_18.setObjectName(u"line_18")
-        self.line_18.setFrameShape(QFrame.VLine)
-        self.line_18.setFrameShadow(QFrame.Sunken)
+        self.horizontalLayout_6 = QHBoxLayout()
+        self.horizontalLayout_6.setObjectName(u"horizontalLayout_6")
+        self.horizontalSpacer_12 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
 
-        self.horizontalLayout_48.addWidget(self.line_18)
+        self.horizontalLayout_6.addItem(self.horizontalSpacer_12)
 
-        self.verticalLayout_26 = QVBoxLayout()
-        self.verticalLayout_26.setObjectName(u"verticalLayout_26")
         self.label_32 = QLabel(self.options_merging)
         self.label_32.setObjectName(u"label_32")
         self.label_32.setFont(font1)
 
-        self.verticalLayout_26.addWidget(self.label_32)
+        self.horizontalLayout_6.addWidget(self.label_32)
+
+        self.horizontalSpacer_11 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+
+        self.horizontalLayout_6.addItem(self.horizontalSpacer_11)
+
+
+        self.verticalLayout_25.addLayout(self.horizontalLayout_6)
 
         self.listWidget_9 = QListWidget(self.options_merging)
         self.listWidget_9.setObjectName(u"listWidget_9")
@@ -1423,7 +1396,7 @@ class Ui_main_window(object):
         self.listWidget_9.setDragDropMode(QAbstractItemView.DragDrop)
         self.listWidget_9.setDefaultDropAction(Qt.MoveAction)
 
-        self.verticalLayout_26.addWidget(self.listWidget_9)
+        self.verticalLayout_25.addWidget(self.listWidget_9)
 
         self.horizontalLayout_47 = QHBoxLayout()
         self.horizontalLayout_47.setObjectName(u"horizontalLayout_47")
@@ -1438,7 +1411,7 @@ class Ui_main_window(object):
         self.horizontalLayout_47.addWidget(self.add_button_1)
 
 
-        self.verticalLayout_26.addLayout(self.horizontalLayout_47)
+        self.verticalLayout_25.addLayout(self.horizontalLayout_47)
 
         self.listWidget_7 = QListWidget(self.options_merging)
         self.listWidget_7.setObjectName(u"listWidget_7")
@@ -1447,13 +1420,7 @@ class Ui_main_window(object):
         self.listWidget_7.setDragDropMode(QAbstractItemView.DragDrop)
         self.listWidget_7.setDefaultDropAction(Qt.MoveAction)
 
-        self.verticalLayout_26.addWidget(self.listWidget_7)
-
-
-        self.horizontalLayout_48.addLayout(self.verticalLayout_26)
-
-
-        self.verticalLayout_27.addLayout(self.horizontalLayout_48)
+        self.verticalLayout_25.addWidget(self.listWidget_7)
 
         self.converter_options.addTab(self.options_merging, "")
 
@@ -1496,9 +1463,9 @@ class Ui_main_window(object):
 
         self.main_widget.setCurrentIndex(1)
         self.root_tab_widget.setCurrentIndex(1)
-        self.converter_options.setCurrentIndex(2)
+        self.converter_options.setCurrentIndex(1)
         self.tabWidget_2.setCurrentIndex(1)
-        self.stackedWidget_2.setCurrentIndex(6)
+        self.stackedWidget_2.setCurrentIndex(1)
 
 
         QMetaObject.connectSlotsByName(main_window)
@@ -1529,24 +1496,13 @@ class Ui_main_window(object):
         self.label_28.setText(QCoreApplication.translate("main_window", u"Z", None))
         self.label_29.setText(QCoreApplication.translate("main_window", u"\u041c\u0430\u043a\u0441\u0438\u043c\u0430\u043b\u044c\u043d\u043e-\u0434\u043e\u043f\u0443\u0441\u0442\u0438\u043c\u044b\u0435 \u043e\u0431\u043e\u0440\u043e\u0442\u044b \u0448\u043f\u0438\u043d\u0434\u0435\u043b\u044f", None))
         self.converter_options.setTabText(self.converter_options.indexOf(self.options_tab_machines), QCoreApplication.translate("main_window", u"\u0421\u0442\u0430\u043d\u043a\u0438", None))
-        self.label_18.setText(QCoreApplication.translate("main_window", u"\u0414\u0435\u0439\u0441\u0442\u0432\u0443\u044e\u0449\u0438\u0435", None))
+        self.label_18.setText(QCoreApplication.translate("main_window", u"\u0412\u044b\u043a\u043b\u044e\u0447\u0435\u043d\u043d\u044b\u0435:", None))
         self.move_right_0.setText("")
         self.move_left_0.setText("")
-        self.label_19.setText(QCoreApplication.translate("main_window", u"\u0412\u044b\u043a\u043b\u044e\u0447\u0435\u043d\u043d\u044b\u0435", None))
-        self.tabWidget_2.setTabText(self.tabWidget_2.indexOf(self.add_operation_list), QCoreApplication.translate("main_window", u"\u0421\u043f\u0438\u0441\u043e\u043a \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0439", None))
+        self.label_19.setText(QCoreApplication.translate("main_window", u"\u0414\u0435\u0439\u0441\u0442\u0432\u0443\u044e\u0449\u0438\u0435:", None))
+        self.tabWidget_2.setTabText(self.tabWidget_2.indexOf(self.add_operation_list), QCoreApplication.translate("main_window", u"\u0412\u0441\u0435 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438", None))
         self.label_2.setText(QCoreApplication.translate("main_window", u"\u0412\u044b\u0431\u043e\u0440 \u0442\u0438\u043f\u0430 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438", None))
-        self.checkBox.setText(QCoreApplication.translate("main_window", u"\u0431\u0435\u0437\u043e\u043f\u0430\u0441\u043d\u044b\u0439 \u0440\u0435\u0436\u0438\u043c", None))
-        self.safetly_operations_select_label.setText(QCoreApplication.translate("main_window", u"\u041a\u0430\u0442\u0435\u0433\u043e\u0440\u0438\u044f \u0437\u0430\u0434\u0430\u0447\u0438", None))
-        self.safetly_operations_select.setItemText(0, QCoreApplication.translate("main_window", u"\u0412\u044b\u0431\u0440\u0430\u0442\u044c \u0442\u0438\u043f \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438", None))
-        self.safetly_operations_select.setItemText(1, QCoreApplication.translate("main_window", u"\u041d\u0443\u043c\u0435\u0440\u0430\u0446\u0438\u044f \u043a\u0430\u0434\u0440\u043e\u0432", None))
-        self.safetly_operations_select.setItemText(2, QCoreApplication.translate("main_window", u"\u041f\u0435\u0440\u0435\u0431\u0438\u0442\u044c \u043f\u0435\u0440\u0435\u043b\u0451\u0442", None))
-        self.safetly_operations_select.setItemText(3, QCoreApplication.translate("main_window", u"\u0421\u0434\u0432\u0438\u043d\u0443\u0442\u044c \u043e\u0431\u0440\u0430\u0431\u043e\u0442\u043a\u0443", None))
-        self.safetly_operations_select.setItemText(4, QCoreApplication.translate("main_window", u"\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u043a\u0430\u0434\u0440", None))
-        self.safetly_operations_select.setItemText(5, QCoreApplication.translate("main_window", u"\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u043a\u0430\u0434\u0440", None))
-        self.safetly_operations_select.setItemText(6, QCoreApplication.translate("main_window", u"\u0417\u0430\u043a\u043e\u043c\u043c\u0435\u043d\u0442\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u043a\u0430\u0434\u0440", None))
-        self.safetly_operations_select.setItemText(7, QCoreApplication.translate("main_window", u"\u0420\u0430\u0441\u043a\u043e\u043c\u043c\u0435\u043d\u0442\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u043a\u0430\u0434\u0440", None))
-
-        self.operations_select.setText(QCoreApplication.translate("main_window", u"\u041a\u0430\u0442\u0435\u0433\u043e\u0440\u0438\u044f \u0437\u0430\u0434\u0430\u0447\u0438", None))
+        self.operations_select.setText(QCoreApplication.translate("main_window", u"\u041a\u0430\u0442\u0435\u0433\u043e\u0440\u0438\u044f \u0437\u0430\u0434\u0430\u0447\u0438:", None))
         self.operations_select_2.setItemText(0, QCoreApplication.translate("main_window", u"\u0412\u044b\u0431\u0440\u0430\u0442\u044c \u0442\u0438\u043f \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438", None))
         self.operations_select_2.setItemText(1, QCoreApplication.translate("main_window", u"\u041d\u0443\u043c\u0435\u0440\u0430\u0446\u0438\u044f \u043a\u0430\u0434\u0440\u043e\u0432", None))
         self.operations_select_2.setItemText(2, QCoreApplication.translate("main_window", u"\u0417\u0430\u043c\u0435\u043d\u0438\u0442\u044c \u0441\u0438\u043c\u0432\u043e\u043b\u044b", None))
@@ -1555,7 +1511,7 @@ class Ui_main_window(object):
         self.operations_select_2.setItemText(5, QCoreApplication.translate("main_window", u"\u0417\u0430\u043a\u043e\u043c\u043c\u0435\u043d\u0442\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u043a\u0430\u0434\u0440", None))
         self.operations_select_2.setItemText(6, QCoreApplication.translate("main_window", u"\u0420\u0430\u0441\u043a\u043e\u043c\u043c\u0435\u043d\u0442\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u043a\u0430\u0434\u0440", None))
 
-        self.commandLinkButton.setText(QCoreApplication.translate("main_window", u"\u041f\u0435\u0440\u0435\u0439\u0442\u0438 \u043a \u0441\u043e\u0437\u0434\u0430\u043d\u0438\u044e", None))
+        self.checkBox.setText(QCoreApplication.translate("main_window", u"\u0431\u0435\u0437\u043e\u043f\u0430\u0441\u043d\u044b\u0439 \u0440\u0435\u0436\u0438\u043c", None))
         self.label_14.setText(QCoreApplication.translate("main_window", u"\u0417\u0430\u043a\u043e\u043c\u043c\u0435\u043d\u0442\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u043a\u0430\u0434\u0440", None))
         self.label_15.setText(QCoreApplication.translate("main_window", u"\u041d\u0430\u0439\u0442\u0438", None))
         self.groupBox_5.setTitle(QCoreApplication.translate("main_window", u"\u0418\u0441\u043a\u043e\u043c\u044b\u0439", None))
@@ -1599,8 +1555,8 @@ class Ui_main_window(object):
         self.commandLinkButton_5.setText(QCoreApplication.translate("main_window", u"\u0421\u043e\u0437\u0434\u0430\u0442\u044c", None))
         self.tabWidget_2.setTabText(self.tabWidget_2.indexOf(self.add_operation_first), QCoreApplication.translate("main_window", u"\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c", None))
         self.converter_options.setTabText(self.converter_options.indexOf(self.tab), QCoreApplication.translate("main_window", u"\u041e\u043f\u0435\u0440\u0430\u0446\u0438\u0438", None))
-        self.label_30.setText(QCoreApplication.translate("main_window", u"\u0421\u0442\u0430\u043d\u043e\u043a", None))
-        self.label_32.setText(QCoreApplication.translate("main_window", u"\u041e\u043f\u0435\u0440\u0430\u0446\u0438\u0438", None))
+        self.label_30.setText(QCoreApplication.translate("main_window", u"\u0421\u0442\u0430\u043d\u043e\u043a:", None))
+        self.label_32.setText(QCoreApplication.translate("main_window", u"\u041e\u043f\u0435\u0440\u0430\u0446\u0438\u0438:", None))
         self.remove_button_1.setText("")
         self.add_button_1.setText("")
         self.converter_options.setTabText(self.converter_options.indexOf(self.options_merging), QCoreApplication.translate("main_window", u"\u041f\u0440\u0438\u0432\u044f\u0437\u0430\u0442\u044c", None))
