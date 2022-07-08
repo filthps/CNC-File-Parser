@@ -65,6 +65,7 @@ class Navigation:
     def nav_options_page(self):
         self.ui.main_widget.setCurrentIndex(1)
         self.ui.root_tab_widget.setCurrentIndex(1)
+        self.set_default_position_create_operation()
 
     def set_default_position_create_operation(self):
         self.ui.stackedWidget_2.setCurrentIndex(0)  # Установить страницу "Выбор типа операции"
@@ -78,7 +79,7 @@ class Actions:
         self.options_pages = {
             "CreateMachinePage": machines_page.OptionsPageCreateMachine(self.app, self.ui),  # Страница "станки"
             "OptionsPageBind": bind_page.OptionsPageBind(self.ui, self.app),  # Страница "привязать"
-            "AddOperationMainPage": add_operation_page.AddOperationMainPage(app, ui)  # Страница "Создать - выбор типа операции"
+            "AddOperationMainPage": add_operation_page.AddOperationMainPage(app, ui)  # Страница "Выбор типа операции"
         }
 
     def re_init(self):
