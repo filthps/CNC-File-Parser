@@ -7,6 +7,7 @@ from gui.ui import Ui_main_window
 
 class OptionsPageBind(Constructor, Tools):
     def __init__(self, ui: Ui_main_window, app):
+        super().__init__(app, ui)
         self.main_app = app
         self.ui = ui
 
@@ -27,10 +28,12 @@ class OptionsPageBind(Constructor, Tools):
     def change_machine(self, machine_name):
         machine = self.get_machine(machine_name)
         if machine is not None:
-            o = Operation.query.filter_by()
+            self.update_disabled_operations()
+            self.update_enabled_operations()
 
     def update_disabled_operations(self):
-        ...
+        disabled_operations = Operation.query.all()
+        print(disabled_operations)
 
     def update_enabled_operations(self):
         ...
@@ -40,4 +43,3 @@ class OptionsPageBind(Constructor, Tools):
         m = Machine.query.filter_by(machine_name=name).first()
         if m is not None:
             return m.__dict__
-
