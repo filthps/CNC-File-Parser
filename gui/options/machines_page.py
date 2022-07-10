@@ -1,11 +1,12 @@
+import re
 from typing import Optional
 from PySide2.QtCore import Slot
 from PySide2.QtWidgets import QListWidgetItem, QLineEdit
 from PySide2.QtWidgets import QFileDialog
+from gui.validation import Validator
 from database.models import Machine
 from gui.ui import Ui_main_window as Ui
 from gui.tools import Constructor, Tools
-from gui.validation import AddMachinePageValidation
 
 
 class OptionsPageCreateMachine(Constructor, Tools):
@@ -50,15 +51,29 @@ class OptionsPageCreateMachine(Constructor, Tools):
                 item = self.ui.add_machine_list_0.takeItem(0)
             self.__update_form()
         clear_all()
-        machines = Machine.query.all()
-        item_ = None
-        for machine in machines:
-            data = machine.__dict__
-            name = data.pop('machine_name')
-            self.__update_form(data)
-            item = QListWidgetItem(name)
-            item_ = item
-            self.ui.add_machine_list_0.addItem(item)
+        item_ = None  # Выбрать последнюю активной, если есть хотя бы одна
+
+        def load_from_db():
+            nonlocal item_
+            machines = Machine.query.all()
+            for machine in machines:
+                data = machine.__dict__
+                self.__update_form(data)
+                name = data.pop('machine_name')
+                item = QListWidgetItem(name)
+                item_ = item
+                self.ui.add_machine_list_0.addItem(item)
+
+        def load_from_updates_queque():
+            nonlocal item_
+            for machine_name, data in self.items.items():
+                self.__update_form(data)
+                item = QListWidgetItem(machine_name)
+                item_ = item
+                self.ui.add_machine_list_0.addItem(item)
+
+        load_from_db()
+        load_from_updates_queque()
         if item_ is not None:
             self.ui.add_machine_list_0.setCurrentItem(item_)
 
@@ -197,3 +212,49 @@ class OptionsPageCreateMachine(Constructor, Tools):
             [setattr(query, k, v) for k, v in data.items()]
             session.add(query)
             session.commit()
+
+
+class AddMachinePageValidation(Validator):
+    INVALID_TEXT_FIELD_VALUES = {
+        "lineEdit_10": re.compile(r"|\d"),
+        "lineEdit_21": re.compile(r"|\d"),
+        "lineEdit_11": re.compile(r"\D"),
+        "lineEdit_12": re.compile(r"\D"),
+        "lineEdit_13": re.compile(r"\D"),
+        "lineEdit_14": re.compile(r"\D"),
+        "lineEdit_15": re.compile(r"\D"),
+        "lineEdit_16": re.compile(r"\D"),
+    }
+
+    def __init__(self, ui):
+        super().__init__(ui)
+        self._is_valid = False
+        self.ui: Ui = ui
+        self.current_machine: Optional[QListWidgetItem] = None
+
+        def connect_signals():
+            ui.add_machine_list_0.itemEntered.connect(lambda item: self.__select_machine(item, None))
+            ui.add_machine_list_0.currentItemChanged.connect(lambda current, prev: self.__select_machine(prev, current))
+            ui.lineEdit_10.textChanged.connect(self.refresh)
+            ui.lineEdit_21.textChanged.connect(self.refresh)
+            ui.lineEdit_11.textChanged.connect(self.refresh)
+            ui.lineEdit_12.textChanged.connect(self.refresh)
+            ui.lineEdit_13.textChanged.connect(self.refresh)
+            ui.lineEdit_14.textChanged.connect(self.refresh)
+            ui.lineEdit_15.textChanged.connect(self.refresh)
+            ui.lineEdit_16.textChanged.connect(self.refresh)
+        connect_signals()
+
+    def __select_machine(self, prev, current):
+        if prev is not None:
+            self.set_complete_edit_attributes(prev)
+        self.current_machine = current
+        self.refresh()
+
+    def refresh(self):
+        valid = super().refresh()
+        if self.current_machine is not None:
+            if not valid:
+                self.set_not_complete_edit_attributes(self.current_machine.text())
+            else:
+                self.set_complete_edit_attributes(self.current_machine)

@@ -1,6 +1,9 @@
 from PySide2.QtCore import Slot
 from ui import Ui_main_window as Ui
-from options import machines_page, bind_page, add_operation_page
+from options.machines_page import OptionsPageCreateMachine
+from options.add_operation_page import AddOperationMainPage
+from options.bind_page import OptionsPageBind
+from options.create_insert import CreateInsert
 
 
 class Navigation:
@@ -77,9 +80,10 @@ class Actions:
         self.app = app
         self.ui = ui
         self.options_pages = {
-            "CreateMachinePage": machines_page.OptionsPageCreateMachine(self.app, self.ui),  # Страница "станки"
-            "OptionsPageBind": bind_page.OptionsPageBind(self.ui, self.app),  # Страница "привязать"
-            "AddOperationMainPage": add_operation_page.AddOperationMainPage(app, ui)  # Страница "Выбор типа операции"
+            "CreateMachinePage": OptionsPageCreateMachine(self.app, self.ui),  # Страница "станки"
+            "OptionsPageBind": OptionsPageBind(self.ui, self.app),  # Страница "привязать"
+            "AddOperationMainPage": AddOperationMainPage(app, ui),  # Страница "Выбор типа операции"
+            "CreateInsert": CreateInsert(app, ui),
         }
 
     def re_init(self):
@@ -88,6 +92,6 @@ class Actions:
         2) Запросить из базы данных свежие данные
         3) Вставить данные в формы"""
         for instance in self.options_pages.values():
-            method = getattr(instance, "initialization")
+            method = getattr(instance, "initialization", None)
             if method is not None:
                 method()

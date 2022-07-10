@@ -881,8 +881,8 @@ class Ui_main_window(object):
         self.stackedWidget_2.addWidget(self.numerate_page)
         self.page_3 = QWidget()
         self.page_3.setObjectName(u"page_3")
-        self.verticalLayout_7 = QVBoxLayout(self.page_3)
-        self.verticalLayout_7.setObjectName(u"verticalLayout_7")
+        self.verticalLayout_27 = QVBoxLayout(self.page_3)
+        self.verticalLayout_27.setObjectName(u"verticalLayout_27")
         self.horizontalLayout_13 = QHBoxLayout()
         self.horizontalLayout_13.setObjectName(u"horizontalLayout_13")
         self.horizontalSpacer_27 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
@@ -900,89 +900,23 @@ class Ui_main_window(object):
         self.horizontalLayout_13.addItem(self.horizontalSpacer_21)
 
 
-        self.verticalLayout_7.addLayout(self.horizontalLayout_13)
+        self.verticalLayout_27.addLayout(self.horizontalLayout_13)
 
         self.line_4 = QFrame(self.page_3)
         self.line_4.setObjectName(u"line_4")
         self.line_4.setFrameShape(QFrame.HLine)
         self.line_4.setFrameShadow(QFrame.Sunken)
 
-        self.verticalLayout_7.addWidget(self.line_4)
+        self.verticalLayout_27.addWidget(self.line_4)
 
         self.horizontalLayout_16 = QHBoxLayout()
         self.horizontalLayout_16.setObjectName(u"horizontalLayout_16")
-        self.horizontalSpacer_24 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
-
-        self.horizontalLayout_16.addItem(self.horizontalSpacer_24)
-
-        self.groupBox = QGroupBox(self.page_3)
-        self.groupBox.setObjectName(u"groupBox")
-        sizePolicy.setHeightForWidth(self.groupBox.sizePolicy().hasHeightForWidth())
-        self.groupBox.setSizePolicy(sizePolicy)
-        self.groupBox.setBaseSize(QSize(500, 0))
-        self.layoutWidget2 = QWidget(self.groupBox)
-        self.layoutWidget2.setObjectName(u"layoutWidget2")
-        self.layoutWidget2.setGeometry(QRect(20, 30, 160, 49))
-        self.verticalLayout_42 = QVBoxLayout(self.layoutWidget2)
-        self.verticalLayout_42.setObjectName(u"verticalLayout_42")
-        self.verticalLayout_42.setContentsMargins(0, 0, 0, 0)
-        self.radioButton = QRadioButton(self.layoutWidget2)
-        self.radioButton.setObjectName(u"radioButton")
-        self.radioButton.setChecked(True)
-
-        self.verticalLayout_42.addWidget(self.radioButton)
-
-        self.radioButton_2 = QRadioButton(self.layoutWidget2)
-        self.radioButton_2.setObjectName(u"radioButton_2")
-
-        self.verticalLayout_42.addWidget(self.radioButton_2)
-
-
-        self.horizontalLayout_16.addWidget(self.groupBox)
-
-        self.line_3 = QFrame(self.page_3)
-        self.line_3.setObjectName(u"line_3")
-        self.line_3.setFrameShape(QFrame.VLine)
-        self.line_3.setFrameShadow(QFrame.Sunken)
-
-        self.horizontalLayout_16.addWidget(self.line_3)
-
-        self.groupBox_2 = QGroupBox(self.page_3)
-        self.groupBox_2.setObjectName(u"groupBox_2")
-        sizePolicy1 = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
-        sizePolicy1.setHorizontalStretch(0)
-        sizePolicy1.setVerticalStretch(0)
-        sizePolicy1.setHeightForWidth(self.groupBox_2.sizePolicy().hasHeightForWidth())
-        self.groupBox_2.setSizePolicy(sizePolicy1)
-        self.groupBox_2.setMinimumSize(QSize(0, 300))
-        self.layoutWidget3 = QWidget(self.groupBox_2)
-        self.layoutWidget3.setObjectName(u"layoutWidget3")
-        self.layoutWidget3.setGeometry(QRect(60, 30, 65, 49))
-        self.verticalLayout_41 = QVBoxLayout(self.layoutWidget3)
-        self.verticalLayout_41.setObjectName(u"verticalLayout_41")
-        self.verticalLayout_41.setContentsMargins(0, 0, 0, 0)
-        self.radioButton_4 = QRadioButton(self.layoutWidget3)
-        self.radioButton_4.setObjectName(u"radioButton_4")
-
-        self.verticalLayout_41.addWidget(self.radioButton_4)
-
-        self.radioButton_5 = QRadioButton(self.layoutWidget3)
-        self.radioButton_5.setObjectName(u"radioButton_5")
-
-        self.verticalLayout_41.addWidget(self.radioButton_5)
-
-
-        self.horizontalLayout_16.addWidget(self.groupBox_2)
-
-        self.horizontalSpacer_20 = QSpacerItem(18, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_20 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
 
         self.horizontalLayout_16.addItem(self.horizontalSpacer_20)
 
-
-        self.verticalLayout_7.addLayout(self.horizontalLayout_16)
-
-        self.horizontalLayout_17 = QHBoxLayout()
-        self.horizontalLayout_17.setObjectName(u"horizontalLayout_17")
+        self.verticalLayout_7 = QVBoxLayout()
+        self.verticalLayout_7.setObjectName(u"verticalLayout_7")
         self.horizontalLayout_14 = QHBoxLayout()
         self.horizontalLayout_14.setObjectName(u"horizontalLayout_14")
         self.label_7 = QLabel(self.page_3)
@@ -996,22 +930,69 @@ class Ui_main_window(object):
         self.horizontalLayout_14.addWidget(self.lineEdit_3)
 
 
-        self.horizontalLayout_17.addLayout(self.horizontalLayout_14)
+        self.verticalLayout_7.addLayout(self.horizontalLayout_14)
 
-        self.horizontalSpacer_22 = QSpacerItem(18, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalLayout_48 = QHBoxLayout()
+        self.horizontalLayout_48.setObjectName(u"horizontalLayout_48")
+        self.groupBox = QGroupBox(self.page_3)
+        self.groupBox.setObjectName(u"groupBox")
+        sizePolicy.setHeightForWidth(self.groupBox.sizePolicy().hasHeightForWidth())
+        self.groupBox.setSizePolicy(sizePolicy)
+        self.groupBox.setBaseSize(QSize(500, 0))
+        self.widget = QWidget(self.groupBox)
+        self.widget.setObjectName(u"widget")
+        self.widget.setGeometry(QRect(11, 20, 140, 42))
+        self.verticalLayout_29 = QVBoxLayout(self.widget)
+        self.verticalLayout_29.setObjectName(u"verticalLayout_29")
+        self.verticalLayout_29.setContentsMargins(0, 0, 0, 0)
+        self.radioButton = QRadioButton(self.widget)
+        self.radioButton.setObjectName(u"radioButton")
 
-        self.horizontalLayout_17.addItem(self.horizontalSpacer_22)
+        self.verticalLayout_29.addWidget(self.radioButton)
 
-        self.line_5 = QFrame(self.page_3)
-        self.line_5.setObjectName(u"line_5")
-        self.line_5.setFrameShape(QFrame.VLine)
-        self.line_5.setFrameShadow(QFrame.Sunken)
+        self.radioButton_2 = QRadioButton(self.widget)
+        self.radioButton_2.setObjectName(u"radioButton_2")
 
-        self.horizontalLayout_17.addWidget(self.line_5)
+        self.verticalLayout_29.addWidget(self.radioButton_2)
 
-        self.horizontalSpacer_30 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
 
-        self.horizontalLayout_17.addItem(self.horizontalSpacer_30)
+        self.horizontalLayout_48.addWidget(self.groupBox)
+
+
+        self.verticalLayout_7.addLayout(self.horizontalLayout_48)
+
+
+        self.horizontalLayout_16.addLayout(self.verticalLayout_7)
+
+        self.line_3 = QFrame(self.page_3)
+        self.line_3.setObjectName(u"line_3")
+        self.line_3.setFrameShape(QFrame.VLine)
+        self.line_3.setFrameShadow(QFrame.Sunken)
+
+        self.horizontalLayout_16.addWidget(self.line_3)
+
+        self.verticalLayout_26 = QVBoxLayout()
+        self.verticalLayout_26.setObjectName(u"verticalLayout_26")
+        self.groupBox_2 = QGroupBox(self.page_3)
+        self.groupBox_2.setObjectName(u"groupBox_2")
+        self.widget1 = QWidget(self.groupBox_2)
+        self.widget1.setObjectName(u"widget1")
+        self.widget1.setGeometry(QRect(11, 24, 55, 42))
+        self.verticalLayout_30 = QVBoxLayout(self.widget1)
+        self.verticalLayout_30.setObjectName(u"verticalLayout_30")
+        self.verticalLayout_30.setContentsMargins(0, 0, 0, 0)
+        self.radioButton_5 = QRadioButton(self.widget1)
+        self.radioButton_5.setObjectName(u"radioButton_5")
+
+        self.verticalLayout_30.addWidget(self.radioButton_5)
+
+        self.radioButton_4 = QRadioButton(self.widget1)
+        self.radioButton_4.setObjectName(u"radioButton_4")
+
+        self.verticalLayout_30.addWidget(self.radioButton_4)
+
+
+        self.verticalLayout_26.addWidget(self.groupBox_2)
 
         self.horizontalLayout_15 = QHBoxLayout()
         self.horizontalLayout_15.setObjectName(u"horizontalLayout_15")
@@ -1026,10 +1007,17 @@ class Ui_main_window(object):
         self.horizontalLayout_15.addWidget(self.lineEdit_4)
 
 
-        self.horizontalLayout_17.addLayout(self.horizontalLayout_15)
+        self.verticalLayout_26.addLayout(self.horizontalLayout_15)
 
 
-        self.verticalLayout_7.addLayout(self.horizontalLayout_17)
+        self.horizontalLayout_16.addLayout(self.verticalLayout_26)
+
+        self.horizontalSpacer_22 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+
+        self.horizontalLayout_16.addItem(self.horizontalSpacer_22)
+
+
+        self.verticalLayout_27.addLayout(self.horizontalLayout_16)
 
         self.horizontalLayout_12 = QHBoxLayout()
         self.horizontalLayout_12.setObjectName(u"horizontalLayout_12")
@@ -1061,7 +1049,7 @@ class Ui_main_window(object):
         self.horizontalLayout_12.addItem(self.horizontalSpacer_26)
 
 
-        self.verticalLayout_7.addLayout(self.horizontalLayout_12)
+        self.verticalLayout_27.addLayout(self.horizontalLayout_12)
 
         self.stackedWidget_2.addWidget(self.page_3)
         self.page_4 = QWidget()
@@ -1122,28 +1110,22 @@ class Ui_main_window(object):
 
         self.horizontalLayout_34.addWidget(self.line_6)
 
-        self.groupBox_3 = QGroupBox(self.page_4)
-        self.groupBox_3.setObjectName(u"groupBox_3")
-        sizePolicy.setHeightForWidth(self.groupBox_3.sizePolicy().hasHeightForWidth())
-        self.groupBox_3.setSizePolicy(sizePolicy)
-        self.layoutWidget4 = QWidget(self.groupBox_3)
-        self.layoutWidget4.setObjectName(u"layoutWidget4")
-        self.layoutWidget4.setGeometry(QRect(10, 30, 160, 49))
-        self.verticalLayout_43 = QVBoxLayout(self.layoutWidget4)
-        self.verticalLayout_43.setObjectName(u"verticalLayout_43")
-        self.verticalLayout_43.setContentsMargins(0, 0, 0, 0)
-        self.radioButton_6 = QRadioButton(self.layoutWidget4)
+        self.groupBox_10 = QGroupBox(self.page_4)
+        self.groupBox_10.setObjectName(u"groupBox_10")
+        self.verticalLayout_28 = QVBoxLayout(self.groupBox_10)
+        self.verticalLayout_28.setObjectName(u"verticalLayout_28")
+        self.radioButton_6 = QRadioButton(self.groupBox_10)
         self.radioButton_6.setObjectName(u"radioButton_6")
 
-        self.verticalLayout_43.addWidget(self.radioButton_6)
+        self.verticalLayout_28.addWidget(self.radioButton_6)
 
-        self.radioButton_7 = QRadioButton(self.layoutWidget4)
+        self.radioButton_7 = QRadioButton(self.groupBox_10)
         self.radioButton_7.setObjectName(u"radioButton_7")
 
-        self.verticalLayout_43.addWidget(self.radioButton_7)
+        self.verticalLayout_28.addWidget(self.radioButton_7)
 
 
-        self.horizontalLayout_34.addWidget(self.groupBox_3)
+        self.horizontalLayout_34.addWidget(self.groupBox_10)
 
         self.horizontalSpacer_31 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
 
@@ -1240,18 +1222,18 @@ class Ui_main_window(object):
         self.groupBox_4.setObjectName(u"groupBox_4")
         sizePolicy.setHeightForWidth(self.groupBox_4.sizePolicy().hasHeightForWidth())
         self.groupBox_4.setSizePolicy(sizePolicy)
-        self.layoutWidget5 = QWidget(self.groupBox_4)
-        self.layoutWidget5.setObjectName(u"layoutWidget5")
-        self.layoutWidget5.setGeometry(QRect(10, 30, 92, 49))
-        self.verticalLayout_44 = QVBoxLayout(self.layoutWidget5)
+        self.layoutWidget2 = QWidget(self.groupBox_4)
+        self.layoutWidget2.setObjectName(u"layoutWidget2")
+        self.layoutWidget2.setGeometry(QRect(0, 20, 140, 49))
+        self.verticalLayout_44 = QVBoxLayout(self.layoutWidget2)
         self.verticalLayout_44.setObjectName(u"verticalLayout_44")
         self.verticalLayout_44.setContentsMargins(0, 0, 0, 0)
-        self.radioButton_8 = QRadioButton(self.layoutWidget5)
+        self.radioButton_8 = QRadioButton(self.layoutWidget2)
         self.radioButton_8.setObjectName(u"radioButton_8")
 
         self.verticalLayout_44.addWidget(self.radioButton_8)
 
-        self.radioButton_9 = QRadioButton(self.layoutWidget5)
+        self.radioButton_9 = QRadioButton(self.layoutWidget2)
         self.radioButton_9.setObjectName(u"radioButton_9")
 
         self.verticalLayout_44.addWidget(self.radioButton_9)
@@ -1465,7 +1447,7 @@ class Ui_main_window(object):
         self.root_tab_widget.setCurrentIndex(1)
         self.converter_options.setCurrentIndex(1)
         self.tabWidget_2.setCurrentIndex(1)
-        self.stackedWidget_2.setCurrentIndex(1)
+        self.stackedWidget_2.setCurrentIndex(4)
 
 
         QMetaObject.connectSlotsByName(main_window)
@@ -1504,9 +1486,9 @@ class Ui_main_window(object):
         self.label_2.setText(QCoreApplication.translate("main_window", u"\u0412\u044b\u0431\u043e\u0440 \u0442\u0438\u043f\u0430 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438", None))
         self.operations_select.setText(QCoreApplication.translate("main_window", u"\u041a\u0430\u0442\u0435\u0433\u043e\u0440\u0438\u044f \u0437\u0430\u0434\u0430\u0447\u0438:", None))
         self.operations_select_2.setItemText(0, QCoreApplication.translate("main_window", u"\u0412\u044b\u0431\u0440\u0430\u0442\u044c \u0442\u0438\u043f \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438", None))
-        self.operations_select_2.setItemText(1, QCoreApplication.translate("main_window", u"\u041d\u0443\u043c\u0435\u0440\u0430\u0446\u0438\u044f \u043a\u0430\u0434\u0440\u043e\u0432", None))
+        self.operations_select_2.setItemText(1, QCoreApplication.translate("main_window", u"\u041f\u0435\u0440\u0435\u043d\u0443\u043c\u0435\u0440\u043e\u0432\u0430\u0442\u044c", None))
         self.operations_select_2.setItemText(2, QCoreApplication.translate("main_window", u"\u0417\u0430\u043c\u0435\u043d\u0438\u0442\u044c \u0441\u0438\u043c\u0432\u043e\u043b\u044b", None))
-        self.operations_select_2.setItemText(3, QCoreApplication.translate("main_window", u"\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u043a\u0430\u0434\u0440", None))
+        self.operations_select_2.setItemText(3, QCoreApplication.translate("main_window", u"\u0412\u0441\u0442\u0430\u0432\u0438\u0442\u044c \u043a\u0430\u0434\u0440", None))
         self.operations_select_2.setItemText(4, QCoreApplication.translate("main_window", u"\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u043a\u0430\u0434\u0440", None))
         self.operations_select_2.setItemText(5, QCoreApplication.translate("main_window", u"\u0417\u0430\u043a\u043e\u043c\u043c\u0435\u043d\u0442\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u043a\u0430\u0434\u0440", None))
         self.operations_select_2.setItemText(6, QCoreApplication.translate("main_window", u"\u0420\u0430\u0441\u043a\u043e\u043c\u043c\u0435\u043d\u0442\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u043a\u0430\u0434\u0440", None))
@@ -1531,26 +1513,26 @@ class Ui_main_window(object):
         self.lineEdit_2.setText(QCoreApplication.translate("main_window", u"9999", None))
         self.commandLinkButton_2.setText(QCoreApplication.translate("main_window", u"\u041f\u0440\u043e\u043d\u0443\u043c\u0435\u0440\u043e\u0432\u0430\u0442\u044c \u043f\u0440\u043e\u0433\u0440\u0430\u043c\u043c\u0443", None))
         self.label_6.setText(QCoreApplication.translate("main_window", u"\u0412\u0441\u0442\u0430\u0432\u0438\u0442\u044c \u043a\u0430\u0434\u0440", None))
+        self.label_7.setText(QCoreApplication.translate("main_window", u"\u041d\u0430\u0439\u0442\u0438:", None))
         self.groupBox.setTitle(QCoreApplication.translate("main_window", u"\u0415\u0441\u043b\u0438 \u0438\u0441\u043a\u043e\u043c\u044b\u0439", None))
         self.radioButton.setText(QCoreApplication.translate("main_window", u"\u0421\u043e\u0434\u0435\u0440\u0436\u0438\u0442", None))
         self.radioButton_2.setText(QCoreApplication.translate("main_window", u"\u0421\u043e\u0432\u043f\u0430\u0434\u0430\u0435\u0442 \u043f\u043e\u043b\u043d\u043e\u0441\u0442\u044c\u044e", None))
-        self.groupBox_2.setTitle(QCoreApplication.translate("main_window", u"\u0412\u0441\u0442\u0430\u0432\u0438\u0442\u044c", None))
-        self.radioButton_4.setText(QCoreApplication.translate("main_window", u"\u041f\u0435\u0440\u0435\u0434", None))
-        self.radioButton_5.setText(QCoreApplication.translate("main_window", u"\u041f\u043e\u0441\u043b\u0435", None))
-        self.label_7.setText(QCoreApplication.translate("main_window", u"\u041d\u0430\u0439\u0442\u0438", None))
-        self.label_8.setText(QCoreApplication.translate("main_window", u"\u0412\u0441\u0442\u0430\u0432\u0438\u0442\u044c", None))
+        self.groupBox_2.setTitle(QCoreApplication.translate("main_window", u"\u0412\u044b\u043f\u043e\u043b\u043d\u0438\u0442\u044c \u0432\u0441\u0442\u0430\u0432\u043a\u0443", None))
+        self.radioButton_5.setText(QCoreApplication.translate("main_window", u"\u0414\u043e", None))
+        self.radioButton_4.setText(QCoreApplication.translate("main_window", u"\u041f\u043e\u0441\u043b\u0435", None))
+        self.label_8.setText(QCoreApplication.translate("main_window", u"\u0412\u0441\u0442\u0430\u0432\u0438\u0442\u044c:", None))
         self.commandLinkButton_3.setText(QCoreApplication.translate("main_window", u"\u0421\u043e\u0437\u0434\u0430\u0442\u044c", None))
         self.label_9.setText(QCoreApplication.translate("main_window", u"\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u043a\u0430\u0434\u0440", None))
-        self.label_11.setText(QCoreApplication.translate("main_window", u"\u041e\u0440\u0438\u0433\u0438\u043d\u0430\u043b", None))
-        self.groupBox_3.setTitle("")
+        self.label_11.setText(QCoreApplication.translate("main_window", u"\u041e\u0440\u0438\u0433\u0438\u043d\u0430\u043b:", None))
+        self.groupBox_10.setTitle(QCoreApplication.translate("main_window", u"\u0418\u0441\u0445\u043e\u0434\u043d\u044b\u0439 \u043a\u0430\u0434\u0440", None))
         self.radioButton_6.setText(QCoreApplication.translate("main_window", u"\u0421\u043e\u0434\u0435\u0440\u0436\u0438\u0442", None))
         self.radioButton_7.setText(QCoreApplication.translate("main_window", u"\u0421\u043e\u0432\u043f\u0430\u0434\u0430\u0435\u0442 \u043f\u043e\u043b\u043d\u043e\u0441\u0442\u044c\u044e", None))
         self.commandLinkButton_4.setText(QCoreApplication.translate("main_window", u"\u0421\u043e\u0437\u0434\u0430\u0442\u044c", None))
-        self.label_10.setText(QCoreApplication.translate("main_window", u"\u0417\u0430\u043c\u0435\u043d\u0438\u0442\u044c \u043a\u0430\u0434\u0440", None))
+        self.label_10.setText(QCoreApplication.translate("main_window", u"\u0417\u0430\u043c\u0435\u043d\u0438\u0442\u044c \u0441\u0438\u043c\u0432\u043e\u043b\u044b", None))
         self.label_12.setText(QCoreApplication.translate("main_window", u"\u041d\u0430\u0439\u0442\u0438", None))
-        self.groupBox_4.setTitle(QCoreApplication.translate("main_window", u"\u0415\u0441\u043b\u0438 \u0438\u0441\u0445\u043e\u0434\u043d\u044b\u0439", None))
+        self.groupBox_4.setTitle(QCoreApplication.translate("main_window", u"\u0415\u0441\u043b\u0438 \u0438\u0441\u0445\u043e\u0434\u043d\u044b\u0439 \u043a\u0430\u0434\u0440", None))
         self.radioButton_8.setText(QCoreApplication.translate("main_window", u"\u0421\u043e\u0434\u0435\u0440\u0436\u0438\u0442", None))
-        self.radioButton_9.setText(QCoreApplication.translate("main_window", u"\u0421\u043e\u0432\u043f\u0430\u0434\u0430\u0435\u0442", None))
+        self.radioButton_9.setText(QCoreApplication.translate("main_window", u"\u0421\u043e\u0432\u043f\u0430\u0434\u0430\u0435\u0442 \u043f\u043e\u043b\u043d\u043e\u0441\u0442\u044c\u044e", None))
         self.label_13.setText(QCoreApplication.translate("main_window", u"\u0417\u0430\u043c\u0435\u043d\u0438\u0442\u044c", None))
         self.commandLinkButton_5.setText(QCoreApplication.translate("main_window", u"\u0421\u043e\u0437\u0434\u0430\u0442\u044c", None))
         self.tabWidget_2.setTabText(self.tabWidget_2.indexOf(self.add_operation_first), QCoreApplication.translate("main_window", u"\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c", None))

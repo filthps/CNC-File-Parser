@@ -4,6 +4,16 @@ from gui.ui import Ui_main_window
 
 
 class AddOperationMainPage(Constructor, Tools):
+    MAP_ = {  # Перенаправление на нужную страницу создания задачи
+        0: 0,  # "Выбор типа операции"
+        1: 3,  # Перенумеровать программу
+        2: 6,  # Заменить символы
+        3: 4,  # Вставить
+        4: 5,  # Удалить
+        5: 1,  # Закомментировать кадр
+        6: 2,  # Раскомментировать кадр
+    }
+
     def __init__(self, app, ui: Ui_main_window):
         super().__init__(app, ui)
         self.main_app = app
@@ -17,4 +27,4 @@ class AddOperationMainPage(Constructor, Tools):
 
     @Slot(int)
     def move_to_create_page(self, operation_type_index):
-        print(operation_type_index)
+        self.main_ui.stackedWidget_2.setCurrentIndex(self.MAP_[operation_type_index])
