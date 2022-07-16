@@ -59,7 +59,7 @@ class Validator:
                 is_valid_box = bool(sum(result))
                 if box is not None:
                     if is_valid_box:
-                        self.set_complete_edit_attributes(group_box_name, box)
+                        self.set_complete_edit_attributes(box)
                     else:
                         self.set_not_complete_edit_attributes(group_box_name, box)
                 if not is_valid_box:

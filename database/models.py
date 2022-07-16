@@ -21,6 +21,15 @@ def get_uuid():
     return str(uuid4())
 
 
+OPERATION_TYPES = (
+    ("a", "Добавить"),
+    ("r", "Переименовать"),
+    ("d", "Удалить"),
+    ("c", "Закомментировать"),
+    ("uc", "Раскомментировать"),
+)
+
+
 class Machine(db.Model):
     __tablename__ = "machine"
     machine_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -53,6 +62,11 @@ class Operation(db.Model):
         CheckConstraint('operation_type IN("a", "r", "d", "c")', name='type_choice'),
         CheckConstraint('after_or_before IN("a", "b")', name='a_or_b'),
     )
+
+
+class InsertOperation(db.Model):
+    __tablename__ = "insert_operation"
+
 
 
 if __name__ == "__main__":
