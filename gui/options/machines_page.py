@@ -145,10 +145,8 @@ class OptionsPageCreateMachine(Constructor, Tools):
             self.ui.add_machine_list_0.addItem(item)
             self.ui.add_machine_list_0.setCurrentItem(item)
             self.clear_fields()
-            self._unlock_ui()
             dialog.close()
         dialog = self.get_prompt_dialog("Введите название станка", ok_callback=add)
-        self._lock_ui()
         dialog.show()
 
     @Slot()
@@ -215,9 +213,10 @@ class OptionsPageCreateMachine(Constructor, Tools):
 
 
 class AddMachinePageValidation(Validator):
+    REQUIRED_TEXT_FIELD_VALUES = ("lineEdit_10", "lineEdit_21",)
     INVALID_TEXT_FIELD_VALUES = {
-        "lineEdit_10": re.compile(r"|\d"),
-        "lineEdit_21": re.compile(r"|\d"),
+        "lineEdit_10": re.compile(r"\d"),
+        "lineEdit_21": re.compile(r"\d"),
         "lineEdit_11": re.compile(r"\D"),
         "lineEdit_12": re.compile(r"\D"),
         "lineEdit_13": re.compile(r"\D"),

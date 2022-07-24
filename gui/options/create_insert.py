@@ -29,10 +29,7 @@ class CreateInsertValidator(Validator):
         "groupBox": ("radioButton", "radioButton_2",),
         "groupBox_2": ("radioButton_5", "radioButton_4",),
     }
-    INVALID_TEXT_FIELD_VALUES = {
-        "lineEdit_3": re.compile(r""),
-        "lineEdit_4": re.compile(r""),
-    }
+    REQUIRED_TEXT_FIELD_VALUES = ("lineEdit_3", "lineEdit_4",)
 
     def __init__(self, ui):
         super().__init__(ui)

@@ -1,13 +1,14 @@
 import re
 from typing import Optional, Iterable
-from PySide2.QtGui import QColor, QPalette
 from PySide2.QtWidgets import QLineEdit, QWidget, QRadioButton
 from gui.ui import Ui_main_window
 
 
 class Validator:
     REQUIRED_RADIO_BUTTONS: dict[str, Iterable[str]] = {}  # Ключ - имя GroupBox, значение - кортеж из кнопок radio, только одна кнопка должна быть enabled
+    REQUIRED_TEXT_FIELD_VALUES: tuple = tuple()  # Кортеж имен инпутов, значения которых не могут быть пустыми
     INVALID_TEXT_FIELD_VALUES: dict[str, re] = {}  # Ключи определяют перечень участвующих в валидации полей c текстовым содержимым, значение - регулярка, отображающая "плохое" значение
+    INVALID_TEXT: dict[str, str] = {}  # Словарь - имя виджета: текст-подсказка к неправильному полю
 
     def __init__(self, ui: Ui_main_window):
         self.ui = ui
@@ -37,9 +38,15 @@ class Validator:
 
     def refresh(self) -> bool:
         valid = True
+        if self.REQUIRED_TEXT_FIELD_VALUES:
+            for input_name in self.REQUIRED_TEXT_FIELD_VALUES:
+                input_: QWidget = getattr(self.ui, input_name)
+                if not input_.text():
+                    self.set_invalid_text_field(input_)
+                    valid = False
         if self.INVALID_TEXT_FIELD_VALUES:
             for field_name, reg in self.INVALID_TEXT_FIELD_VALUES.items():
-                field = getattr(self.ui, field_name, None)
+                field: QWidget = getattr(self.ui, field_name, None)
                 if field is not None:
                     result = re.fullmatch(reg, field.text())
                     if result:
