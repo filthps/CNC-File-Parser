@@ -45,7 +45,7 @@ class Tools:
         [b.setIcon(icon) for b in gen()]
 
 
-class AbstractDialog(QDialog):
+class MyAbstractDialog(QDialog):
     """
     Диалоговое окно с возможностью контроля слота нажатия клавиш клавиатуры.
     Навигация по кнопкам
@@ -121,7 +121,7 @@ class Constructor:
             dialog.accepted.connect(callback)
             dialog.rejected.connect(lambda: window.close())
         ok_button = QDialogButtonBox.Ok
-        window = AbstractDialog(self.instance, buttons=(ok_button,),
+        window = MyAbstractDialog(self.instance, buttons=(ok_button,),
                                 close_callback=self._unlock_ui, init_callback=self._lock_ui)
         h_layout = QVBoxLayout(window)
         window.setFocus()
@@ -135,7 +135,7 @@ class Constructor:
         set_signals()
         return window
 
-    def get_prompt_dialog(self, title_text, label_text="", cancel_callback=None, ok_callback=None) -> Optional[QListWidgetItem]:
+    def get_prompt_dialog(self, title_text, label_text="", cancel_callback=None, ok_callback=None) -> MyAbstractDialog:
         """ Всплывающее окно с текстом, 2 кнопками и полем ввода
         ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
         ░░░░░░░░████████████████████░░░░
@@ -161,7 +161,7 @@ class Constructor:
             dialog.rejected.connect(lambda: window.close())
         input_ = QLineEdit()
         ok_button, cancel_button = QDialogButtonBox.Ok, QDialogButtonBox.Cancel
-        window = AbstractDialog(self.instance, buttons=(ok_button, cancel_button))
+        window = MyAbstractDialog(self.instance, buttons=(ok_button, cancel_button))
         window.set_open_callback(self._lock_ui)
         window.set_close_callback(self._unlock_ui)
         window.setWindowTitle(title_text)
@@ -178,7 +178,7 @@ class Constructor:
         set_signals()
         return window
 
-    def get_confirm_dialog(self, title_text, label_text, cancel_callback=None, ok_callback=None):
+    def get_confirm_dialog(self, title_text, label_text=None, cancel_callback=None, ok_callback=None) -> MyAbstractDialog:
         """ Всплывающее окно с текстом и 2 кнопками
         ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
         ░░░░░░░░████████████████████░░░░
@@ -199,14 +199,16 @@ class Constructor:
             dialog.rejected.connect(lambda: window.close())
             window.finished.connect(cancel_callback)
         ok_button, cancel_button = QDialogButtonBox.Ok, QDialogButtonBox.Cancel
-        window = AbstractDialog(self.instance, buttons=(ok_button, cancel_button,),
+        window = MyAbstractDialog(self.instance, buttons=(ok_button, cancel_button,),
                                 close_callback=self._unlock_ui, init_callback=self._lock_ui)
 
         h_layout = QVBoxLayout(window)
         window.setFocus()
-        label = QLabel(window)
-        h_layout.addWidget(label)
-        label.setText(label_text)
+        label = None
+        if label_text is not None:
+            label = QLabel(window)
+            h_layout.addWidget(label)
+            label.setText(label_text)
         dialog = QDialogButtonBox(label)
         h_layout.addWidget(dialog)
         dialog.setStandardButtons(ok_button | cancel_button)

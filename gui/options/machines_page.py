@@ -254,6 +254,6 @@ class AddMachinePageValidation(Validator):
         valid = super().refresh()
         if self.current_machine is not None:
             if not valid:
-                self.set_not_complete_edit_attributes(self.current_machine.text())
+                self.set_not_complete_edit_attributes(self.current_machine.text(), self.current_machine)
             else:
                 self.set_complete_edit_attributes(self.current_machine)

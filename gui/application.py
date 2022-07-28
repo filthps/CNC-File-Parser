@@ -57,9 +57,6 @@ class Main(QMainWindow, Tools):
         def init_navigation():
             self.navigation = Navigation(self, self.ui)
 
-        def init_filter():
-            self.ui.root_tab_widget.installEventFilter(self)
-
         def init_actions():
             self.actions = Actions(self, self.ui)
 
@@ -67,7 +64,6 @@ class Main(QMainWindow, Tools):
         init_ui()
         init_styles()
         init_navigation()
-        init_filter()
         init_actions()
 
     def save(self):
