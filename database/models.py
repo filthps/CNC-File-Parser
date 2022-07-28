@@ -100,7 +100,7 @@ db.DDL("CREATE TRIGGER control_operation_type_count"
        "IF NEW.numerationid IS NOT NULL INSERT Vars (numerateid) VALUES (1)"
        "IF (SELECT SUM(ins, comment_id, uncomm, remid, renid, replid, numerateid)"
        "FROM Vars"
-       "WHERE name=test) > 1 ROLLBACK TRANSACTION"
+       "WHERE name='test') > 1 ROLLBACK TRANSACTION"
        "DROP Vars"
        "END;")
 
