@@ -7,12 +7,14 @@ from gui.validation import Validator
 
 
 class AddCNC(Constructor, Tools):
-    def __init__(self, ui: Ui_main_window):
+    def __init__(self, app, ui: Ui_main_window):
+        super().__init__(app, ui)
+        self.instance = app
         self.ui = ui
 
         def connect_signals():
-            self.ui.add_button_2.clicked.connect(self.add_cnc)
-            self.ui.remove_button_2.clicked.connect(self.remove_cnc)
+            self.ui.add_button_1.clicked.connect(self.add_cnc)
+            self.ui.remove_button_1.clicked.connect(self.remove_cnc)
 
         connect_signals()
 
@@ -30,10 +32,8 @@ class AddCNC(Constructor, Tools):
     @Slot()
     def remove_cnc(self):
         def ok():
-            pass
-        self.get_confirm_dialog("Удалить стойку?", "Все данные")
+            widget = self.ui.cnc_list
+            item = self.get_current__q_list_widget_item(widget)
+            widget.removeItemWidget(item)
+        self.get_confirm_dialog("Удалить стойку?", "Все данные", ok_callback=ok)
 
-
-class AddCNCValidator(Validator):
-    REQUIRED_TEXT_FIELD_VALUES = ("var_name_to_save")
-    INVALID_TEXT_FIELD_VALUES = {"var_name_to_save": re.compile(""),}

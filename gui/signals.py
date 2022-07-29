@@ -1,5 +1,6 @@
 from PySide2.QtCore import Slot
 from ui import Ui_main_window as Ui
+from options.cnc_page import AddCNC
 from options.machines_page import OptionsPageCreateMachine
 from options.add_operation_page import AddOperationMainPage
 from options.create_insert import CreateInsert
@@ -80,7 +81,7 @@ class Actions:
         self.ui = ui
         self.options_pages = {
             "CreateMachinePage": OptionsPageCreateMachine(self.app, self.ui),  # Страница "станки"
-            "CreateCNCPage": ...,
+            "CreateCNCPage": AddCNC(self.app, self.ui),  # Страница "стойки"
             "AddOperationMainPage": AddOperationMainPage(app, ui),  # Страница "Выбор типа операции"
             "CreateInsert": CreateInsert(app, ui),  # Страница вставить кадр
         }
