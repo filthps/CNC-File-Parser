@@ -182,7 +182,7 @@ class Rename(db.Model):
     nametext = Column(String(20), nullable=True, default=None)
     removeextension = Column(Boolean, nullable=False, default=False)
     setextension = Column(Boolean, nullable=False, default=False)
-    varibles = relationship("varsec")
+    varibles = relationship("VarSequence")
 
 
 class Numeration(db.Model):
