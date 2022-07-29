@@ -116,8 +116,49 @@ class Ui_main_window(object):
         self.converter_options.setStyleSheet(u"")
         self.tab_2 = QWidget()
         self.tab_2.setObjectName(u"tab_2")
-        self.verticalLayout_62 = QVBoxLayout(self.tab_2)
-        self.verticalLayout_62.setObjectName(u"verticalLayout_62")
+        self.horizontalLayout_44 = QHBoxLayout(self.tab_2)
+        self.horizontalLayout_44.setObjectName(u"horizontalLayout_44")
+        self.line = QFrame(self.tab_2)
+        self.line.setObjectName(u"line")
+        self.line.setFrameShape(QFrame.VLine)
+        self.line.setFrameShadow(QFrame.Sunken)
+
+        self.horizontalLayout_44.addWidget(self.line)
+
+        self.verticalLayout_43 = QVBoxLayout()
+        self.verticalLayout_43.setObjectName(u"verticalLayout_43")
+        self.cnc_list = QListWidget(self.tab_2)
+        self.cnc_list.setObjectName(u"cnc_list")
+
+        self.verticalLayout_43.addWidget(self.cnc_list)
+
+        self.horizontalLayout_54 = QHBoxLayout()
+        self.horizontalLayout_54.setObjectName(u"horizontalLayout_54")
+        self.remove_button_1 = QPushButton(self.tab_2)
+        self.remove_button_1.setObjectName(u"remove_button_1")
+
+        self.horizontalLayout_54.addWidget(self.remove_button_1)
+
+        self.add_button_1 = QPushButton(self.tab_2)
+        self.add_button_1.setObjectName(u"add_button_1")
+
+        self.horizontalLayout_54.addWidget(self.add_button_1)
+
+
+        self.verticalLayout_43.addLayout(self.horizontalLayout_54)
+
+
+        self.horizontalLayout_44.addLayout(self.verticalLayout_43)
+
+        self.line_17 = QFrame(self.tab_2)
+        self.line_17.setObjectName(u"line_17")
+        self.line_17.setFrameShape(QFrame.VLine)
+        self.line_17.setFrameShadow(QFrame.Sunken)
+
+        self.horizontalLayout_44.addWidget(self.line_17)
+
+        self.verticalLayout_54 = QVBoxLayout()
+        self.verticalLayout_54.setObjectName(u"verticalLayout_54")
         self.horizontalLayout_3 = QHBoxLayout()
         self.horizontalLayout_3.setObjectName(u"horizontalLayout_3")
         self.horizontalSpacer_7 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
@@ -139,44 +180,8 @@ class Ui_main_window(object):
         self.horizontalLayout_3.addItem(self.horizontalSpacer_8)
 
 
-        self.verticalLayout_62.addLayout(self.horizontalLayout_3)
+        self.verticalLayout_54.addLayout(self.horizontalLayout_3)
 
-        self.horizontalLayout_44 = QHBoxLayout()
-        self.horizontalLayout_44.setObjectName(u"horizontalLayout_44")
-        self.verticalLayout_43 = QVBoxLayout()
-        self.verticalLayout_43.setObjectName(u"verticalLayout_43")
-        self.listWidget = QListWidget(self.tab_2)
-        self.listWidget.setObjectName(u"listWidget")
-
-        self.verticalLayout_43.addWidget(self.listWidget)
-
-        self.horizontalLayout_54 = QHBoxLayout()
-        self.horizontalLayout_54.setObjectName(u"horizontalLayout_54")
-        self.add_button_1 = QPushButton(self.tab_2)
-        self.add_button_1.setObjectName(u"add_button_1")
-
-        self.horizontalLayout_54.addWidget(self.add_button_1)
-
-        self.remove_button_1 = QPushButton(self.tab_2)
-        self.remove_button_1.setObjectName(u"remove_button_1")
-
-        self.horizontalLayout_54.addWidget(self.remove_button_1)
-
-
-        self.verticalLayout_43.addLayout(self.horizontalLayout_54)
-
-
-        self.horizontalLayout_44.addLayout(self.verticalLayout_43)
-
-        self.line_17 = QFrame(self.tab_2)
-        self.line_17.setObjectName(u"line_17")
-        self.line_17.setFrameShape(QFrame.VLine)
-        self.line_17.setFrameShadow(QFrame.Sunken)
-
-        self.horizontalLayout_44.addWidget(self.line_17)
-
-        self.verticalLayout_61 = QVBoxLayout()
-        self.verticalLayout_61.setObjectName(u"verticalLayout_61")
         self.verticalLayout_45 = QVBoxLayout()
         self.verticalLayout_45.setObjectName(u"verticalLayout_45")
         self.label_34 = QLabel(self.tab_2)
@@ -190,14 +195,14 @@ class Ui_main_window(object):
         self.verticalLayout_45.addWidget(self.textEdit_2)
 
 
-        self.verticalLayout_61.addLayout(self.verticalLayout_45)
+        self.verticalLayout_54.addLayout(self.verticalLayout_45)
 
         self.line_18 = QFrame(self.tab_2)
         self.line_18.setObjectName(u"line_18")
         self.line_18.setFrameShape(QFrame.HLine)
         self.line_18.setFrameShadow(QFrame.Sunken)
 
-        self.verticalLayout_61.addWidget(self.line_18)
+        self.verticalLayout_54.addWidget(self.line_18)
 
         self.horizontalLayout_53 = QHBoxLayout()
         self.horizontalLayout_53.setObjectName(u"horizontalLayout_53")
@@ -212,24 +217,14 @@ class Ui_main_window(object):
         self.horizontalLayout_53.addWidget(self.lineEdit_22)
 
 
-        self.verticalLayout_61.addLayout(self.horizontalLayout_53)
+        self.verticalLayout_54.addLayout(self.horizontalLayout_53)
 
         self.verticalSpacer_19 = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
 
-        self.verticalLayout_61.addItem(self.verticalSpacer_19)
+        self.verticalLayout_54.addItem(self.verticalSpacer_19)
 
 
-        self.horizontalLayout_44.addLayout(self.verticalLayout_61)
-
-
-        self.verticalLayout_62.addLayout(self.horizontalLayout_44)
-
-        self.line = QFrame(self.tab_2)
-        self.line.setObjectName(u"line")
-        self.line.setFrameShape(QFrame.VLine)
-        self.line.setFrameShadow(QFrame.Sunken)
-
-        self.verticalLayout_62.addWidget(self.line)
+        self.horizontalLayout_44.addLayout(self.verticalLayout_54)
 
         self.converter_options.addTab(self.tab_2, "")
         self.options_tab_machines = QWidget()
@@ -491,13 +486,6 @@ class Ui_main_window(object):
 
         self.verticalLayout_47.addLayout(self.horizontalLayout_56)
 
-        self.line_5 = QFrame(self.options_tab_machines)
-        self.line_5.setObjectName(u"line_5")
-        self.line_5.setFrameShape(QFrame.HLine)
-        self.line_5.setFrameShadow(QFrame.Sunken)
-
-        self.verticalLayout_47.addWidget(self.line_5)
-
         self.converter_options.addTab(self.options_tab_machines, "")
         self.tab = QWidget()
         self.tab.setObjectName(u"tab")
@@ -594,9 +582,10 @@ class Ui_main_window(object):
         self.tabWidget_2.addTab(self.add_operation_list, "")
         self.add_operation_first = QWidget()
         self.add_operation_first.setObjectName(u"add_operation_first")
+        self.horizontalLayout_52 = QHBoxLayout(self.add_operation_first)
+        self.horizontalLayout_52.setObjectName(u"horizontalLayout_52")
         self.stackedWidget_2 = QStackedWidget(self.add_operation_first)
         self.stackedWidget_2.setObjectName(u"stackedWidget_2")
-        self.stackedWidget_2.setGeometry(QRect(10, 10, 564, 522))
         self.stackedWidget_2.setFocusPolicy(Qt.TabFocus)
         self.stackedWidget_2.setContextMenuPolicy(Qt.ActionsContextMenu)
         self.stackedWidget_2.setFrameShape(QFrame.NoFrame)
@@ -687,8 +676,8 @@ class Ui_main_window(object):
         self.stackedWidget_2.addWidget(self.add_operation_first1)
         self.page_6 = QWidget()
         self.page_6.setObjectName(u"page_6")
-        self.verticalLayout_13 = QVBoxLayout(self.page_6)
-        self.verticalLayout_13.setObjectName(u"verticalLayout_13")
+        self.verticalLayout_40 = QVBoxLayout(self.page_6)
+        self.verticalLayout_40.setObjectName(u"verticalLayout_40")
         self.horizontalLayout_27 = QHBoxLayout()
         self.horizontalLayout_27.setObjectName(u"horizontalLayout_27")
         self.horizontalSpacer_16 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
@@ -706,14 +695,14 @@ class Ui_main_window(object):
         self.horizontalLayout_27.addItem(self.horizontalSpacer_42)
 
 
-        self.verticalLayout_13.addLayout(self.horizontalLayout_27)
+        self.verticalLayout_40.addLayout(self.horizontalLayout_27)
 
         self.line_11 = QFrame(self.page_6)
         self.line_11.setObjectName(u"line_11")
         self.line_11.setFrameShape(QFrame.HLine)
         self.line_11.setFrameShadow(QFrame.Sunken)
 
-        self.verticalLayout_13.addWidget(self.line_11)
+        self.verticalLayout_40.addWidget(self.line_11)
 
         self.horizontalLayout_28 = QHBoxLayout()
         self.horizontalLayout_28.setObjectName(u"horizontalLayout_28")
@@ -721,6 +710,8 @@ class Ui_main_window(object):
 
         self.horizontalLayout_28.addItem(self.horizontalSpacer_43)
 
+        self.verticalLayout_20 = QVBoxLayout()
+        self.verticalLayout_20.setObjectName(u"verticalLayout_20")
         self.horizontalLayout_26 = QHBoxLayout()
         self.horizontalLayout_26.setObjectName(u"horizontalLayout_26")
         self.label_15 = QLabel(self.page_6)
@@ -734,8 +725,17 @@ class Ui_main_window(object):
         self.horizontalLayout_26.addWidget(self.lineEdit_8)
 
 
-        self.horizontalLayout_28.addLayout(self.horizontalLayout_26)
+        self.verticalLayout_20.addLayout(self.horizontalLayout_26)
 
+        self.verticalSpacer_23 = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
+
+        self.verticalLayout_20.addItem(self.verticalSpacer_23)
+
+
+        self.horizontalLayout_28.addLayout(self.verticalLayout_20)
+
+        self.verticalLayout_13 = QVBoxLayout()
+        self.verticalLayout_13.setObjectName(u"verticalLayout_13")
         self.groupBox_5 = QGroupBox(self.page_6)
         self.groupBox_5.setObjectName(u"groupBox_5")
         sizePolicy = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -743,33 +743,35 @@ class Ui_main_window(object):
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.groupBox_5.sizePolicy().hasHeightForWidth())
         self.groupBox_5.setSizePolicy(sizePolicy)
-        self.verticalLayout_37 = QVBoxLayout(self.groupBox_5)
-        self.verticalLayout_37.setObjectName(u"verticalLayout_37")
-        self.verticalLayout_20 = QVBoxLayout()
-        self.verticalLayout_20.setObjectName(u"verticalLayout_20")
+        self.verticalLayout_46 = QVBoxLayout(self.groupBox_5)
+        self.verticalLayout_46.setObjectName(u"verticalLayout_46")
         self.radioButton_3 = QRadioButton(self.groupBox_5)
         self.radioButton_3.setObjectName(u"radioButton_3")
         self.radioButton_3.setChecked(True)
 
-        self.verticalLayout_20.addWidget(self.radioButton_3)
+        self.verticalLayout_46.addWidget(self.radioButton_3)
 
         self.radioButton_10 = QRadioButton(self.groupBox_5)
         self.radioButton_10.setObjectName(u"radioButton_10")
 
-        self.verticalLayout_20.addWidget(self.radioButton_10)
+        self.verticalLayout_46.addWidget(self.radioButton_10)
 
 
-        self.verticalLayout_37.addLayout(self.verticalLayout_20)
+        self.verticalLayout_13.addWidget(self.groupBox_5)
+
+        self.verticalSpacer_22 = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
+
+        self.verticalLayout_13.addItem(self.verticalSpacer_22)
 
 
-        self.horizontalLayout_28.addWidget(self.groupBox_5)
+        self.horizontalLayout_28.addLayout(self.verticalLayout_13)
 
         self.horizontalSpacer_44 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
 
         self.horizontalLayout_28.addItem(self.horizontalSpacer_44)
 
 
-        self.verticalLayout_13.addLayout(self.horizontalLayout_28)
+        self.verticalLayout_40.addLayout(self.horizontalLayout_28)
 
         self.horizontalLayout_29 = QHBoxLayout()
         self.horizontalLayout_29.setObjectName(u"horizontalLayout_29")
@@ -801,13 +803,13 @@ class Ui_main_window(object):
         self.horizontalLayout_29.addItem(self.horizontalSpacer_46)
 
 
-        self.verticalLayout_13.addLayout(self.horizontalLayout_29)
+        self.verticalLayout_40.addLayout(self.horizontalLayout_29)
 
         self.stackedWidget_2.addWidget(self.page_6)
         self.page_7 = QWidget()
         self.page_7.setObjectName(u"page_7")
-        self.verticalLayout_15 = QVBoxLayout(self.page_7)
-        self.verticalLayout_15.setObjectName(u"verticalLayout_15")
+        self.verticalLayout_48 = QVBoxLayout(self.page_7)
+        self.verticalLayout_48.setObjectName(u"verticalLayout_48")
         self.horizontalLayout_33 = QHBoxLayout()
         self.horizontalLayout_33.setObjectName(u"horizontalLayout_33")
         self.horizontalSpacer_51 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
@@ -825,14 +827,14 @@ class Ui_main_window(object):
         self.horizontalLayout_33.addItem(self.horizontalSpacer_52)
 
 
-        self.verticalLayout_15.addLayout(self.horizontalLayout_33)
+        self.verticalLayout_48.addLayout(self.horizontalLayout_33)
 
         self.line_12 = QFrame(self.page_7)
         self.line_12.setObjectName(u"line_12")
         self.line_12.setFrameShape(QFrame.HLine)
         self.line_12.setFrameShadow(QFrame.Sunken)
 
-        self.verticalLayout_15.addWidget(self.line_12)
+        self.verticalLayout_48.addWidget(self.line_12)
 
         self.horizontalLayout_30 = QHBoxLayout()
         self.horizontalLayout_30.setObjectName(u"horizontalLayout_30")
@@ -840,6 +842,8 @@ class Ui_main_window(object):
 
         self.horizontalLayout_30.addItem(self.horizontalSpacer_47)
 
+        self.verticalLayout_38 = QVBoxLayout()
+        self.verticalLayout_38.setObjectName(u"verticalLayout_38")
         self.horizontalLayout_31 = QHBoxLayout()
         self.horizontalLayout_31.setObjectName(u"horizontalLayout_31")
         self.label_16 = QLabel(self.page_7)
@@ -853,40 +857,51 @@ class Ui_main_window(object):
         self.horizontalLayout_31.addWidget(self.lineEdit_9)
 
 
-        self.horizontalLayout_30.addLayout(self.horizontalLayout_31)
+        self.verticalLayout_38.addLayout(self.horizontalLayout_31)
 
+        self.verticalSpacer_24 = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
+
+        self.verticalLayout_38.addItem(self.verticalSpacer_24)
+
+
+        self.horizontalLayout_30.addLayout(self.verticalLayout_38)
+
+        self.verticalLayout_37 = QVBoxLayout()
+        self.verticalLayout_37.setObjectName(u"verticalLayout_37")
         self.groupBox_6 = QGroupBox(self.page_7)
         self.groupBox_6.setObjectName(u"groupBox_6")
         sizePolicy.setHeightForWidth(self.groupBox_6.sizePolicy().hasHeightForWidth())
         self.groupBox_6.setSizePolicy(sizePolicy)
         self.groupBox_6.setMinimumSize(QSize(0, 0))
-        self.verticalLayout_38 = QVBoxLayout(self.groupBox_6)
-        self.verticalLayout_38.setObjectName(u"verticalLayout_38")
-        self.verticalLayout_40 = QVBoxLayout()
-        self.verticalLayout_40.setObjectName(u"verticalLayout_40")
+        self.verticalLayout_15 = QVBoxLayout(self.groupBox_6)
+        self.verticalLayout_15.setObjectName(u"verticalLayout_15")
         self.radioButton_11 = QRadioButton(self.groupBox_6)
         self.radioButton_11.setObjectName(u"radioButton_11")
         self.radioButton_11.setChecked(True)
 
-        self.verticalLayout_40.addWidget(self.radioButton_11)
+        self.verticalLayout_15.addWidget(self.radioButton_11)
 
         self.radioButton_12 = QRadioButton(self.groupBox_6)
         self.radioButton_12.setObjectName(u"radioButton_12")
 
-        self.verticalLayout_40.addWidget(self.radioButton_12)
+        self.verticalLayout_15.addWidget(self.radioButton_12)
 
 
-        self.verticalLayout_38.addLayout(self.verticalLayout_40)
+        self.verticalLayout_37.addWidget(self.groupBox_6)
+
+        self.verticalSpacer_21 = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
+
+        self.verticalLayout_37.addItem(self.verticalSpacer_21)
 
 
-        self.horizontalLayout_30.addWidget(self.groupBox_6)
+        self.horizontalLayout_30.addLayout(self.verticalLayout_37)
 
         self.horizontalSpacer_48 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
 
         self.horizontalLayout_30.addItem(self.horizontalSpacer_48)
 
 
-        self.verticalLayout_15.addLayout(self.horizontalLayout_30)
+        self.verticalLayout_48.addLayout(self.horizontalLayout_30)
 
         self.horizontalLayout_32 = QHBoxLayout()
         self.horizontalLayout_32.setObjectName(u"horizontalLayout_32")
@@ -918,7 +933,7 @@ class Ui_main_window(object):
         self.horizontalLayout_32.addItem(self.horizontalSpacer_50)
 
 
-        self.verticalLayout_15.addLayout(self.horizontalLayout_32)
+        self.verticalLayout_48.addLayout(self.horizontalLayout_32)
 
         self.stackedWidget_2.addWidget(self.page_7)
         self.numerate_page = QWidget()
@@ -1025,8 +1040,8 @@ class Ui_main_window(object):
         self.stackedWidget_2.addWidget(self.numerate_page)
         self.page_3 = QWidget()
         self.page_3.setObjectName(u"page_3")
-        self.verticalLayout_30 = QVBoxLayout(self.page_3)
-        self.verticalLayout_30.setObjectName(u"verticalLayout_30")
+        self.verticalLayout_44 = QVBoxLayout(self.page_3)
+        self.verticalLayout_44.setObjectName(u"verticalLayout_44")
         self.horizontalLayout_13 = QHBoxLayout()
         self.horizontalLayout_13.setObjectName(u"horizontalLayout_13")
         self.horizontalSpacer_27 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
@@ -1044,19 +1059,19 @@ class Ui_main_window(object):
         self.horizontalLayout_13.addItem(self.horizontalSpacer_21)
 
 
-        self.verticalLayout_30.addLayout(self.horizontalLayout_13)
+        self.verticalLayout_44.addLayout(self.horizontalLayout_13)
 
         self.line_4 = QFrame(self.page_3)
         self.line_4.setObjectName(u"line_4")
         self.line_4.setFrameShape(QFrame.HLine)
         self.line_4.setFrameShadow(QFrame.Sunken)
 
-        self.verticalLayout_30.addWidget(self.line_4)
+        self.verticalLayout_44.addWidget(self.line_4)
 
         self.horizontalLayout_14 = QHBoxLayout()
         self.horizontalLayout_14.setObjectName(u"horizontalLayout_14")
-        self.verticalLayout_27 = QVBoxLayout()
-        self.verticalLayout_27.setObjectName(u"verticalLayout_27")
+        self.verticalLayout_30 = QVBoxLayout()
+        self.verticalLayout_30.setObjectName(u"verticalLayout_30")
         self.horizontalLayout_10 = QHBoxLayout()
         self.horizontalLayout_10.setObjectName(u"horizontalLayout_10")
         self.label_7 = QLabel(self.page_3)
@@ -1070,35 +1085,27 @@ class Ui_main_window(object):
         self.horizontalLayout_10.addWidget(self.lineEdit_3)
 
 
-        self.verticalLayout_27.addLayout(self.horizontalLayout_10)
+        self.verticalLayout_30.addLayout(self.horizontalLayout_10)
 
         self.groupBox = QGroupBox(self.page_3)
         self.groupBox.setObjectName(u"groupBox")
         sizePolicy.setHeightForWidth(self.groupBox.sizePolicy().hasHeightForWidth())
         self.groupBox.setSizePolicy(sizePolicy)
         self.groupBox.setBaseSize(QSize(500, 0))
-        self.verticalLayout_7 = QVBoxLayout(self.groupBox)
-        self.verticalLayout_7.setObjectName(u"verticalLayout_7")
         self.radioButton_21 = QRadioButton(self.groupBox)
         self.radioButton_21.setObjectName(u"radioButton_21")
-
-        self.verticalLayout_7.addWidget(self.radioButton_21)
-
+        self.radioButton_21.setGeometry(QRect(10, 23, 81, 17))
         self.radioButton = QRadioButton(self.groupBox)
         self.radioButton.setObjectName(u"radioButton")
-
-        self.verticalLayout_7.addWidget(self.radioButton)
-
+        self.radioButton.setGeometry(QRect(10, 46, 75, 17))
         self.radioButton_2 = QRadioButton(self.groupBox)
         self.radioButton_2.setObjectName(u"radioButton_2")
+        self.radioButton_2.setGeometry(QRect(10, 69, 138, 17))
 
-        self.verticalLayout_7.addWidget(self.radioButton_2)
-
-
-        self.verticalLayout_27.addWidget(self.groupBox)
+        self.verticalLayout_30.addWidget(self.groupBox)
 
 
-        self.horizontalLayout_14.addLayout(self.verticalLayout_27)
+        self.horizontalLayout_14.addLayout(self.verticalLayout_30)
 
         self.line_27 = QFrame(self.page_3)
         self.line_27.setObjectName(u"line_27")
@@ -1111,17 +1118,47 @@ class Ui_main_window(object):
         self.verticalLayout_29.setObjectName(u"verticalLayout_29")
         self.groupBox_2 = QGroupBox(self.page_3)
         self.groupBox_2.setObjectName(u"groupBox_2")
-        self.verticalLayout_26 = QVBoxLayout(self.groupBox_2)
-        self.verticalLayout_26.setObjectName(u"verticalLayout_26")
+        self.verticalLayout_27 = QVBoxLayout(self.groupBox_2)
+        self.verticalLayout_27.setObjectName(u"verticalLayout_27")
         self.radioButton_5 = QRadioButton(self.groupBox_2)
         self.radioButton_5.setObjectName(u"radioButton_5")
 
-        self.verticalLayout_26.addWidget(self.radioButton_5)
+        self.verticalLayout_27.addWidget(self.radioButton_5)
 
         self.radioButton_4 = QRadioButton(self.groupBox_2)
         self.radioButton_4.setObjectName(u"radioButton_4")
 
-        self.verticalLayout_26.addWidget(self.radioButton_4)
+        self.verticalLayout_27.addWidget(self.radioButton_4)
+
+        self.verticalLayout_7 = QVBoxLayout()
+        self.verticalLayout_7.setObjectName(u"verticalLayout_7")
+        self.radioButton_22 = QRadioButton(self.groupBox_2)
+        self.radioButton_22.setObjectName(u"radioButton_22")
+
+        self.verticalLayout_7.addWidget(self.radioButton_22)
+
+        self.lineEdit_23 = QLineEdit(self.groupBox_2)
+        self.lineEdit_23.setObjectName(u"lineEdit_23")
+
+        self.verticalLayout_7.addWidget(self.lineEdit_23)
+
+
+        self.verticalLayout_27.addLayout(self.verticalLayout_7)
+
+        self.verticalLayout_26 = QVBoxLayout()
+        self.verticalLayout_26.setObjectName(u"verticalLayout_26")
+        self.radioButton_23 = QRadioButton(self.groupBox_2)
+        self.radioButton_23.setObjectName(u"radioButton_23")
+
+        self.verticalLayout_26.addWidget(self.radioButton_23)
+
+        self.lineEdit_24 = QLineEdit(self.groupBox_2)
+        self.lineEdit_24.setObjectName(u"lineEdit_24")
+
+        self.verticalLayout_26.addWidget(self.lineEdit_24)
+
+
+        self.verticalLayout_27.addLayout(self.verticalLayout_26)
 
 
         self.verticalLayout_29.addWidget(self.groupBox_2)
@@ -1145,14 +1182,14 @@ class Ui_main_window(object):
         self.horizontalLayout_14.addLayout(self.verticalLayout_29)
 
 
-        self.verticalLayout_30.addLayout(self.horizontalLayout_14)
+        self.verticalLayout_44.addLayout(self.horizontalLayout_14)
 
         self.line_3 = QFrame(self.page_3)
         self.line_3.setObjectName(u"line_3")
         self.line_3.setFrameShape(QFrame.VLine)
         self.line_3.setFrameShadow(QFrame.Sunken)
 
-        self.verticalLayout_30.addWidget(self.line_3)
+        self.verticalLayout_44.addWidget(self.line_3)
 
         self.horizontalLayout_12 = QHBoxLayout()
         self.horizontalLayout_12.setObjectName(u"horizontalLayout_12")
@@ -1184,7 +1221,7 @@ class Ui_main_window(object):
         self.horizontalLayout_12.addItem(self.horizontalSpacer_26)
 
 
-        self.verticalLayout_30.addLayout(self.horizontalLayout_12)
+        self.verticalLayout_44.addLayout(self.horizontalLayout_12)
 
         self.stackedWidget_2.addWidget(self.page_3)
         self.page_4 = QWidget()
@@ -1667,6 +1704,9 @@ class Ui_main_window(object):
         self.verticalLayout_60.addLayout(self.verticalLayout_34)
 
         self.stackedWidget_2.addWidget(self.page)
+
+        self.horizontalLayout_52.addWidget(self.stackedWidget_2)
+
         self.tabWidget_2.addTab(self.add_operation_first, "")
 
         self.verticalLayout_3.addWidget(self.tabWidget_2)
@@ -1912,9 +1952,9 @@ class Ui_main_window(object):
 
         self.main_widget.setCurrentIndex(1)
         self.root_tab_widget.setCurrentIndex(1)
-        self.converter_options.setCurrentIndex(3)
-        self.tabWidget_2.setCurrentIndex(0)
-        self.stackedWidget_2.setCurrentIndex(7)
+        self.converter_options.setCurrentIndex(2)
+        self.tabWidget_2.setCurrentIndex(1)
+        self.stackedWidget_2.setCurrentIndex(0)
 
 
         QMetaObject.connectSlotsByName(main_window)
@@ -1927,9 +1967,9 @@ class Ui_main_window(object):
         self.commandLinkButton_8.setText(QCoreApplication.translate("main_window", u"\u041a\u0430\u043b\u044c\u043a\u0443\u043b\u044f\u0442\u043e\u0440 \u0440\u0435\u0436\u0438\u043c\u043e\u0432", None))
         self.to_options.setText(QCoreApplication.translate("main_window", u"\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438", None))
         self.root_tab_widget.setTabText(self.root_tab_widget.indexOf(self.tab_3), QCoreApplication.translate("main_window", u"\u0413\u043b\u0430\u0432\u043d\u0430\u044f", None))
-        self.label_33.setText(QCoreApplication.translate("main_window", u"\u0421\u0432\u043e\u0439\u0441\u0442\u0432\u0430", None))
-        self.add_button_1.setText("")
         self.remove_button_1.setText("")
+        self.add_button_1.setText("")
+        self.label_33.setText(QCoreApplication.translate("main_window", u"\u0421\u0432\u043e\u0439\u0441\u0442\u0432\u0430", None))
         self.label_34.setText(QCoreApplication.translate("main_window", u"\u041d\u0435\u0447\u0438\u0442\u0430\u0435\u043c\u044b\u0435 \u0441\u0438\u043c\u0432\u043e\u043b\u044b(\u0432\u044b\u0437\u044b\u0432\u0430\u044e\u0442 \u043e\u0448\u0438\u0431\u043a\u0443):", None))
         self.label_37.setText(QCoreApplication.translate("main_window", u"\u0421\u0438\u043c\u0432\u043e\u043b \u043a\u043e\u043c\u043c\u0435\u043d\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f:", None))
         self.converter_options.setTabText(self.converter_options.indexOf(self.tab_2), QCoreApplication.translate("main_window", u"\u0421\u0442\u043e\u0439\u043a\u0438", None))
@@ -1996,6 +2036,8 @@ class Ui_main_window(object):
         self.groupBox_2.setTitle(QCoreApplication.translate("main_window", u"\u0412\u044b\u043f\u043e\u043b\u043d\u0438\u0442\u044c \u0432\u0441\u0442\u0430\u0432\u043a\u0443", None))
         self.radioButton_5.setText(QCoreApplication.translate("main_window", u"\u0414\u043e", None))
         self.radioButton_4.setText(QCoreApplication.translate("main_window", u"\u041f\u043e\u0441\u043b\u0435", None))
+        self.radioButton_22.setText(QCoreApplication.translate("main_window", u"\u0412 \u0441\u0442\u0440\u043e\u043a\u0443 \u2116", None))
+        self.radioButton_23.setText(QCoreApplication.translate("main_window", u"\u0412 \u043a\u0430\u0434\u0440 \u2116", None))
         self.label_8.setText(QCoreApplication.translate("main_window", u"\u0412\u0441\u0442\u0430\u0432\u0438\u0442\u044c:", None))
         self.commandLinkButton_3.setText(QCoreApplication.translate("main_window", u"\u0421\u043e\u0437\u0434\u0430\u0442\u044c", None))
         self.label_9.setText(QCoreApplication.translate("main_window", u"\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u043a\u0430\u0434\u0440", None))
