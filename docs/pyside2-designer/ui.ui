@@ -225,13 +225,13 @@
                <string notr="true"/>
               </property>
               <property name="currentIndex">
-               <number>2</number>
+               <number>0</number>
               </property>
               <widget class="QWidget" name="tab_2">
                <attribute name="title">
                 <string>Стойки</string>
                </attribute>
-               <layout class="QHBoxLayout" name="horizontalLayout_44">
+               <layout class="QHBoxLayout" name="horizontalLayout_53">
                 <item>
                  <widget class="Line" name="line">
                   <property name="orientation">
@@ -318,6 +318,13 @@
                    </layout>
                   </item>
                   <item>
+                   <widget class="Line" name="line_5">
+                    <property name="orientation">
+                     <enum>Qt::Horizontal</enum>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
                    <layout class="QVBoxLayout" name="verticalLayout_45">
                     <item>
                      <widget class="QLabel" name="label_34">
@@ -339,7 +346,7 @@
                    </widget>
                   </item>
                   <item>
-                   <layout class="QHBoxLayout" name="horizontalLayout_53">
+                   <layout class="QHBoxLayout" name="horizontalLayout_44">
                     <item>
                      <widget class="QLabel" name="label_37">
                       <property name="text">
@@ -348,7 +355,27 @@
                      </widget>
                     </item>
                     <item>
-                     <widget class="QLineEdit" name="lineEdit_22"/>
+                     <widget class="QLineEdit" name="lineEdit_22">
+                      <property name="maximumSize">
+                       <size>
+                        <width>20</width>
+                        <height>16777215</height>
+                       </size>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <spacer name="horizontalSpacer_20">
+                      <property name="orientation">
+                       <enum>Qt::Horizontal</enum>
+                      </property>
+                      <property name="sizeHint" stdset="0">
+                       <size>
+                        <width>40</width>
+                        <height>20</height>
+                       </size>
+                      </property>
+                     </spacer>
                     </item>
                    </layout>
                   </item>
@@ -669,7 +696,7 @@
                 <item>
                  <widget class="QTabWidget" name="tabWidget_2">
                   <property name="currentIndex">
-                   <number>1</number>
+                   <number>0</number>
                   </property>
                   <widget class="QWidget" name="add_operation_list">
                    <attribute name="title">
@@ -3035,7 +3062,7 @@
      <x>0</x>
      <y>0</y>
      <width>1124</width>
-     <height>21</height>
+     <height>26</height>
     </rect>
    </property>
   </widget>
