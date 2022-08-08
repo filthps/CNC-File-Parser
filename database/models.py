@@ -110,7 +110,7 @@ class Cnc(db.Model):
     cncid = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(20), nullable=False, unique=True)
     comment_symbol = Column(String(1), nullable=False)
-    except_symbols = Column(String(50))
+    except_symbols = Column(String(50), nullable=True, default=None)
 
 
 class HeadVarible(db.Model):
@@ -138,12 +138,40 @@ class Insert(db.Model):
     item = Column(String, nullable=False)
 
 
+db.DDL("CREATE TRIGGER control_option_insert"
+       "BEFORE UPDATE,INSERT"
+       "ON insert"
+       "BEGIN"
+       "CREATE TEMP TABLE IF NOT EXISTS Vcount (pk INTEGER PRIMARY_KEY AUTOINCREMENT,"
+       "optionone BOOLEAN DEFAULT FALSE, optiontwo BOOLEAN DEFAULT FALSE)"
+       "IF NEW.after = 1 INSERT Vcount (optionone) VALUES (1)"
+       "IF NEW.before = 1 INSERT Vcount (optiontwo) VALUES (1)"
+       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) > 1 ROLLBACK TRANSACTION"
+       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) = 0 ROLLBACK TRANSACTION"
+       "DROP Vcount"
+       "END")
+
+
 class Comment(db.Model):
     __tablename__ = "comment"
     commentid = Column(Integer, primary_key=True, autoincrement=True)
     findstr = Column(String(100), nullable=False)
     iffullmatch = Column(Boolean, default=False, nullable=False)
     ifcontains = Column(Boolean, default=False, nullable=False)
+
+
+db.DDL("CREATE TRIGGER control_option_comment"
+       "BEFORE UPDATE,INSERT"
+       "ON comment"
+       "BEGIN"
+       "CREATE TEMP TABLE IF NOT EXISTS Vcount (pk INTEGER PRIMARY_KEY AUTOINCREMENT,"
+       "optionone BOOLEAN DEFAULT FALSE, optiontwo BOOLEAN DEFAULT FALSE)"
+       "IF NEW.iffullmatch = 1 INSERT Vcount (optionone) VALUES (1)"
+       "IF NEW.ifcontains = 1 INSERT Vcount (optiontwo) VALUES (1)"
+       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) > 1 ROLLBACK TRANSACTION"
+       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) = 0 ROLLBACK TRANSACTION"
+       "DROP Vcount"
+       "END")
 
 
 class Uncomment(db.Model):
@@ -154,12 +182,40 @@ class Uncomment(db.Model):
     ifcontains = Column(Boolean, nullable=False, default=False)
 
 
+db.DDL("CREATE TRIGGER control_option_uncomment"
+       "BEFORE UPDATE,INSERT"
+       "ON uncomment"
+       "BEGIN"
+       "CREATE TEMP TABLE IF NOT EXISTS Vcount (pk INTEGER PRIMARY_KEY AUTOINCREMENT,"
+       "optionone BOOLEAN DEFAULT FALSE, optiontwo BOOLEAN DEFAULT FALSE)"
+       "IF NEW.iffullmatch = 1 INSERT Vcount (optionone) VALUES (1)"
+       "IF NEW.ifcontains = 1 INSERT Vcount (optiontwo) VALUES (1)"
+       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) > 1 ROLLBACK TRANSACTION"
+       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) = 0 ROLLBACK TRANSACTION"
+       "DROP Vcount"
+       "END")
+
+
 class Remove(db.Model):
     __tablename__ = "remove"
     removeid = Column(Integer, primary_key=True, autoincrement=True)
     iffullmatch = Column(Boolean, nullable=False, default=False)
     ifcontains = Column(Boolean, nullable=False, default=False)
     findstr = Column(String(100), nullable=False)
+
+
+db.DDL("CREATE TRIGGER control_option_remove"
+       "BEFORE UPDATE,INSERT"
+       "ON remove"
+       "BEGIN"
+       "CREATE TEMP TABLE IF NOT EXISTS Vcount (pk INTEGER PRIMARY_KEY AUTOINCREMENT,"
+       "optionone BOOLEAN DEFAULT FALSE, optiontwo BOOLEAN DEFAULT FALSE)"
+       "IF NEW.iffullmatch = 1 INSERT Vcount (optionone) VALUES (1)"
+       "IF NEW.ifcontains = 1 INSERT Vcount (optiontwo) VALUES (1)"
+       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) > 1 ROLLBACK TRANSACTION"
+       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) = 0 ROLLBACK TRANSACTION"
+       "DROP Vcount"
+       "END")
 
 
 class VarSequence(db.Model):
@@ -201,7 +257,20 @@ class Replace(db.Model):
     item = Column(String(100), nullable=False)
 
 
+db.DDL("CREATE TRIGGER control_option_replace"
+       "BEFORE UPDATE,INSERT"
+       "ON repl"
+       "BEGIN"
+       "CREATE TEMP TABLE IF NOT EXISTS Vcount (pk INTEGER PRIMARY_KEY AUTOINCREMENT,"
+       "optionone BOOLEAN DEFAULT FALSE, optiontwo BOOLEAN DEFAULT FALSE)"
+       "IF NEW.iffullmatch = 1 INSERT Vcount (optionone) VALUES (1)"
+       "IF NEW.ifcontains = 1 INSERT Vcount (optiontwo) VALUES (1)"
+       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) > 1 ROLLBACK TRANSACTION"
+       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) = 0 ROLLBACK TRANSACTION"
+       "DROP Vcount"
+       "END")
+
+
 if __name__ == "__main__":
     db.drop_all()
     db.create_all()
-

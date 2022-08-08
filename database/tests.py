@@ -1,6 +1,6 @@
 import unittest
 from sqlalchemy import select
-from .models import db, Cnc, Machine, Comment, Insert
+from .models import db, Cnc, Machine, Comment, Insert, Uncomment
 
 
 CNC_NAME = "Fidia"
@@ -99,7 +99,36 @@ class TestCommentModel(unittest.TestCase):
         print(self.test_session.scalars(query).one())
 
 
+class TestUncommentModel(unittest.TestCase):
+    def setUp(self) -> None:
+        self.test_session = db.session
+
+    def test_create_valid_orm_uncomment_object(self):
+        valid_orm_obj = Uncomment(
+            findstr="Z500", iffullmatch=True, ifcontains=False
+        )
+        self.assertTrue(isinstance(valid_orm_obj, db.Model))
+
+    def test_add_valid_orm_uncomment_object_to_session(self):
+        valid_orm_obj = Uncomment(
+            findstr="Z500", iffullmatch=True, ifcontains=False
+        )
+        self.test_session.add(valid_orm_obj)
+        exists_status = False
+        for instance in self.test_session:
+            if valid_orm_obj == instance:
+                exists_status = True
+                break
+        self.assertTrue(exists_status, msg="Объект не добавился в сессию")
+
+    def test_save_session(self):
+        self.test_session.commit()
+
+    def test_exists_orm_object(self):
+        query = select(Uncomment).where(Uncomment.id == 1)
+        print(self.test_session.scalars(query).one())
+
+
 if __name__ == "__main__":
     TestCncModel.main()
     TestMachineModel.main()
-
