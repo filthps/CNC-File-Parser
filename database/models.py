@@ -238,7 +238,21 @@ class Rename(db.Model):
     nametext = Column(String(20), nullable=True, default=None)
     removeextension = Column(Boolean, nullable=False, default=False)
     setextension = Column(Boolean, nullable=False, default=False)
-    varibles = relationship("VarSequence")
+    varibles = relationship("VarSequence", back_populates="decid")
+
+
+db.DDL("CREATE TRIGGER rename_case_value"
+       "BEFORE INSERT, UPDATE"
+       "ON rename"
+       "BEGIN"
+       "CREATE TEMP TABLE IF NOT EXISTS Tvar (k INTEGER PRIMARY_KEY AUTOINCREMENT, opt1 BOOLEAN DEFAULT FALSE,"
+       "opt2 BOOLEAN DEFAULT FALSE, opt3 BOOLEAN DEFAULT FALSE)"
+       "IF NEW.uppercase = 1 INSERT (opt1) VALUES (1)"
+       "IF NEW.lowercase = 1 INSERT (opt2) VALUES (1)"
+       "IF NEW.defaultcase INSERT (opt3) VALUES (1)"
+       "IF (SELECT SUM(opt1, opt2, opt3) FROM rename) > 1 ROLLBACK TRANSACTION"
+       "IF (SELECT SUM(opt1, opt2, opt3) FROM rename) = 0 ROLLBACK TRANSACTION"
+       "END")
 
 
 class Numeration(db.Model):
