@@ -1,6 +1,7 @@
 import unittest
 from sqlalchemy import select
-from .models import db, Cnc, Machine, Comment, Insert, Uncomment
+from sqlalchemy.exc import IntegrityError, DataError, OperationalError
+from .models import db, Cnc, Machine, Comment, Insert, Uncomment, Rename
 
 
 CNC_NAME = "Fidia"
@@ -127,6 +128,54 @@ class TestUncommentModel(unittest.TestCase):
     def test_exists_orm_object(self):
         query = select(Uncomment).where(Uncomment.id == 1)
         print(self.test_session.scalars(query).one())
+
+
+class TestModelRename(unittest.TestCase):
+    def setUp(self) -> None:
+        self.test_session = db.session
+
+    def test_create_valid_orm_rename_object(self):
+        valid_orm_obj = Rename(uppercase=True, lowercase=False, defaultcase=False,
+                               prefix="", postfix="", nametext="", removeextension=False, setextension=False)
+        self.assertTrue(isinstance(valid_orm_obj, db.Model))
+
+    def test_create_invalid_empty_orm_rename_object(self):
+        invalid_orm_obj = Rename(uppercase=False, lowercase=False, defaultcase=False,
+                                 prefix=None, postfix=None, nametext=None, removeextension=False, setextension=False)
+
+    def test_add_valid_orm_rename_object_to_session(self):
+        valid_orm_obj = Rename(uppercase=True, lowercase=False, defaultcase=False,
+                               prefix="12", postfix=None, nametext=None, removeextension=False, setextension=False)
+        self.test_session.add(valid_orm_obj)
+        exists_status = False
+        for instance in self.test_session:
+            if valid_orm_obj == instance:
+                exists_status = True
+                break
+        self.assertTrue(exists_status, msg="Объект не добавился в сессию")
+
+    def test_save_valid_session(self):
+        self.test_session.commit()
+
+    def test_add_invalid_orm_rename_object_to_session(self):
+        invalid_orm_obj = Rename(uppercase=False, lowercase=False, defaultcase=False,
+                                 prefix=None, postfix=None, nametext=None, removeextension=False, setextension=False)
+        self.test_session.add(invalid_orm_obj)
+        exists_status = False
+        for instance in self.test_session:
+            if invalid_orm_obj == instance:
+                exists_status = True
+                break
+        self.assertTrue(exists_status, msg="Объект не добавился в сессию")
+
+    def test_save_invalid_session(self):
+        self.test_session.commit()
+
+    def test_exists_orm_object(self):
+        query = select(Rename).where(Rename.renameid == 1)
+        print(self.test_session.scalars(query).one())
+        query = select(Rename).where(Rename.renameid == 2)
+        print(self.test_session.scalars(query).one(), True)
 
 
 if __name__ == "__main__":
