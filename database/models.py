@@ -1,6 +1,6 @@
 from uuid import uuid4
 from flask import Flask
-from sqlalchemy import Integer, String, Boolean, Column, CheckConstraint
+from sqlalchemy import Integer, String, Boolean, Column, CheckConstraint, DDL
 from sqlalchemy.orm import relationship
 from flask_sqlalchemy import SQLAlchemy
 
@@ -67,12 +67,12 @@ class Operation(db.Model):
     machines = relationship("Machine", secondary=AssociationTable)
     __table__args = (
         CheckConstraint("COALESCE("
-                        "insertid, "
-                        "commentid, "
-                        "uncommentid, "
-                        "removeid, "
-                        "renameid, "
-                        "replaceid, "
+                        "insertid,"
+                        "commentid,"
+                        "uncommentid,"
+                        "removeid,"
+                        "renameid,"
+                        "replaceid,"
                         "numerationid) IS NOT NULL", name="any_operation_is_not_null"),
     )
 
@@ -142,13 +142,13 @@ db.DDL("CREATE TRIGGER control_option_insert"
        "BEFORE UPDATE,INSERT"
        "ON insert"
        "BEGIN"
-       "CREATE TEMP TABLE IF NOT EXISTS Vcount (pk INTEGER PRIMARY_KEY AUTOINCREMENT,"
+       "CREATE TEMP TABLE IF NOT EXISTS tempinsert (pk INTEGER PRIMARY_KEY AUTOINCREMENT,"
        "optionone BOOLEAN DEFAULT FALSE, optiontwo BOOLEAN DEFAULT FALSE)"
-       "IF NEW.after = 1 INSERT Vcount (optionone) VALUES (1)"
-       "IF NEW.before = 1 INSERT Vcount (optiontwo) VALUES (1)"
-       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) > 1 ROLLBACK TRANSACTION"
-       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) = 0 ROLLBACK TRANSACTION"
-       "DROP Vcount"
+       "IF NEW.after = 1 INSERT tempinsert (optionone) VALUES (1)"
+       "IF NEW.before = 1 INSERT tempinsert (optiontwo) VALUES (1)"
+       "IF (SELECT SUM(optionone, optiontwo) FROM tempinsert) > 1 ROLLBACK TRANSACTION"
+       "IF (SELECT SUM(optionone, optiontwo) FROM tempinsert) = 0 ROLLBACK TRANSACTION"
+       "DROP tempinsert"
        "END")
 
 
@@ -164,13 +164,13 @@ db.DDL("CREATE TRIGGER control_option_comment"
        "BEFORE UPDATE,INSERT"
        "ON comment"
        "BEGIN"
-       "CREATE TEMP TABLE IF NOT EXISTS Vcount (pk INTEGER PRIMARY_KEY AUTOINCREMENT,"
+       "CREATE TEMP TABLE IF NOT EXISTS tempcomment (pk INTEGER PRIMARY_KEY AUTOINCREMENT,"
        "optionone BOOLEAN DEFAULT FALSE, optiontwo BOOLEAN DEFAULT FALSE)"
-       "IF NEW.iffullmatch = 1 INSERT Vcount (optionone) VALUES (1)"
-       "IF NEW.ifcontains = 1 INSERT Vcount (optiontwo) VALUES (1)"
-       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) > 1 ROLLBACK TRANSACTION"
-       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) = 0 ROLLBACK TRANSACTION"
-       "DROP Vcount"
+       "IF NEW.iffullmatch = 1 INSERT tempcomment (optionone) VALUES (1)"
+       "IF NEW.ifcontains = 1 INSERT tempcomment (optiontwo) VALUES (1)"
+       "IF (SELECT SUM(optionone, optiontwo) FROM tempcomment) > 1 ROLLBACK TRANSACTION"
+       "IF (SELECT SUM(optionone, optiontwo) FROM tempcomment) = 0 ROLLBACK TRANSACTION"
+       "DROP tempcomment"
        "END")
 
 
@@ -186,13 +186,7 @@ db.DDL("CREATE TRIGGER control_option_uncomment"
        "BEFORE UPDATE,INSERT"
        "ON uncomment"
        "BEGIN"
-       "CREATE TEMP TABLE IF NOT EXISTS Vcount (pk INTEGER PRIMARY_KEY AUTOINCREMENT,"
-       "optionone BOOLEAN DEFAULT FALSE, optiontwo BOOLEAN DEFAULT FALSE)"
-       "IF NEW.iffullmatch = 1 INSERT Vcount (optionone) VALUES (1)"
-       "IF NEW.ifcontains = 1 INSERT Vcount (optiontwo) VALUES (1)"
-       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) > 1 ROLLBACK TRANSACTION"
-       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) = 0 ROLLBACK TRANSACTION"
-       "DROP Vcount"
+       "DROP uncomment"
        "END")
 
 
@@ -208,13 +202,13 @@ db.DDL("CREATE TRIGGER control_option_remove"
        "BEFORE UPDATE,INSERT"
        "ON remove"
        "BEGIN"
-       "CREATE TEMP TABLE IF NOT EXISTS Vcount (pk INTEGER PRIMARY_KEY AUTOINCREMENT,"
+       "CREATE TEMP TABLE IF NOT EXISTS Voptremove (pk INTEGER PRIMARY_KEY AUTOINCREMENT,"
        "optionone BOOLEAN DEFAULT FALSE, optiontwo BOOLEAN DEFAULT FALSE)"
-       "IF NEW.iffullmatch = 1 INSERT Vcount (optionone) VALUES (1)"
-       "IF NEW.ifcontains = 1 INSERT Vcount (optiontwo) VALUES (1)"
-       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) > 1 ROLLBACK TRANSACTION"
-       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) = 0 ROLLBACK TRANSACTION"
-       "DROP Vcount"
+       "IF NEW.iffullmatch = 1 INSERT Voptremove (optionone) VALUES (1)"
+       "IF NEW.ifcontains = 1 INSERT Voptremove (optiontwo) VALUES (1)"
+       "IF (SELECT SUM(optionone, optiontwo) FROM Voptremove) > 1 ROLLBACK TRANSACTION"
+       "IF (SELECT SUM(optionone, optiontwo) FROM Voptremove) = 0 ROLLBACK TRANSACTION"
+       "DROP Voptremove"
        "END")
 
 
@@ -238,21 +232,43 @@ class Rename(db.Model):
     nametext = Column(String(20), nullable=True, default=None)
     removeextension = Column(Boolean, nullable=False, default=False)
     setextension = Column(Boolean, nullable=False, default=False)
-    varibles = relationship("VarSequence", back_populates="decid")
+    varibles = relationship("VarSequence")
 
 
 db.DDL("CREATE TRIGGER rename_case_value"
        "BEFORE INSERT, UPDATE"
        "ON rename"
        "BEGIN"
-       "CREATE TEMP TABLE IF NOT EXISTS Tvar (k INTEGER PRIMARY_KEY AUTOINCREMENT, opt1 BOOLEAN DEFAULT FALSE,"
+       "CREATE TEMP TABLE Tvar (k INTEGER PRIMARY_KEY AUTOINCREMENT, opt1 BOOLEAN DEFAULT FALSE,"
        "opt2 BOOLEAN DEFAULT FALSE, opt3 BOOLEAN DEFAULT FALSE)"
+       "INSERT (opt1) VALUES (1)"
+       "INSERT (opt2) VALUES (1)"
+       "INSERT (opt3) VALUES (1)"
+       "IF (SELECT SUM(opt1, opt2, opt3) FROM Tvar) > 1 ROLLBACK TRANSACTION"
+       "IF (SELECT SUM(opt1, opt2, opt3) FROM Tvar) = 0 ROLLBACK TRANSACTION"
+       "DROP Tvar"
+       "END")
+
+
+db.DDL("CREATE TRIGGER rename_empty_values"
+       "BEFORE INSERT, UPDATE"
+       "ON rename"
+       "BEGIN"
+       "CREATE TEMP TABLE IF NOT EXISTS temp (k INTEGER PRIMARY_KEY AUTOINCREMENT, opt1 BOOLEAN DEFAULT FALSE,"
+       "opt2 BOOLEAN DEFAULT FALSE, opt3 BOOLEAN DEFAULT FALSE, opt4 DEFAULT FALSE, opt5 DEFAULT FALSE,"
+       "opt6 BOOLEAN DEFAULT FALSE, opt7 BOOLEAN DEFAULT FALSE, opt8 BOOLEAN DEFAULT FALSE"
        "IF NEW.uppercase = 1 INSERT (opt1) VALUES (1)"
        "IF NEW.lowercase = 1 INSERT (opt2) VALUES (1)"
-       "IF NEW.defaultcase INSERT (opt3) VALUES (1)"
-       "IF (SELECT SUM(opt1, opt2, opt3) FROM rename) > 1 ROLLBACK TRANSACTION"
-       "IF (SELECT SUM(opt1, opt2, opt3) FROM rename) = 0 ROLLBACK TRANSACTION"
-       "END")
+       "IF NEW.defaultcase = 1 INSERT (opt3) VALUES (1)"
+       "IF NEW.prefix = 1 INSERT (opt4) VALUES (1)"
+       "IF NEW.postfix = 1 INSERT (opt5) VALUES (1)"
+       "IF NEW.nametext = 1 INSERT (opt6) VALUES (1)"
+       "IF NEW.removeextension = 1 INSERT (opt7) VALUES (1)"
+       "IF NEW.setextension = 1 INSERT (opt8) VALUES (1)"
+       "IF (SELECT SUM(opt1, opt2, opt3, opt4, opt5, opt6, opt7, opt8) FROM temp) = 0 ROLLBACK TRANSACTION"
+       "DROP temp"
+       "END"
+       )
 
 
 class Numeration(db.Model):
