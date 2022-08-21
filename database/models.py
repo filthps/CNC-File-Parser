@@ -1,6 +1,6 @@
+import sqlalchemy as s
 from uuid import uuid4
 from flask import Flask
-from sqlalchemy import Integer, String, Boolean, Column, CheckConstraint, DDL
 from sqlalchemy.orm import relationship
 from flask_sqlalchemy import SQLAlchemy
 
@@ -33,46 +33,46 @@ OPERATION_TYPES = (
 
 class Machine(db.Model):
     __tablename__ = "machine"
-    machineid = Column(Integer, primary_key=True, autoincrement=True)
-    cncid = Column(Integer, db.ForeignKey("cnc"), unique=True, nullable=False)
-    machine_name = Column(String(100), nullable=False, unique=True)
-    x_over = Column(Integer, nullable=True)
-    y_over = Column(Integer, nullable=True)
-    z_over = Column(Integer, nullable=True)
-    x_fspeed = Column(Integer, nullable=True)
-    y_fspeed = Column(Integer, nullable=True)
-    z_fspeed = Column(Integer, nullable=True)
-    spindele_speed = Column(Integer, nullable=True)
-    input_catalog = Column(String, nullable=False)
-    output_catalog = Column(String, nullable=False)
+    machineid = s.Column(s.Integer, primary_key=True, autoincrement=True)
+    cncid = s.Column(s.Integer, db.ForeignKey("cnc"), unique=True, nullable=False)
+    machine_name = s.Column(s.String(100), nullable=False, unique=True)
+    x_over = s.Column(s.Integer, nullable=True)
+    y_over = s.Column(s.Integer, nullable=True)
+    z_over = s.Column(s.Integer, nullable=True)
+    x_fspeed = s.Column(s.Integer, nullable=True)
+    y_fspeed = s.Column(s.Integer, nullable=True)
+    z_fspeed = s.Column(s.Integer, nullable=True)
+    spindele_speed = s.Column(s.Integer, nullable=True)
+    input_catalog = s.Column(s.String, nullable=False)
+    output_catalog = s.Column(s.String, nullable=False)
     operations = relationship("Operation", secondary=AssociationTable)
     __table__args = (
-        CheckConstraint("input_catalog!=''"),
-        CheckConstraint("output_catalog!=''"),
+        s.CheckConstraint("input_catalog!=''"),
+        s.CheckConstraint("output_catalog!=''"),
     )
 
 
 class Operation(db.Model):
     __tablename__ = "operation"
-    opid = Column(String, primary_key=True, default=get_uuid)
-    insertid = Column(Integer, db.ForeignKey("insert.insid"), nullable=True)
-    commentid = Column(Integer, db.ForeignKey("comment"), nullable=True)
-    uncommentid = Column(Integer, db.ForeignKey("uncomment.id"), nullable=True)
-    removeid = Column(Integer, db.ForeignKey("remove"), nullable=True)
-    renameid = Column(Integer, db.ForeignKey("rename"), nullable=True)
-    replaceid = Column(Integer, db.ForeignKey("repl"), nullable=True)
-    numerationid = Column(Integer, db.ForeignKey("num"), nullable=True)
-    is_active = Column(Boolean, default=True, nullable=False)
-    operation_description = Column(String(300), default="", nullable=False)
+    opid = s.Column(s.String, primary_key=True, default=get_uuid)
+    insertid = s.Column(s.Integer, db.ForeignKey("insert.insid"), nullable=True)
+    commentid = s.Column(s.Integer, db.ForeignKey("comment"), nullable=True)
+    uncommentid = s.Column(s.Integer, db.ForeignKey("uncomment.id"), nullable=True)
+    removeid = s.Column(s.Integer, db.ForeignKey("remove"), nullable=True)
+    renameid = s.Column(s.Integer, db.ForeignKey("renam"), nullable=True)
+    replaceid = s.Column(s.Integer, db.ForeignKey("repl"), nullable=True)
+    numerationid = s.Column(s.Integer, db.ForeignKey("num"), nullable=True)
+    is_active = s.Column(s.Boolean, default=True, nullable=False)
+    operation_description = s.Column(s.String(300), default="", nullable=False)
     machines = relationship("Machine", secondary=AssociationTable)
     __table__args = (
-        CheckConstraint("COALESCE("
-                        "insertid,"
-                        "commentid,"
-                        "uncommentid,"
-                        "removeid,"
-                        "renameid,"
-                        "replaceid,"
+        s.CheckConstraint("COALESCE("
+                        "insertid, "
+                        "commentid, "
+                        "uncommentid, "
+                        "removeid, "
+                        "renameid, "
+                        "replaceid, "
                         "numerationid) IS NOT NULL", name="any_operation_is_not_null"),
     )
 
@@ -82,13 +82,13 @@ db.DDL("CREATE TRIGGER control_operation_type_count"
        "ON operation"
        "BEGIN"
        "CREATE TEMP TABLE IF NOT EXISTS Vars (name TEXT PRIMARY KEY, "
-       "ins INTEGER, "
-       "comment_id INTEGER, "
-       "uncomm INTEGER, "
-       "remid INTEGER, "
-       "renid INTEGER, "
-       "replid INTEGER, "
-       "numerateid INTEGER)"
+       "ins s.Integer, "
+       "comment_id s.Integer, "
+       "uncomm s.Integer, "
+       "remid s.Integer, "
+       "renid s.Integer, "
+       "replid s.Integer, "
+       "numerateid s.Integer)"
        "INSERT Vars (name, ins, comment_id, uncomm, remid, renid, replid, numerateid) "
        "VALUES ('test', 0, 0, 0, 0, 0, 0, 0)"
        "IF NEW.insertid IS NOT NULL INSERT Vars (ins) VALUES (1)"
@@ -107,192 +107,65 @@ db.DDL("CREATE TRIGGER control_operation_type_count"
 
 class Cnc(db.Model):
     __tablename__ = "cnc"
-    cncid = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(20), nullable=False, unique=True)
-    comment_symbol = Column(String(1), nullable=False)
-    except_symbols = Column(String(50), nullable=True, default=None)
+    cncid = s.Column(s.Integer, primary_key=True, autoincrement=True)
+    name = s.Column(s.String(20), nullable=False, unique=True)
+    comment_symbol = s.Column(s.String(1), nullable=False)
+    except_symbols = s.Column(s.String(50), nullable=True, default=None)
 
 
 class HeadVarible(db.Model):
     __tablename__ = "headvar"
-    varid = Column(String, default=get_uuid, primary_key=True)
-    name = Column(String, nullable=False, unique=True)
-    separator = Column(String(1), nullable=False)
-    select_all = Column(Boolean, nullable=False, default=False)
-    select_numbers = Column(Boolean, nullable=False, default=False)
-    select_string = Column(Boolean, nullable=False, default=False)
-    selection_value = Column(Boolean, nullable=False, default=False)
-    selection_key = Column(Boolean, nullable=False, default=False)
-    isnotexistsdonothing = Column(Boolean, nullable=False, default=False)
-    isnotexistsvalue = Column(Boolean, nullable=False, default=False)
-    isnotexistsbreak = Column(Boolean, nullable=False, default=False)
+    varid = s.Column(s.String, default=get_uuid, primary_key=True)
+    name = s.Column(s.String, nullable=False, unique=True)
+    separator = s.Column(s.String(1), nullable=False)
+    select_all = s.Column(s.Boolean, nullable=False, default=False)
+    select_numbers = s.Column(s.Boolean, nullable=False, default=False)
+    select_string = s.Column(s.Boolean, nullable=False, default=False)
+    selection_value = s.Column(s.Boolean, nullable=False, default=False)
+    selection_key = s.Column(s.Boolean, nullable=False, default=False)
+    isnotexistsdonothing = s.Column(s.Boolean, nullable=False, default=False)
+    isnotexistsvalue = s.Column(s.Boolean, nullable=False, default=False)
+    isnotexistsbreak = s.Column(s.Boolean, nullable=False, default=False)
 
 
 class Insert(db.Model):
     __tablename__ = "insert"
-    insid = Column(Integer, primary_key=True, autoincrement=True)
-    varid = Column(String, db.ForeignKey("headvar"), nullable=True, default=None)
-    after = Column(Boolean, default=False, nullable=False)
-    before = Column(Boolean, default=False, nullable=False)
-    target = Column(String, nullable=False)
-    item = Column(String, nullable=False)
+    insid = s.Column(s.Integer, primary_key=True, autoincrement=True)
+    varid = s.Column(s.String, db.ForeignKey("headvar"), nullable=True, default=None)
+    after = s.Column(s.Boolean, default=False, nullable=False)
+    before = s.Column(s.Boolean, default=False, nullable=False)
+    target = s.Column(s.String, nullable=False)
+    item = s.Column(s.String, nullable=False)
 
 
 db.DDL("CREATE TRIGGER control_option_insert"
        "BEFORE UPDATE,INSERT"
        "ON insert"
        "BEGIN"
-       "CREATE TEMP TABLE IF NOT EXISTS tempinsert (pk INTEGER PRIMARY_KEY AUTOINCREMENT,"
-       "optionone BOOLEAN DEFAULT FALSE, optiontwo BOOLEAN DEFAULT FALSE)"
-       "IF NEW.after = 1 INSERT tempinsert (optionone) VALUES (1)"
-       "IF NEW.before = 1 INSERT tempinsert (optiontwo) VALUES (1)"
-       "IF (SELECT SUM(optionone, optiontwo) FROM tempinsert) > 1 ROLLBACK TRANSACTION"
-       "IF (SELECT SUM(optionone, optiontwo) FROM tempinsert) = 0 ROLLBACK TRANSACTION"
-       "DROP tempinsert"
+       "CREATE TEMP TABLE IF NOT EXISTS Vcount (pk s.Integer PRIMARY_KEY AUTOINCREMENT,"
+       "optionone s.Boolean DEFAULT FALSE, optiontwo s.Boolean DEFAULT FALSE)"
+       "IF NEW.after = 1 INSERT Vcount (optionone) VALUES (1)"
+       "IF NEW.before = 1 INSERT Vcount (optiontwo) VALUES (1)"
+       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) > 1 ROLLBACK TRANSACTION"
+       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) = 0 ROLLBACK TRANSACTION"
+       "DROP Vcount"
        "END")
 
 
 class Comment(db.Model):
     __tablename__ = "comment"
-    commentid = Column(Integer, primary_key=True, autoincrement=True)
-    findstr = Column(String(100), nullable=False)
-    iffullmatch = Column(Boolean, default=False, nullable=False)
-    ifcontains = Column(Boolean, default=False, nullable=False)
+    commentid = s.Column(s.Integer, primary_key=True, autoincrement=True)
+    findstr = s.Column(s.String(100), nullable=False)
+    iffullmatch = s.Column(s.Boolean, default=False, nullable=False)
+    ifcontains = s.Column(s.Boolean, default=False, nullable=False)
 
 
 db.DDL("CREATE TRIGGER control_option_comment"
        "BEFORE UPDATE,INSERT"
        "ON comment"
        "BEGIN"
-       "CREATE TEMP TABLE IF NOT EXISTS tempcomment (pk INTEGER PRIMARY_KEY AUTOINCREMENT,"
-       "optionone BOOLEAN DEFAULT FALSE, optiontwo BOOLEAN DEFAULT FALSE)"
-       "IF NEW.iffullmatch = 1 INSERT tempcomment (optionone) VALUES (1)"
-       "IF NEW.ifcontains = 1 INSERT tempcomment (optiontwo) VALUES (1)"
-       "IF (SELECT SUM(optionone, optiontwo) FROM tempcomment) > 1 ROLLBACK TRANSACTION"
-       "IF (SELECT SUM(optionone, optiontwo) FROM tempcomment) = 0 ROLLBACK TRANSACTION"
-       "DROP tempcomment"
-       "END")
-
-
-class Uncomment(db.Model):
-    __tablename__ = "uncomment"
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    findstr = Column(String(100), nullable=False)
-    iffullmatch = Column(Boolean, nullable=False, default=False)
-    ifcontains = Column(Boolean, nullable=False, default=False)
-
-
-db.DDL("CREATE TRIGGER control_option_uncomment"
-       "BEFORE UPDATE,INSERT"
-       "ON uncomment"
-       "BEGIN"
-       "DROP uncomment"
-       "END")
-
-
-class Remove(db.Model):
-    __tablename__ = "remove"
-    removeid = Column(Integer, primary_key=True, autoincrement=True)
-    iffullmatch = Column(Boolean, nullable=False, default=False)
-    ifcontains = Column(Boolean, nullable=False, default=False)
-    findstr = Column(String(100), nullable=False)
-
-
-db.DDL("CREATE TRIGGER control_option_remove"
-       "BEFORE UPDATE,INSERT"
-       "ON remove"
-       "BEGIN"
-       "CREATE TEMP TABLE IF NOT EXISTS Voptremove (pk INTEGER PRIMARY_KEY AUTOINCREMENT,"
-       "optionone BOOLEAN DEFAULT FALSE, optiontwo BOOLEAN DEFAULT FALSE)"
-       "IF NEW.iffullmatch = 1 INSERT Voptremove (optionone) VALUES (1)"
-       "IF NEW.ifcontains = 1 INSERT Voptremove (optiontwo) VALUES (1)"
-       "IF (SELECT SUM(optionone, optiontwo) FROM Voptremove) > 1 ROLLBACK TRANSACTION"
-       "IF (SELECT SUM(optionone, optiontwo) FROM Voptremove) = 0 ROLLBACK TRANSACTION"
-       "DROP Voptremove"
-       "END")
-
-
-class VarSequence(db.Model):
-    __tablename__ = "varsec"
-    decid = Column(String, default=get_uuid, primary_key=True)
-    varid = Column(String, db.ForeignKey("headvar"), nullable=False)
-    insertid = Column(Integer, db.ForeignKey("insert.insid"), nullable=True)
-    renameid = Column(Integer, db.ForeignKey("rename"), nullable=True)
-    strindex = Column(Integer, nullable=False)
-
-
-class Rename(db.Model):
-    __tablename__ = "rename"
-    renameid = Column(Integer, primary_key=True, autoincrement=True)
-    uppercase = Column(Boolean, nullable=False, default=False)
-    lowercase = Column(Boolean, nullable=False, default=False)
-    defaultcase = Column(Boolean, nullable=False, default=True)
-    prefix = Column(String(10), nullable=True, default=None)
-    postfix = Column(String(10), nullable=True, default=None)
-    nametext = Column(String(20), nullable=True, default=None)
-    removeextension = Column(Boolean, nullable=False, default=False)
-    setextension = Column(Boolean, nullable=False, default=False)
-    varibles = relationship("VarSequence")
-
-
-db.DDL("CREATE TRIGGER rename_case_value"
-       "BEFORE INSERT, UPDATE"
-       "ON rename"
-       "BEGIN"
-       "CREATE TEMP TABLE Tvar (k INTEGER PRIMARY_KEY AUTOINCREMENT, opt1 BOOLEAN DEFAULT FALSE,"
-       "opt2 BOOLEAN DEFAULT FALSE, opt3 BOOLEAN DEFAULT FALSE)"
-       "INSERT (opt1) VALUES (1)"
-       "INSERT (opt2) VALUES (1)"
-       "INSERT (opt3) VALUES (1)"
-       "IF (SELECT SUM(opt1, opt2, opt3) FROM Tvar) > 1 ROLLBACK TRANSACTION"
-       "IF (SELECT SUM(opt1, opt2, opt3) FROM Tvar) = 0 ROLLBACK TRANSACTION"
-       "DROP Tvar"
-       "END")
-
-
-db.DDL("CREATE TRIGGER rename_empty_values"
-       "BEFORE INSERT, UPDATE"
-       "ON rename"
-       "BEGIN"
-       "CREATE TEMP TABLE IF NOT EXISTS temp (k INTEGER PRIMARY_KEY AUTOINCREMENT, opt1 BOOLEAN DEFAULT FALSE,"
-       "opt2 BOOLEAN DEFAULT FALSE, opt3 BOOLEAN DEFAULT FALSE, opt4 DEFAULT FALSE, opt5 DEFAULT FALSE,"
-       "opt6 BOOLEAN DEFAULT FALSE, opt7 BOOLEAN DEFAULT FALSE, opt8 BOOLEAN DEFAULT FALSE"
-       "IF NEW.uppercase = 1 INSERT (opt1) VALUES (1)"
-       "IF NEW.lowercase = 1 INSERT (opt2) VALUES (1)"
-       "IF NEW.defaultcase = 1 INSERT (opt3) VALUES (1)"
-       "IF NEW.prefix = 1 INSERT (opt4) VALUES (1)"
-       "IF NEW.postfix = 1 INSERT (opt5) VALUES (1)"
-       "IF NEW.nametext = 1 INSERT (opt6) VALUES (1)"
-       "IF NEW.removeextension = 1 INSERT (opt7) VALUES (1)"
-       "IF NEW.setextension = 1 INSERT (opt8) VALUES (1)"
-       "IF (SELECT SUM(opt1, opt2, opt3, opt4, opt5, opt6, opt7, opt8) FROM temp) = 0 ROLLBACK TRANSACTION"
-       "DROP temp"
-       "END"
-       )
-
-
-class Numeration(db.Model):
-    __tablename__ = "num"
-    numerationid = Column(Integer, nullable=False, autoincrement=True, primary_key=True)
-    startat = Column(Integer, nullable=True, default=None)
-    endat = Column(Integer, nullable=True, default=None)
-
-
-class Replace(db.Model):
-    __tablename__ = "repl"
-    replaceid = Column(Integer, primary_key=True, autoincrement=True)
-    findstr = Column(String(100), nullable=False)
-    ifcontains = Column(Boolean, nullable=False, default=False)
-    iffullmatch = Column(Boolean, nullable=False, default=False)
-    item = Column(String(100), nullable=False)
-
-
-db.DDL("CREATE TRIGGER control_option_replace"
-       "BEFORE UPDATE,INSERT"
-       "ON repl"
-       "BEGIN"
-       "CREATE TEMP TABLE IF NOT EXISTS Vcount (pk INTEGER PRIMARY_KEY AUTOINCREMENT,"
-       "optionone BOOLEAN DEFAULT FALSE, optiontwo BOOLEAN DEFAULT FALSE)"
+       "CREATE TEMP TABLE IF NOT EXISTS Vcount (pk s.Integer PRIMARY_KEY AUTOINCREMENT,"
+       "optionone s.Boolean DEFAULT FALSE, optiontwo s.Boolean DEFAULT FALSE)"
        "IF NEW.iffullmatch = 1 INSERT Vcount (optionone) VALUES (1)"
        "IF NEW.ifcontains = 1 INSERT Vcount (optiontwo) VALUES (1)"
        "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) > 1 ROLLBACK TRANSACTION"
@@ -301,6 +174,123 @@ db.DDL("CREATE TRIGGER control_option_replace"
        "END")
 
 
+class Uncomment(db.Model):
+    __tablename__ = "uncomment"
+    id = s.Column(s.Integer, primary_key=True, autoincrement=True)
+    findstr = s.Column(s.String(100), nullable=False)
+    iffullmatch = s.Column(s.Boolean, nullable=False, default=False)
+    ifcontains = s.Column(s.Boolean, nullable=False, default=False)
+
+
+db.DDL("CREATE TRIGGER control_option_uncomment"
+       "BEFORE UPDATE,INSERT"
+       "ON uncomment"
+       "BEGIN"
+       "CREATE TEMP TABLE IF NOT EXISTS Vcount (pk s.Integer PRIMARY_KEY AUTOINCREMENT,"
+       "optionone s.Boolean DEFAULT FALSE, optiontwo s.Boolean DEFAULT FALSE)"
+       "IF NEW.iffullmatch = 1 INSERT Vcount (optionone) VALUES (1)"
+       "IF NEW.ifcontains = 1 INSERT Vcount (optiontwo) VALUES (1)"
+       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) > 1 ROLLBACK TRANSACTION"
+       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) = 0 ROLLBACK TRANSACTION"
+       "DROP Vcount"
+       "END")
+
+
+class Remove(db.Model):
+    __tablename__ = "remove"
+    removeid = s.Column(s.Integer, primary_key=True, autoincrement=True)
+    iffullmatch = s.Column(s.Boolean, nullable=False, default=False)
+    ifcontains = s.Column(s.Boolean, nullable=False, default=False)
+    findstr = s.Column(s.String(100), nullable=False)
+
+
+db.DDL("CREATE TRIGGER control_option_remove"
+       "BEFORE UPDATE,INSERT"
+       "ON remove"
+       "BEGIN"
+       "CREATE TEMP TABLE IF NOT EXISTS Vcount (pk s.Integer PRIMARY_KEY AUTOINCREMENT,"
+       "optionone s.Boolean DEFAULT FALSE, optiontwo s.Boolean DEFAULT FALSE)"
+       "IF NEW.iffullmatch = 1 INSERT Vcount (optionone) VALUES (1)"
+       "IF NEW.ifcontains = 1 INSERT Vcount (optiontwo) VALUES (1)"
+       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) > 1 ROLLBACK TRANSACTION"
+       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) = 0 ROLLBACK TRANSACTION"
+       "DROP Vcount"
+       "END")
+
+
+class VarSequence(db.Model):
+    __tablename__ = "varsec"
+    decid = s.Column(s.String, default=get_uuid, primary_key=True)
+    varid = s.Column(s.String, db.ForeignKey("headvar"), nullable=False)
+    insertid = s.Column(s.Integer, db.ForeignKey("insert.insid"), nullable=True)
+    renameid = s.Column(s.Integer, db.ForeignKey("renam"), nullable=True)
+    strindex = s.Column(s.Integer, nullable=False)
+
+
+class Rename(db.Model):
+    __tablename__ = "renam"
+    renameid = s.Column(s.Integer, primary_key=True, autoincrement=True)
+    uppercase = s.Column(s.Boolean, nullable=False, default=False)
+    lowercase = s.Column(s.Boolean, nullable=False, default=False)
+    defaultcase = s.Column(s.Boolean, nullable=False, default=True)
+    prefix = s.Column(s.String(10), nullable=True, default=None)
+    postfix = s.Column(s.String(10), nullable=True, default=None)
+    nametext = s.Column(s.String(20), nullable=True, default=None)
+    removeextension = s.Column(s.Boolean, nullable=False, default=False)
+    setextension = s.Column(s.Boolean, nullable=False, default=False)
+    varibles = relationship("VarSequence")
+    __table__args = (
+        s.CheckConstraint("uppercase > 0 OR lowercase > 0 OR defaultcase > 0", name="any_value_case_rename")
+    )
+
+
+class Numeration(db.Model):
+    __tablename__ = "num"
+    numerationid = s.Column(s.Integer, nullable=False, autoincrement=True, primary_key=True)
+    startat = s.Column(s.Integer, nullable=True, default=None)
+    endat = s.Column(s.Integer, nullable=True, default=None)
+
+
+class Replace(db.Model):
+    __tablename__ = "repl"
+    replaceid = s.Column(s.Integer, primary_key=True, autoincrement=True)
+    findstr = s.Column(s.String(100), nullable=False)
+    ifcontains = s.Column(s.Boolean, nullable=False, default=False)
+    iffullmatch = s.Column(s.Boolean, nullable=False, default=False)
+    item = s.Column(s.String(100), nullable=False)
+
+
+db.DDL("CREATE TRIGGER control_option_replace"
+       "BEFORE UPDATE,INSERT"
+       "ON repl"
+       "BEGIN"
+       "CREATE TEMP TABLE IF NOT EXISTS Vcount (pk Integer PRIMARY_KEY AUTOINCREMENT,"
+       "optionone s.Boolean DEFAULT FALSE, optiontwo s.Boolean DEFAULT FALSE)"
+       "IF NEW.iffullmatch = 1 INSERT Vcount (optionone) VALUES (1)"
+       "IF NEW.ifcontains = 1 INSERT Vcount (optiontwo) VALUES (1)"
+       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) > 1 ROLLBACK TRANSACTION"
+       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) = 0 ROLLBACK TRANSACTION"
+       "DROP Vcount"
+       "END")
+
+
+test_table = db.Table("t_table",
+                      db.Column("k", db.Integer, primary_key=True, autoincrement=True),
+                      db.Column("test_n", db.Integer, default=0)
+                      )
+
 if __name__ == "__main__":
     db.drop_all()
     db.create_all()
+
+
+db.engine.execute(s.DDL("""
+    CREATE TRIGGER 'rename_case_value'
+    BEFORE INSERT
+    ON 'renam' FOR EACH ROW
+    BEGIN
+    CASE
+        WHEN NEW.uppercase > 0
+    END
+    END;
+    """))
