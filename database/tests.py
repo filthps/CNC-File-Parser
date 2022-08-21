@@ -1,5 +1,6 @@
 import unittest
 from sqlalchemy import select
+from sqlalchemy.engine.result import ScalarResult
 from sqlalchemy.exc import IntegrityError, DataError, OperationalError
 from .models import db, Cnc, Machine, Comment, Insert, Uncomment, Rename
 
@@ -8,6 +9,7 @@ CNC_NAME = "Fidia"
 MACHINE_NAME = "Heller"
 
 
+@unittest.skip
 class TestCncModel(unittest.TestCase):
 
     def setUp(self) -> None:
@@ -35,7 +37,7 @@ class TestCncModel(unittest.TestCase):
         item = select(Cnc).where(Cnc.name == self.name)
         print(self.test_session.scalars(item).one())
 
-
+@unittest.skip
 class TestMachineModel(unittest.TestCase):
     def setUp(self) -> None:
         self.machine_name = MACHINE_NAME
@@ -70,6 +72,7 @@ class TestMachineModel(unittest.TestCase):
         print(self.test_session.scalars(item).one())
 
 
+@unittest.skip
 class TestCommentModel(unittest.TestCase):
     def setUp(self) -> None:
         self.test_session = db.session
@@ -100,6 +103,7 @@ class TestCommentModel(unittest.TestCase):
         print(self.test_session.scalars(query).one())
 
 
+@unittest.skip
 class TestUncommentModel(unittest.TestCase):
     def setUp(self) -> None:
         self.test_session = db.session
@@ -139,10 +143,6 @@ class TestModelRename(unittest.TestCase):
                                prefix="", postfix="", nametext="", removeextension=False, setextension=False)
         self.assertTrue(isinstance(valid_orm_obj, db.Model))
 
-    def test_create_invalid_empty_orm_rename_object(self):
-        invalid_orm_obj = Rename(uppercase=False, lowercase=False, defaultcase=False,
-                                 prefix=None, postfix=None, nametext=None, removeextension=False, setextension=False)
-
     def test_add_valid_orm_rename_object_to_session(self):
         valid_orm_obj = Rename(uppercase=True, lowercase=False, defaultcase=False,
                                prefix="12", postfix=None, nametext=None, removeextension=False, setextension=False)
@@ -173,11 +173,9 @@ class TestModelRename(unittest.TestCase):
 
     def test_exists_orm_object(self):
         query = select(Rename).where(Rename.renameid == 1)
-        print(self.test_session.scalars(query).one())
+        print(self.test_session.scalars(query).one(), "First")
         query = select(Rename).where(Rename.renameid == 2)
-        print(self.test_session.scalars(query).one(), True)
-
-
-if __name__ == "__main__":
-    TestCncModel.main()
-    TestMachineModel.main()
+        item: ScalarResult = self.test_session.scalars(query)
+        elem = item.one_or_none()
+        if elem is not None:
+            print(elem, "Second")
