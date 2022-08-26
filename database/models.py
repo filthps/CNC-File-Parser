@@ -5,8 +5,10 @@ from sqlalchemy.orm import relationship
 from flask_sqlalchemy import SQLAlchemy
 
 
+DATABASE_PATH = "postgresql://postgres:g8ln7ze5vm6a@localhost:5432/intex"
+
+
 app = Flask(__name__)
-DATABASE_PATH = "sqlite:///" + "../database.db"
 app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_PATH
 db = SQLAlchemy(app)
 
@@ -67,13 +69,13 @@ class Operation(db.Model):
     machines = relationship("Machine", secondary=AssociationTable)
     __table__args = (
         s.CheckConstraint("COALESCE("
-                        "insertid, "
-                        "commentid, "
-                        "uncommentid, "
-                        "removeid, "
-                        "renameid, "
-                        "replaceid, "
-                        "numerationid) IS NOT NULL", name="any_operation_is_not_null"),
+                          "insertid, "
+                          "commentid, "
+                          "uncommentid, "
+                          "removeid, "
+                          "renameid, "
+                          "replaceid, "
+                          "numerationid) IS NOT NULL", name="any_operation_is_not_null"),
     )
 
 
@@ -283,14 +285,24 @@ if __name__ == "__main__":
     db.drop_all()
     db.create_all()
 
+    db.engine.execute(s.DDL("""
+        CREATE OR REPLACE FUNCTION rename_filter_values() RETURNS trigger
+        AS $fnc$
+        DECLARE 
+        counter integer := 0;
+        BEGIN
+            SELECT counter + NEW.uppercase INTO counter;
+            SELECT counter + NEW.lowercase INTO counter;
+            SELECT counter + NEW.defaultcase INTO counter;
+            IF counter > 1 THEN ROLLBACK;
+            END IF;
+        END; $fnc$
+        LANGUAGE PLPGSQL
+        """))
 
-db.engine.execute(s.DDL("""
-    CREATE TRIGGER 'rename_case_value'
-    BEFORE INSERT
-    ON 'renam' FOR EACH ROW
-    BEGIN
-    CASE
-        WHEN NEW.uppercase > 0
-    END
-    END;
-    """))
+    db.engine.execute(s.DDL("""
+        CREATE TRIGGER rename_case_value
+        BEFORE INSERT OR UPDATE
+        ON renam FOR EACH ROW
+        EXECUTE PROCEDURE rename_filter_values();
+        """))
