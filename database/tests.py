@@ -1,7 +1,8 @@
 import unittest
+from traceback import print_exc
 from sqlalchemy import select
 from sqlalchemy.engine.result import ScalarResult
-from sqlalchemy.exc import IntegrityError, DataError, OperationalError
+from sqlalchemy.exc import InternalError
 from .models import db, Cnc, Machine, Comment, Insert, Uncomment, Rename
 
 
@@ -143,9 +144,9 @@ class TestModelRename(unittest.TestCase):
                                prefix="", postfix="", nametext="", removeextension=False, setextension=False)
         self.assertTrue(isinstance(valid_orm_obj, db.Model))
 
-    def test_add_valid_orm_rename_object_to_session(self):
+    def test_save_valid_instance(self):
         valid_orm_obj = Rename(uppercase=True, lowercase=False, defaultcase=False,
-                               prefix="12", postfix=None, nametext=None, removeextension=False, setextension=False)
+                               prefix="valid", postfix=None, nametext=None, removeextension=False, setextension=False)
         self.test_session.add(valid_orm_obj)
         exists_status = False
         for instance in self.test_session:
@@ -153,13 +154,11 @@ class TestModelRename(unittest.TestCase):
                 exists_status = True
                 break
         self.assertTrue(exists_status, msg="Объект не добавился в сессию")
-
-    def test_save_valid_session(self):
         self.test_session.commit()
 
-    def test_add_invalid_orm_rename_object_to_session(self):
-        invalid_orm_obj = Rename(uppercase=False, lowercase=False, defaultcase=False,
-                                 prefix=None, postfix=None, nametext=None, removeextension=False, setextension=False)
+    def test_save_invalid_instance___case_multi_value(self):
+        invalid_orm_obj = Rename(uppercase=True, lowercase=True, defaultcase=False,
+                                 prefix="invalid", postfix=None, nametext=None, removeextension=False, setextension=False)
         self.test_session.add(invalid_orm_obj)
         exists_status = False
         for instance in self.test_session:
@@ -167,15 +166,5 @@ class TestModelRename(unittest.TestCase):
                 exists_status = True
                 break
         self.assertTrue(exists_status, msg="Объект не добавился в сессию")
-
-    def test_save_invalid_session(self):
-        self.test_session.commit()
-
-    def test_exists_orm_object(self):
-        query = select(Rename).where(Rename.renameid == 1)
-        print(self.test_session.scalars(query).one(), "First")
-        query = select(Rename).where(Rename.renameid == 2)
-        item: ScalarResult = self.test_session.scalars(query)
-        elem = item.one_or_none()
-        if elem is not None:
-            print(elem, "Second")
+        with self.assertRaises(InternalError) as error:
+            self.test_session.commit()
