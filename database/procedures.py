@@ -34,36 +34,36 @@ def init_operation_delegation_table_triggers():
     """)
 
     db.engine.execute("""
-            CREATE OR REPLACE FUNCTION check_count_delegation_options() RETURNS trigger
-            AS $body$
-            DECLARE
-                counter smallint := 0;
-            BEGIN
-                SELECT counter + (CASE WHEN NEW.conditionid IS NOT NULL THEN 1 ELSE 0 END) INTO counter;
-                SELECT counter + (CASE WHEN NEW.insertid IS NOT NULL THEN 1 ELSE 0 END) INTO counter;
-                SELECT counter + (CASE WHEN NEW.commentid IS NOT NULL THEN 1 ELSE 0 END) INTO counter;
-                SELECT counter + (CASE WHEN NEW.uncommentid IS NOT NULL THEN 1 ELSE 0 END) INTO counter;
-                SELECT counter + (CASE WHEN NEW.removeid IS NOT NULL THEN 1 ELSE 0 END) INTO counter;
-                SELECT counter + (CASE WHEN NEW.renameid IS NOT NULL THEN 1 ELSE 0 END) INTO counter;
-                SELECT counter + (CASE WHEN NEW.replaceid IS NOT NULL THEN 1 ELSE 0 END) INTO counter;
-                SELECT counter + (CASE WHEN NEW.numerationid IS NOT NULL THEN 1 ELSE 0 END) INTO counter;
-                IF counter = 0 THEN
-                    RAISE EXCEPTION 'Не указана опция для операции';
-                ELSEIF counter > 1 THEN
-                    RAISE EXCEPTION 'Указано больше одной опции для операции';
-                ELSE
-                    RETURN NEW;
-                END IF;             
-            END; $body$
-            LANGUAGE PLPGSQL 
-        """)
+        CREATE OR REPLACE FUNCTION check_count_delegation_options() RETURNS trigger
+        AS $body$
+        DECLARE
+            counter smallint := 0;
+        BEGIN
+            SELECT counter + (CASE WHEN NEW.conditionid IS NOT NULL THEN 1 ELSE 0 END) INTO counter;
+            SELECT counter + (CASE WHEN NEW.insertid IS NOT NULL THEN 1 ELSE 0 END) INTO counter;
+            SELECT counter + (CASE WHEN NEW.commentid IS NOT NULL THEN 1 ELSE 0 END) INTO counter;
+            SELECT counter + (CASE WHEN NEW.uncommentid IS NOT NULL THEN 1 ELSE 0 END) INTO counter;
+            SELECT counter + (CASE WHEN NEW.removeid IS NOT NULL THEN 1 ELSE 0 END) INTO counter;
+            SELECT counter + (CASE WHEN NEW.renameid IS NOT NULL THEN 1 ELSE 0 END) INTO counter;
+            SELECT counter + (CASE WHEN NEW.replaceid IS NOT NULL THEN 1 ELSE 0 END) INTO counter;
+            SELECT counter + (CASE WHEN NEW.numerationid IS NOT NULL THEN 1 ELSE 0 END) INTO counter;
+            IF counter = 0 THEN
+                RAISE EXCEPTION 'Не указана опция для операции';
+            ELSEIF counter > 1 THEN
+                RAISE EXCEPTION 'Указано больше одной опции для операции';
+            ELSE
+                RETURN NEW;
+            END IF;             
+        END; $body$
+        LANGUAGE PLPGSQL 
+    """)
 
     db.engine.execute("""
-            CREATE TRIGGER delegation_trigger_counter
-            BEFORE INSERT OR UPDATE
-            ON operation FOR EACH ROW
-            EXECUTE PROCEDURE check_count_delegation_options();
-        """)
+        CREATE TRIGGER delegation_trigger_counter
+        BEFORE INSERT OR UPDATE
+        ON operation FOR EACH ROW
+        EXECUTE PROCEDURE check_count_delegation_options();
+    """)
 
 
 def init_cnc_table_triggers():
@@ -95,17 +95,17 @@ def init_cnc_table_triggers():
 
 def init_condition_table_triggers():
     db.engine.execute("""
-    CREATE OR REPLACE FUNCTION control_self_parent_condition() RETURNS trigger
-    AS $body$
-    BEGIN
-        IF NEW.parent IS NOT NULL AND NEW.parent=NEW.cnd THEN
-            RAISE EXCEPTION 'Невозможна привязка условия самого на себя';
-        ELSE
-            RETURN NEW;
-        END IF;
-    END; $body$
-    LANGUAGE PLPGSQL
-    """)
+        CREATE OR REPLACE FUNCTION control_self_parent_condition() RETURNS trigger
+        AS $body$
+        BEGIN
+            IF NEW.parent IS NOT NULL AND NEW.parent=NEW.cnd THEN
+                RAISE EXCEPTION 'Невозможна привязка условия самого на себя';
+            ELSE
+                RETURN NEW;
+            END IF;
+        END; $body$
+        LANGUAGE PLPGSQL
+        """)
 
     db.engine.execute("""
         CREATE TRIGGER check_self_parent_condition
@@ -144,23 +144,23 @@ def init_condition_table_triggers():
         """)
 
     db.engine.execute("""
-            CREATE OR REPLACE FUNCTION check_condition_options() RETURNS trigger
-            AS $body$
-            DECLARE
-                counter smallint := 0;
-            BEGIN
-                SELECT counter + (CASE WHEN NEW.isntfind THEN 1 ELSE 0 END) INTO counter;
-                SELECT counter + (CASE WHEN NEW.findfull THEN 1 ELSE 0 END) INTO counter;
-                SELECT counter + (CASE WHEN NEW.findpart THEN 1 ELSE 0 END) INTO counter;
-                IF counter != 1
-                THEN
-                    RAISE EXCEPTION 'Невалидное состояние опций isntfind, findfull и findpart!';
-                ELSE
-                    RETURN NEW;
-                END IF;
-            END; $body$
-            LANGUAGE PLPGSQL
-            """)
+        CREATE OR REPLACE FUNCTION check_condition_options() RETURNS trigger
+        AS $body$
+        DECLARE
+            counter smallint := 0;
+        BEGIN
+            SELECT counter + (CASE WHEN NEW.isntfind THEN 1 ELSE 0 END) INTO counter;
+            SELECT counter + (CASE WHEN NEW.findfull THEN 1 ELSE 0 END) INTO counter;
+            SELECT counter + (CASE WHEN NEW.findpart THEN 1 ELSE 0 END) INTO counter;
+            IF counter != 1
+            THEN
+                RAISE EXCEPTION 'Невалидное состояние опций isntfind, findfull и findpart!';
+            ELSE
+                RETURN NEW;
+            END IF;
+        END; $body$
+        LANGUAGE PLPGSQL
+        """)
 
     db.engine.execute("""
         CREATE TRIGGER check_condition_values
@@ -478,7 +478,7 @@ def init_insert_table_triggers():
     db.engine.execute("""
     CREATE TRIGGER check_unique_instance_insert
     BEFORE INSERT OR UPDATE
-    ON renam FOR EACH ROW
+    ON insert FOR EACH ROW
     EXECUTE PROCEDURE insert_count_instances();
     """)
 
@@ -503,9 +503,183 @@ def init_insert_table_triggers():
     db.engine.execute(DDL("""
         CREATE TRIGGER insert_trigger
         BEFORE INSERT OR UPDATE
-        ON renam FOR EACH ROW
+        ON insert FOR EACH ROW
         EXECUTE PROCEDURE insert_filter_values();
     """))
+
+
+def init_machine_table_triggers():
+    db.engine.execute("""
+        CREATE OR REPLACE FUNCTION machine_count_instances() RETURNS trigger
+        AS $body$
+        BEGIN
+            IF EXISTS(
+                SELECT 1
+                FROM machine
+                WHERE cncid=NEW.cncid
+                AND machine_name=NEW.machine_name
+                AND x_over=NEW.x_over OR x_over IS NULL
+                AND y_over=NEW.y_over OR y_over IS NULL
+                AND z_over=NEW.z_over OR z_over IS NULL
+                AND x_fspeed=NEW.x_fspeed OR x_fspeed IS NULL
+                AND y_fspeed=NEW.y_fspeed OR y_fspeed IS NULL
+                AND z_fspeed=NEW.z_fspeed OR z_fspeed IS NULL
+                AND spindele_speed=NEW.spindele_speed OR spindele_speed IS NULL
+                AND input_catalog=NEW.input_catalog
+                AND output_catalog=NEW.output_catalog
+                ) THEN
+                    RAISE EXCEPTION 'Данный экземпляр сущности уже существует';
+                ELSE
+                    RETURN NEW;
+                END IF;
+        END; $body$
+        LANGUAGE PLPGSQL
+        """)
+
+    db.engine.execute("""
+        CREATE TRIGGER check_machine
+        BEFORE INSERT OR UPDATE
+        ON machine FOR EACH ROW
+        EXECUTE PROCEDURE machine_count_instances();
+        """)
+
+
+def init_headvarible_table_triggers():
+    db.engine.execute("""
+        CREATE OR REPLACE FUNCTION headvarible_count_instances() RETURNS trigger
+        AS $body$
+        BEGIN
+            IF EXISTS(
+                SELECT 1
+                FROM headvar
+                WHERE name=NEW.name
+                AND separator=new.separator
+                AND select_all=NEW.select_all
+                AND select_numbers=NEW.select_numbers
+                AND select_string=NEW.select_string
+                AND select_reg=NEW.select_reg 
+                ) THEN
+                    RAISE EXCEPTION 'Данный экземпляр сущности уже существует';
+                ELSE
+                    RETURN NEW;
+                END IF;
+        END; $body$
+        LANGUAGE PLPGSQL
+        """)
+
+    db.engine.execute("""
+        CREATE TRIGGER check_headvarible
+        BEFORE INSERT OR UPDATE
+        ON headvar FOR EACH ROW
+        EXECUTE PROCEDURE headvarible_count_instances();
+        """)
+
+    db.engine.execute("""
+        CREATE OR REPLACE FUNCTION headvar_check_select_options() RETURNS trigger
+        AS $body$
+        DECLARE
+            select_counter smallint := 0;
+            isnotexists_counter smallint := 0;
+        BEGIN
+            SELECT select_counter + (CASE WHEN NEW.select_all THEN 1 ELSE 0 END) INTO select_counter;
+            SELECT select_counter + (CASE WHEN NEW.select_numbers THEN 1 ELSE 0 END) INTO select_counter;
+            SELECT select_counter + (CASE WHEN NEW.select_string THEN 1 ELSE 0 END) INTO select_counter;
+            SELECT select_counter + (CASE WHEN NEW.select_reg IS NOT NULL THEN 1 ELSE 0 END) INTO select_counter;
+            SELECT isnotexists_counter + (CASE WHEN NEW.isnotexistsdonothing THEN 1 ELSE 0 END) INTO isnotexists_counter;
+            SELECT isnotexists_counter + (CASE WHEN NEW.isnotexistsvalue IS NOT NULL THEN 1 ELSE 0 END) INTO isnotexists_counter;
+            SELECT isnotexists_counter + (CASE WHEN NEW.isnotexistsbreak THEN 1 ELSE 0 END) INTO isnotexists_counter;
+            IF isnotexists_counter != 1 THEN
+                RAISE EXCEPTION 'Недействительные опции isnotexists*, - не выбрано ни одной, или выбрано несколько';
+            END IF;
+            IF select_counter != 1 THEN
+                RAISE EXCEPTION 'Недействительные опции select_*, - не выбрано ни одной, или выбрано несколько';
+            END IF;
+            RETURN NEW;
+        END; $body$
+        LANGUAGE PLPGSQL
+        """)
+
+    db.engine.execute("""
+        CREATE TRIGGER check_headvarible_select_options
+        BEFORE INSERT OR UPDATE
+        ON headvar FOR EACH ROW
+        EXECUTE PROCEDURE headvar_check_select_options();
+        """)
+
+
+def init_headvardelegation_table_triggers():
+    db.engine.execute("""
+        CREATE OR REPLACE FUNCTION varsec_check_unique() RETURNS trigger
+        AS $body$
+        BEGIN
+            IF EXISTS(SELECT 1
+            FROM varsec
+            WHERE varid=NEW.varid
+            AND insertid=NEW.insertid OR insertid IS NULL
+            AND renameid=NEW.renameid OR renameid IS NULL) THEN 
+                RAISE EXCEPTION 'Данный экземпляр сущности уже существует';
+            ELSE
+                RETURN NEW;
+            END IF;
+        END; $body$
+        LANGUAGE PLPGSQL
+        """)
+
+    db.engine.execute("""
+        CREATE TRIGGER check_varsec_instance
+        BEFORE INSERT OR UPDATE
+        ON varsec FOR EACH ROW
+        EXECUTE PROCEDURE varsec_check_unique();
+        """)
+
+    db.engine.execute("""
+        CREATE OR REPLACE FUNCTION varsec_check_options() RETURNS trigger
+        AS $body$
+        DECLARE
+            counter smallint := 0;
+        BEGIN
+            SELECT counter + (CASE WHEN NEW.insertid IS NOT NULL THEN 1 ELSE 0 END) INTO counter;
+            SELECT counter + (CASE WHEN NEW.renameid IS NOT NULL THEN 1 ELSE 0 END) INTO counter;
+            IF counter != 1 THEN
+                RAISE EXCEPTION 'Недействительные опции для FK*, - не выбрано ни одной, или выбрано несколько';
+            ELSE
+                RETURN NEW;
+            END IF;
+        END; $body$
+        LANGUAGE PLPGSQL
+        """)
+
+    db.engine.execute("""
+        CREATE TRIGGER check_varsec_options
+        BEFORE INSERT OR UPDATE
+        ON varsec FOR EACH ROW
+        EXECUTE PROCEDURE varsec_check_options();
+        """)
+
+
+def init_taskdelegation_table_triggers():
+    db.engine.execute("""
+        CREATE OR REPLACE FUNCTION taskdelegate_check_unique() RETURNS trigger
+        AS $body$
+        BEGIN
+            IF EXISTS(SELECT 1
+            FROM taskdelegate
+            WHERE machineid=NEW.machineid
+            AND operationid=NEW.operationid) THEN 
+                RAISE EXCEPTION 'Данный экземпляр сущности уже существует';
+            ELSE
+                RETURN NEW;
+            END IF;
+        END; $body$
+        LANGUAGE PLPGSQL
+        """)
+
+    db.engine.execute("""
+        CREATE TRIGGER check_taskdelegate_instance
+        BEFORE INSERT OR UPDATE
+        ON taskdelegate FOR EACH ROW
+        EXECUTE PROCEDURE taskdelegate_check_unique();
+        """)
 
 
 if __name__ == "__main__":
@@ -519,3 +693,7 @@ if __name__ == "__main__":
     init_cnc_table_triggers()
     init_insert_table_triggers()
     init_operation_delegation_table_triggers()
+    init_machine_table_triggers()
+    init_headvarible_table_triggers()
+    init_headvardelegation_table_triggers()
+    init_taskdelegation_table_triggers()
