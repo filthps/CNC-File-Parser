@@ -75,7 +75,7 @@ class Operation(db.Model):
     numerationid = Column(Integer, db.ForeignKey("num.numerationid"), nullable=True, default=None)
     is_active = Column(Boolean, default=True, nullable=False)
     operation_description = Column(String(300), default="", nullable=False)
-    #machines = relationship("Machine", secondary=TaskDelegation.__table__)
+    machines = relationship("Machine", secondary=TaskDelegation.__table__)
 
 
 class Condition(db.Model):
