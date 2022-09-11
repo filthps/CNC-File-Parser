@@ -1,7 +1,8 @@
 import time
 import unittest
 from sqlalchemy.exc import InternalError, IntegrityError, PendingRollbackError
-from .models import db, Cnc, Machine, Comment, Insert, Uncomment, Rename, Condition, Replace, Numeration, Remove, Operation
+from .models import db, Cnc, Machine, Comment, Insert, Uncomment, Rename, Condition, Replace, Numeration, Remove, \
+    Operation, HeadVarible, HeadVarDelegation, TaskDelegation
 
 
 class TestCncModel(unittest.TestCase):
@@ -749,8 +750,8 @@ class TestModelRemove(unittest.TestCase):
 
 class TestModelOperation(unittest.TestCase):
     """
-        Запускать тесты по одному
-        """
+    Запускать тесты по одному
+    """
 
     def setUp(self) -> None:
         self.test_session = db.session
@@ -828,5 +829,315 @@ class TestModelOperation(unittest.TestCase):
         """
         valid_orm_obj = Operation()
         self.test_session.add(valid_orm_obj)
+        with self.assertRaises((InternalError, IntegrityError,)):
+            self.test_session.commit()
+
+
+class TestModelHeadVarible(unittest.TestCase):
+    """
+    Запускать тесты по одному
+    """
+
+    def setUp(self) -> None:
+        self.test_session = db.session
+
+    def test_create_valid_orm_object(self):
+        valid_orm_obj = HeadVarible(name="tool", separator=":", select_all=True)
+        self.assertTrue(isinstance(valid_orm_obj, db.Model))
+
+    def test_save_valid_instance(self):
+        valid_orm_obj = HeadVarible(name="tool", separator=":", select_all=True)
+        self.test_session.add(valid_orm_obj)
+        exists_status = False
+        for instance in self.test_session:
+            if valid_orm_obj == instance:
+                exists_status = True
+                break
+        self.assertTrue(exists_status, msg="Объект не добавился в сессию")
+        self.test_session.commit()
+
+    def test_save_invalid_instance__the_same(self):
+        """
+        Этот экзмеляр сущности уже создан
+        """
+        valid_orm_obj = HeadVarible(name="sk", separator=":")
+        self.test_session.add(valid_orm_obj)
+        self.test_session.commit()
+        time.sleep(1)
+        other_valid_same_object = HeadVarible(name="sk", separator=":")
+        self.test_session.add(other_valid_same_object)
+        with self.assertRaises((InternalError, IntegrityError,)):
+            self.test_session.commit()
+
+    def test_save_invalid_instance__case_invalid_select_option_multiple(self):
+        valid_orm_obj = HeadVarible(name="tool", separator=":", select_all=True, select_string=True)
+        self.test_session.add(valid_orm_obj)
+        exists_status = False
+        for instance in self.test_session:
+            if valid_orm_obj == instance:
+                exists_status = True
+                break
+        self.assertTrue(exists_status, msg="Объект не добавился в сессию")
+        with self.assertRaises((InternalError, IntegrityError,)):
+            self.test_session.commit()
+
+    def test_save_invalid_instance__case_invalid_isnotexists_option_multiple(self):
+        valid_orm_obj = HeadVarible(name="tool", separator=":", select_all=True, isnotexistsdonothing=True, isnotexistsbreak=True)
+        self.test_session.add(valid_orm_obj)
+        exists_status = False
+        for instance in self.test_session:
+            if valid_orm_obj == instance:
+                exists_status = True
+                break
+        self.assertTrue(exists_status, msg="Объект не добавился в сессию")
+        with self.assertRaises((InternalError, IntegrityError,)):
+            self.test_session.commit()
+
+    def test_save_invalid_instance__case_invalid_select_option_empty(self):
+        valid_orm_obj = HeadVarible(name="somevar", separator=":", select_all=False, select_string=False,
+                                    select_numbers=False, select_reg=None)
+        self.test_session.add(valid_orm_obj)
+        exists_status = False
+        for instance in self.test_session:
+            if valid_orm_obj == instance:
+                exists_status = True
+                break
+        self.assertTrue(exists_status, msg="Объект не добавился в сессию")
+        with self.assertRaises((InternalError, IntegrityError,)):
+            self.test_session.commit()
+
+    def test_save_invalid_instance__case_invalid_isnotexists_option_empty(self):
+        valid_orm_obj = HeadVarible(name="somevar1", separator=":", select_all=True,
+                                    isnotexistsdonothing=False, isnotexistsbreak=False, isnotexistsvalue=None)
+        self.test_session.add(valid_orm_obj)
+        exists_status = False
+        for instance in self.test_session:
+            if valid_orm_obj == instance:
+                exists_status = True
+                break
+        self.assertTrue(exists_status, msg="Объект не добавился в сессию")
+        with self.assertRaises((InternalError, IntegrityError,)):
+            self.test_session.commit()
+
+    def test_save_invalid_instance__case_invalid_separator(self):
+        valid_orm_obj = HeadVarible(name="somevar1", separator="", select_all=True,
+                                    isnotexistsdonothing=True)
+        self.test_session.add(valid_orm_obj)
+        exists_status = False
+        for instance in self.test_session:
+            if valid_orm_obj == instance:
+                exists_status = True
+                break
+        self.assertTrue(exists_status, msg="Объект не добавился в сессию")
+        with self.assertRaises((InternalError, IntegrityError,)):
+            self.test_session.commit()
+
+
+class TestModelHeadVarDelegation(unittest.TestCase):
+    """
+    Запускать тесты по одному
+    """
+
+    def setUp(self) -> None:
+        self.test_session = db.session
+
+    def get_or_create_headvar(self):
+        instance = HeadVarible.query.first()
+        if instance is None:
+            instance = HeadVarible(name="someheadvar", separator=":", select_all=True)
+            self.test_session.add(instance)
+            self.test_session.commit()
+            instance = HeadVarible.query.first()
+        return instance
+
+    def get_or_create_insert(self):
+        instance = Insert.query.first()
+        if instance is None:
+            q = Insert(target="test", item="G4544", after=True)
+            self.test_session.add(q)
+            self.test_session.commit()
+            instance = Insert.query.first()
+        return instance
+
+    def get_or_create_rename(self):
+        instance = Rename.query.first()
+        if instance is None:
+            q = Rename(uppercase=True, prefix="valid")
+            self.test_session.add(q)
+            self.test_session.commit()
+            instance = Rename.query.first()
+        return instance
+
+    def test_create_valid_orm_object(self):
+        rename_id = self.get_or_create_rename().renameid
+        var_id = self.get_or_create_headvar().varid
+        valid_orm_obj = HeadVarDelegation(varid=var_id, renameid=rename_id)
+        self.assertTrue(isinstance(valid_orm_obj, db.Model))
+
+    def test_save_valid_instance(self):
+        rename_id = self.get_or_create_rename().renameid
+        var_id = self.get_or_create_headvar().varid
+        valid_orm_obj = HeadVarDelegation(varid=var_id, renameid=rename_id)
+        self.test_session.add(valid_orm_obj)
+        exists_status = False
+        for instance in self.test_session:
+            if valid_orm_obj == instance:
+                exists_status = True
+                break
+        self.assertTrue(exists_status, msg="Объект не добавился в сессию")
+        self.test_session.commit()
+
+    def test_save_invalid_fk(self):
+        invalid_orm_obj = HeadVarDelegation(varid=109, renameid=101)
+        self.test_session.add(invalid_orm_obj)
+        exists_status = False
+        for instance in self.test_session:
+            if invalid_orm_obj == instance:
+                exists_status = True
+                break
+        self.assertTrue(exists_status, msg="Объект не добавился в сессию")
+        with self.assertRaises(IntegrityError):
+            self.test_session.commit()
+
+    def test_save_invalid_instance__the_same(self):
+        """
+        Этот экзмеляр сущности уже создан
+        """
+        rename_id = self.get_or_create_rename().renameid
+        var_id = self.get_or_create_headvar().varid
+        valid_orm_obj = HeadVarDelegation(varid=var_id, renameid=rename_id)
+        self.test_session.add(valid_orm_obj)
+        self.test_session.commit()
+        time.sleep(1)
+        other_valid_same_object = HeadVarDelegation(varid=var_id, renameid=rename_id)
+        self.test_session.add(other_valid_same_object)
+        with self.assertRaises((InternalError, IntegrityError,)):
+            self.test_session.commit()
+
+    def test_save_invalid_instance__multiple_fk(self):
+        """
+        Указаны оба FK - rename и insert, что недопустимо
+        """
+        rename_id = self.get_or_create_rename().renameid
+        insert_id = self.get_or_create_insert().insid
+        var_id = self.get_or_create_headvar().varid
+        valid_orm_obj = HeadVarDelegation(varid=var_id, renameid=rename_id, insertid=insert_id)
+        self.test_session.add(valid_orm_obj)
+        with self.assertRaises((InternalError, IntegrityError,)):
+            self.test_session.commit()
+
+    def test_save_invalid_instance__empty_fk(self):
+        """
+        Указаны оба FK - rename и insert, что недопустимо
+        """
+        rename_id = self.get_or_create_rename().renameid
+        insert_id = self.get_or_create_insert().insid
+        var_id = self.get_or_create_headvar().varid
+        valid_orm_obj = HeadVarDelegation(varid=var_id)
+        self.test_session.add(valid_orm_obj)
+        with self.assertRaises((InternalError, IntegrityError,)):
+            self.test_session.commit()
+
+    def test_save_invalid_instance__empty_varid(self):
+        """
+        Указаны оба FK - rename и insert, что недопустимо
+        """
+        rename_id = self.get_or_create_rename().renameid
+        insert_id = self.get_or_create_insert().insid
+        var_id = self.get_or_create_headvar().varid
+        valid_orm_obj = HeadVarDelegation(insertid=insert_id)
+        self.test_session.add(valid_orm_obj)
+        with self.assertRaises((InternalError, IntegrityError,)):
+            self.test_session.commit()
+
+
+class TestModelTaskDelegation(unittest.TestCase):
+    """
+        Запускать тесты по одному
+        """
+
+    def setUp(self) -> None:
+        self.test_session = db.session
+
+    def get_or_create_rename(self):
+        instance = Rename.query.first()
+        if instance is None:
+            q = Rename(uppercase=True, prefix="valid134")
+            self.test_session.add(q)
+            self.test_session.commit()
+            instance = Rename.query.first()
+        return instance
+
+    def get_or_create_operation(self):
+        instance = Operation.query.first()
+        if instance is None:
+            instance = Operation(renameid=self.get_or_create_rename().renameid)
+            self.test_session.add(instance)
+            self.test_session.commit()
+            instance = Operation.query.first()
+        return instance
+
+    def get_or_create_cnc(self):
+        instance = Cnc.query.first()
+        if instance is None:
+            obj = Cnc(name="Fidia1", comment_symbol="/")
+            self.test_session.add(obj)
+            self.test_session.commit()
+            instance = Cnc.query.first()
+        return instance
+
+    def get_or_create_machine(self):
+        instance = Machine.query.first()
+        if instance is None:
+            instance = Machine(cncid=self.get_or_create_cnc().cncid, machine_name="65A80",
+                                input_catalog="C://65A80", output_catalog="D://65A80")
+            self.test_session.add(instance)
+            self.test_session.commit()
+            instance = Machine.query.first()
+        return instance
+
+    def test_create_valid_orm_object(self):
+        operation_id = self.get_or_create_operation().opid
+        machine_id = self.get_or_create_machine().machineid
+        valid_orm_obj = TaskDelegation(machineid=machine_id, operationid=operation_id)
+        self.assertTrue(isinstance(valid_orm_obj, db.Model))
+
+    def test_save_valid_instance(self):
+        operation_id = self.get_or_create_operation().opid
+        machine_id = self.get_or_create_machine().machineid
+        valid_orm_obj = TaskDelegation(machineid=machine_id, operationid=operation_id)
+        self.test_session.add(valid_orm_obj)
+        exists_status = False
+        for instance in self.test_session:
+            if valid_orm_obj == instance:
+                exists_status = True
+                break
+        self.assertTrue(exists_status, msg="Объект не добавился в сессию")
+        self.test_session.commit()
+
+    def test_save_invalid_fk(self):
+        invalid_orm_obj = TaskDelegation(machineid=344, operationid=0)
+        self.test_session.add(invalid_orm_obj)
+        exists_status = False
+        for instance in self.test_session:
+            if invalid_orm_obj == instance:
+                exists_status = True
+                break
+        self.assertTrue(exists_status, msg="Объект не добавился в сессию")
+        with self.assertRaises(IntegrityError):
+            self.test_session.commit()
+
+    def test_save_invalid_instance__the_same(self):
+        """
+        Этот экзмеляр сущности уже создан
+        """
+        operation_id = self.get_or_create_operation().opid
+        machine_id = self.get_or_create_machine().machineid
+        valid_orm_obj = TaskDelegation(machineid=machine_id, operationid=operation_id)
+        self.test_session.add(valid_orm_obj)
+        self.test_session.commit()
+        time.sleep(1)
+        other_valid_same_object = TaskDelegation(machineid=machine_id, operationid=operation_id)
+        self.test_session.add(other_valid_same_object)
         with self.assertRaises((InternalError, IntegrityError,)):
             self.test_session.commit()
