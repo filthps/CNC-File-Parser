@@ -80,7 +80,7 @@ class Condition(db.Model):
     findpart = Column(Boolean, default=False)
     conditionbasevalue = Column(Boolean, default=True)
     __table_args__ = (
-        CheckConstraint("targetstr!=''"),
+        CheckConstraint("targetstr!=''", name="cond_targetstr_empty"),
     )
 
 
