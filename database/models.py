@@ -36,8 +36,8 @@ class TaskDelegation(db.Model):
 class Machine(db.Model):
     __tablename__ = "machine"
     machineid = Column(Integer, primary_key=True, autoincrement=True)
-    cncid = Column(Integer, db.ForeignKey("cnc"))
-    machine_name = Column(String(100), unique=True)
+    cncid = Column(Integer, db.ForeignKey("cnc"), nullable=False)
+    machine_name = Column(String(100), unique=True, nullable=False)
     x_over = Column(Integer, nullable=True, default=None)
     y_over = Column(Integer, nullable=True, default=None)
     z_over = Column(Integer, nullable=True, default=None)
@@ -45,8 +45,8 @@ class Machine(db.Model):
     y_fspeed = Column(Integer, nullable=True, default=None)
     z_fspeed = Column(Integer, nullable=True, default=None)
     spindele_speed = Column(Integer, nullable=True, default=None)
-    input_catalog = Column(String)
-    output_catalog = Column(String)
+    input_catalog = Column(String, nullable=False)
+    output_catalog = Column(String, nullable=False)
     operations = relationship("Operation", secondary=TaskDelegation.__table__)
     __table_args__ = (
         CheckConstraint("machine_name!=''", name="machine_name_empty"),
@@ -73,8 +73,8 @@ class Operation(db.Model):
     renameid = Column(Integer, db.ForeignKey("renam.renameid"), nullable=True, default=None)
     replaceid = Column(Integer, db.ForeignKey("repl.replaceid"), nullable=True, default=None)
     numerationid = Column(Integer, db.ForeignKey("num.numerationid"), nullable=True, default=None)
-    is_active = Column(Boolean, default=True)
-    operation_description = Column(String(300), default="")
+    is_active = Column(Boolean, default=True, nullable=False)
+    operation_description = Column(String(300), default="", nullable=False)
     #machines = relationship("Machine", secondary=TaskDelegation.__table__)
 
 
@@ -83,10 +83,10 @@ class Condition(db.Model):
     cnd = Column(String, primary_key=True, default=get_uuid)
     parent = Column(String, db.ForeignKey("cond.cnd"), nullable=True, default=None)
     targetstr = Column(String(100), unique=True, nullable=False)
-    isntfind = Column(Boolean, default=False)
-    findfull = Column(Boolean, default=False)
-    findpart = Column(Boolean, default=False)
-    conditionbasevalue = Column(Boolean, default=True)
+    isntfind = Column(Boolean, default=False, nullable=False)
+    findfull = Column(Boolean, default=False, nullable=False)
+    findpart = Column(Boolean, default=False, nullable=False)
+    conditionbasevalue = Column(Boolean, default=True, nullable=False)
     __table_args__ = (
         CheckConstraint("targetstr!=''", name="cond_targetstr_empty"),
     )
@@ -95,8 +95,8 @@ class Condition(db.Model):
 class Cnc(db.Model):
     __tablename__ = "cnc"
     cncid = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(20), unique=True)
-    comment_symbol = Column(String(1))
+    name = Column(String(20), unique=True, nullable=False)
+    comment_symbol = Column(String(1), nullable=False)
     except_symbols = Column(String(50), nullable=True, default=None)
     __table_args__ = (
         CheckConstraint("comment_symbol!=''", name="comment_symbol_empty"),
@@ -107,15 +107,15 @@ class Cnc(db.Model):
 class HeadVarible(db.Model):
     __tablename__ = "headvar"
     varid = Column(String, default=get_uuid, primary_key=True)
-    name = Column(String, unique=True)
-    separator = Column(String(7))
-    select_all = Column(Boolean, default=True)
-    select_numbers = Column(Boolean, default=False)
-    select_string = Column(Boolean, default=False)
+    name = Column(String, unique=True, nullable=False)
+    separator = Column(String(7), nullable=False)
+    select_all = Column(Boolean, default=True, nullable=False)
+    select_numbers = Column(Boolean, default=False, nullable=False)
+    select_string = Column(Boolean, default=False, nullable=False)
     select_reg = Column(String, nullable=True, default=None)
-    isnotexistsdonothing = Column(Boolean, default=True)
+    isnotexistsdonothing = Column(Boolean, default=True, nullable=False)
     isnotexistsvalue = Column(String, nullable=True, default=None)
-    isnotexistsbreak = Column(Boolean, default=False)
+    isnotexistsbreak = Column(Boolean, default=False, nullable=False)
     __table_args__ = (
         CheckConstraint("name!=''", name="headvar_empty_name"),
         CheckConstraint("select_reg IS NULL OR select_reg LIKE('%<v>%')", name="headvar_reg_format"),
@@ -126,10 +126,10 @@ class HeadVarible(db.Model):
 class Insert(db.Model):
     __tablename__ = "insert"
     insid = Column(Integer, primary_key=True, autoincrement=True)
-    after = Column(Boolean, default=False)
-    before = Column(Boolean, default=False)
-    target = Column(String)
-    item = Column(String)
+    after = Column(Boolean, default=False, nullable=False)
+    before = Column(Boolean, default=False, nullable=False)
+    target = Column(String, nullable=False)
+    item = Column(String, nullable=False)
     __table_args__ = (
         CheckConstraint("after!=before", name="after_equal_before"),
         CheckConstraint("target!=''", name="empty_target"),
@@ -141,17 +141,17 @@ class Insert(db.Model):
 class Comment(db.Model):
     __tablename__ = "comment"
     commentid = Column(Integer, primary_key=True, autoincrement=True)
-    findstr = Column(String(100))
-    iffullmatch = Column(Boolean, default=False)
-    ifcontains = Column(Boolean, default=False)
+    findstr = Column(String(100), nullable=False)
+    iffullmatch = Column(Boolean, default=False, nullable=False)
+    ifcontains = Column(Boolean, default=False, nullable=False)
 
 
 class Uncomment(db.Model):
     __tablename__ = "uncomment"
     id = Column(Integer, primary_key=True, autoincrement=True)
-    findstr = Column(String(100))
-    iffullmatch = Column(Boolean, default=False)
-    ifcontains = Column(Boolean, default=False)
+    findstr = Column(String(100), nullable=False)
+    iffullmatch = Column(Boolean, default=False, nullable=False)
+    ifcontains = Column(Boolean, default=False, nullable=False)
     __table_args__ = (
         CheckConstraint("findstr!=''", name="empty_findstr"),
     )
@@ -160,9 +160,9 @@ class Uncomment(db.Model):
 class Remove(db.Model):
     __tablename__ = "remove"
     removeid = Column(Integer, primary_key=True, autoincrement=True)
-    iffullmatch = Column(Boolean, default=False)
-    ifcontains = Column(Boolean, default=False)
-    findstr = Column(String(100))
+    iffullmatch = Column(Boolean, default=False, nullable=False)
+    ifcontains = Column(Boolean, default=False, nullable=False)
+    findstr = Column(String(100), nullable=False)
     __table_args__ = (
         CheckConstraint("findstr!=''", name="empty_findstr"),
         CheckConstraint("iffullmatch!=ifcontains", name="equal_iffullmatch_and_ifcontains"),
@@ -175,18 +175,18 @@ class HeadVarDelegation(db.Model):
     varid = Column(String, db.ForeignKey("headvar.varid"), nullable=False)
     insertid = Column(Integer, db.ForeignKey("insert.insid"), nullable=True, default=None)
     renameid = Column(Integer, db.ForeignKey("renam.renameid"), nullable=True, default=None)
-    strindex = Column(Integer, default=0)
+    strindex = Column(Integer, default=0, nullable=False)
 
 
 class Rename(db.Model):
     __tablename__ = "renam"
     renameid = Column(Integer, primary_key=True, autoincrement=True)
-    uppercase = Column(Boolean, default=False)
-    lowercase = Column(Boolean, default=False)
+    uppercase = Column(Boolean, default=False, nullable=False)
+    lowercase = Column(Boolean, default=False, nullable=False)
     prefix = Column(String(10), nullable=True, default=None)
     postfix = Column(String(10), nullable=True, default=None)
     nametext = Column(String(20), nullable=True, default=None)
-    removeextension = Column(Boolean, default=False)
+    removeextension = Column(Boolean, default=False, nullable=False)
     setextension = Column(String(10), nullable=True, default=None)
     #varibles = relationship("HeadVarDelegation")
 
@@ -194,7 +194,7 @@ class Rename(db.Model):
 class Numeration(db.Model):
     __tablename__ = "num"
     numerationid = Column(Integer, autoincrement=True, primary_key=True)
-    startat = Column(Integer, nullable=True, default=None)
+    startat = Column(Integer, nullable=False, default=1)
     endat = Column(Integer, nullable=True, default=None)
     __table_args__ = (
         CheckConstraint("startat!=endat", name="startat_equal_endat"),
@@ -207,10 +207,10 @@ class Numeration(db.Model):
 class Replace(db.Model):
     __tablename__ = "repl"
     replaceid = Column(Integer, primary_key=True, autoincrement=True)
-    findstr = Column(String(100))
-    ifcontains = Column(Boolean, default=False)
-    iffullmatch = Column(Boolean, default=False)
-    item = Column(String(100))
+    findstr = Column(String(100), nullable=False)
+    ifcontains = Column(Boolean, default=False, nullable=False)
+    iffullmatch = Column(Boolean, default=False, nullable=False)
+    item = Column(String(100), nullable=False)
     __table_args__ = (
         CheckConstraint("ifcontains!=iffullmatch", name="ifcontains_equal_iffullmatch"),
         CheckConstraint("item!=''", name="empty_item"),

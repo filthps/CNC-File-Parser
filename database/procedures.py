@@ -178,7 +178,7 @@ def init_numeration_table_triggers():
             IF EXISTS(
                 SELECT 1
                 FROM num
-                WHERE startat=NEW.startat OR startat IS NULL
+                WHERE startat=NEW.startat
                 AND endat=NEW.endat OR endat IS NULL
             ) THEN
                 RAISE EXCEPTION 'Данный экземпляр сущности уже существует';
