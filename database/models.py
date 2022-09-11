@@ -1,11 +1,11 @@
 from uuid import uuid4
-from sqlalchemy import ForeignKey, String, Integer, Column, Boolean, CheckConstraint
+from sqlalchemy import String, Integer, Column, Boolean, CheckConstraint
 from sqlalchemy.orm import relationship
 from flask_sqlalchemy import SQLAlchemy as FlaskSQLAlchemy
 from flask import Flask
 
 
-DATABASE_PATH = "postgresql://postgres:g8ln7ze5vm6a@localhost:5432/intex"
+DATABASE_PATH = "postgresql://postgres:g8ln7ze5vm6a@localhost:5432/intex1"
 
 
 app = Flask(__name__)
@@ -27,9 +27,10 @@ OPERATION_TYPES = (
 
 
 class TaskDelegation(db.Model):
+    __tablename__ = "taskdelegate"
     id = Column(String, primary_key=True, default=get_uuid)
-    machineid = Column(ForeignKey("machine.machineid"))
-    operationid = Column(ForeignKey("operation.opid"))
+    machineid = Column(db.ForeignKey("machine.machineid"), nullable=False)
+    operationid = Column(db.ForeignKey("operation.opid"), nullable=False)
 
 
 class Machine(db.Model):
@@ -51,13 +52,20 @@ class Machine(db.Model):
         CheckConstraint("machine_name!=''", name="machine_name_empty"),
         CheckConstraint("input_catalog!=''", name="input_catalog_empty"),
         CheckConstraint("output_catalog!=''", name="output_catalog_empty"),
+        CheckConstraint("x_over>0", name="x_over_must_be_positive"),
+        CheckConstraint("y_over>0", name="y_over_must_be_positive"),
+        CheckConstraint("z_over>0", name="z_over_must_be_positive"),
+        CheckConstraint("x_fspeed>0", name="x_fspeed_must_be_positive"),
+        CheckConstraint("y_fspeed>0", name="y_fspeed_must_be_positive"),
+        CheckConstraint("z_fspeed>0", name="z_fspeed_must_be_positive"),
+        CheckConstraint("spindele_speed>0", name="spindele_speed_must_be_positive"),
     )
 
 
 class Operation(db.Model):
     __tablename__ = "operation"
     opid = Column(String, primary_key=True, default=get_uuid)
-    conditionid = Column(String, ForeignKey("cond.cnd"), nullable=True, default=None)
+    conditionid = Column(String, db.ForeignKey("cond.cnd"), nullable=True, default=None)
     insertid = Column(Integer, db.ForeignKey("insert.insid"), nullable=True, default=None)
     commentid = Column(Integer, db.ForeignKey("comment.commentid"), nullable=True, default=None)
     uncommentid = Column(Integer, db.ForeignKey("uncomment.id"), nullable=True, default=None)
@@ -73,7 +81,7 @@ class Operation(db.Model):
 class Condition(db.Model):
     __tablename__ = "cond"
     cnd = Column(String, primary_key=True, default=get_uuid)
-    parent = Column(String, ForeignKey("cond.cnd"), nullable=True, default=None)
+    parent = Column(String, db.ForeignKey("cond.cnd"), nullable=True, default=None)
     targetstr = Column(String(100), unique=True, nullable=False)
     isntfind = Column(Boolean, default=False)
     findfull = Column(Boolean, default=False)
@@ -101,13 +109,18 @@ class HeadVarible(db.Model):
     varid = Column(String, default=get_uuid, primary_key=True)
     name = Column(String, unique=True)
     separator = Column(String(7))
-    select_all = Column(Boolean, default=False)
+    select_all = Column(Boolean, default=True)
     select_numbers = Column(Boolean, default=False)
     select_string = Column(Boolean, default=False)
-    select_reg = Column(Boolean, default=False)
-    isnotexistsdonothing = Column(Boolean, default=False)
-    isnotexistsvalue = Column(Boolean, default=False)
+    select_reg = Column(String, nullable=True, default=None)
+    isnotexistsdonothing = Column(Boolean, default=True)
+    isnotexistsvalue = Column(String, nullable=True, default=None)
     isnotexistsbreak = Column(Boolean, default=False)
+    __table_args__ = (
+        CheckConstraint("name!=''", name="headvar_empty_name"),
+        CheckConstraint("select_reg IS NULL OR select_reg LIKE('%<v>%')", name="headvar_reg_format"),
+        CheckConstraint("isnotexistsvalue!=''", name="isnotexistsvalue_empty"),
+    )
 
 
 class Insert(db.Model):
@@ -159,7 +172,7 @@ class Remove(db.Model):
 class HeadVarDelegation(db.Model):
     __tablename__ = "varsec"
     secid = Column(String, default=get_uuid, primary_key=True)
-    varid = Column(String, db.ForeignKey("headvar.varid"))
+    varid = Column(String, db.ForeignKey("headvar.varid"), nullable=False)
     insertid = Column(Integer, db.ForeignKey("insert.insid"), nullable=True, default=None)
     renameid = Column(Integer, db.ForeignKey("renam.renameid"), nullable=True, default=None)
     strindex = Column(Integer, default=0)
