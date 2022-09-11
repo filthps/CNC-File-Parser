@@ -35,7 +35,7 @@ class TaskDelegation(db.Model):
 class Machine(db.Model):
     __tablename__ = "machine"
     machineid = Column(Integer, primary_key=True, autoincrement=True)
-    cncid = Column(Integer, db.ForeignKey("cnc"), unique=True)
+    cncid = Column(Integer, db.ForeignKey("cnc"))
     machine_name = Column(String(100), unique=True)
     x_over = Column(Integer, nullable=True, default=None)
     y_over = Column(Integer, nullable=True, default=None)
@@ -46,10 +46,11 @@ class Machine(db.Model):
     spindele_speed = Column(Integer, nullable=True, default=None)
     input_catalog = Column(String)
     output_catalog = Column(String)
-    operations = relationship("Operation", secondary=TaskDelegation)
-    __table__args = (
-        CheckConstraint("input_catalog!=''"),
-        CheckConstraint("output_catalog!=''"),
+    operations = relationship("Operation", secondary=TaskDelegation.__table__)
+    __table_args__ = (
+        CheckConstraint("machine_name!=''", name="machine_name_empty"),
+        CheckConstraint("input_catalog!=''", name="input_catalog_empty"),
+        CheckConstraint("output_catalog!=''", name="output_catalog_empty"),
     )
 
 
@@ -66,18 +67,21 @@ class Operation(db.Model):
     numerationid = Column(Integer, db.ForeignKey("num.numerationid"), nullable=True, default=None)
     is_active = Column(Boolean, default=True)
     operation_description = Column(String(300), default="")
-    machines = relationship("Machine", secondary=TaskDelegation)
+    #machines = relationship("Machine", secondary=TaskDelegation.__table__)
 
 
 class Condition(db.Model):
     __tablename__ = "cond"
     cnd = Column(String, primary_key=True, default=get_uuid)
     parent = Column(String, ForeignKey("cond.cnd"), nullable=True, default=None)
-    targetstr = Column(String(100))
+    targetstr = Column(String(100), unique=True, nullable=False)
     isntfind = Column(Boolean, default=False)
     findfull = Column(Boolean, default=False)
     findpart = Column(Boolean, default=False)
     conditionbasevalue = Column(Boolean, default=True)
+    __table_args__ = (
+        CheckConstraint("targetstr!=''"),
+    )
 
 
 class Cnc(db.Model):
@@ -86,6 +90,10 @@ class Cnc(db.Model):
     name = Column(String(20), unique=True)
     comment_symbol = Column(String(1))
     except_symbols = Column(String(50), nullable=True, default=None)
+    __table_args__ = (
+        CheckConstraint("comment_symbol!=''", name="comment_symbol_empty"),
+        CheckConstraint("name!=''", name="name_empty"),
+    )
 
 
 class HeadVarible(db.Model):
@@ -109,6 +117,12 @@ class Insert(db.Model):
     before = Column(Boolean, default=False)
     target = Column(String)
     item = Column(String)
+    __table_args__ = (
+        CheckConstraint("after!=before", name="after_equal_before"),
+        CheckConstraint("target!=''", name="empty_target"),
+        CheckConstraint("item!=''", name="empty_item"),
+        CheckConstraint("target!=item", name="target_equal_item"),
+    )
 
 
 class Comment(db.Model):
@@ -125,6 +139,9 @@ class Uncomment(db.Model):
     findstr = Column(String(100))
     iffullmatch = Column(Boolean, default=False)
     ifcontains = Column(Boolean, default=False)
+    __table_args__ = (
+        CheckConstraint("findstr!=''", name="empty_findstr"),
+    )
 
 
 class Remove(db.Model):
@@ -133,6 +150,10 @@ class Remove(db.Model):
     iffullmatch = Column(Boolean, default=False)
     ifcontains = Column(Boolean, default=False)
     findstr = Column(String(100))
+    __table_args__ = (
+        CheckConstraint("findstr!=''", name="empty_findstr"),
+        CheckConstraint("iffullmatch!=ifcontains", name="equal_iffullmatch_and_ifcontains"),
+    )
 
 
 class HeadVarDelegation(db.Model):
@@ -154,7 +175,7 @@ class Rename(db.Model):
     nametext = Column(String(20), nullable=True, default=None)
     removeextension = Column(Boolean, default=False)
     setextension = Column(String(10), nullable=True, default=None)
-    varibles = relationship("VarSequence")
+    #varibles = relationship("HeadVarDelegation")
 
 
 class Numeration(db.Model):
@@ -162,6 +183,12 @@ class Numeration(db.Model):
     numerationid = Column(Integer, autoincrement=True, primary_key=True)
     startat = Column(Integer, nullable=True, default=None)
     endat = Column(Integer, nullable=True, default=None)
+    __table_args__ = (
+        CheckConstraint("startat!=endat", name="startat_equal_endat"),
+        CheckConstraint("startat<=0", name="negatory_startat_value"),
+        CheckConstraint("endat<=0", name="negatory_endat_value"),
+        CheckConstraint("startat>endat", name="startat_more_then_endat"),
+    )
 
 
 class Replace(db.Model):
@@ -171,6 +198,12 @@ class Replace(db.Model):
     ifcontains = Column(Boolean, default=False)
     iffullmatch = Column(Boolean, default=False)
     item = Column(String(100))
+    __table_args__ = (
+        CheckConstraint("ifcontains!=iffullmatch", name="ifcontains_equal_iffullmatch"),
+        CheckConstraint("item!=''", name="empty_item"),
+        CheckConstraint("findstr!=''", name="empty_findstr"),
+        CheckConstraint("findstr!=item", name="findstr_equal_item"),
+    )
 
 
 if __name__ == "__main__":
