@@ -1,25 +1,20 @@
-import sqlalchemy as s
 from uuid import uuid4
-from flask import Flask
+from sqlalchemy import ForeignKey, String, Integer, Column, Boolean, CheckConstraint
 from sqlalchemy.orm import relationship
-from flask_sqlalchemy import SQLAlchemy
+from flask_sqlalchemy import SQLAlchemy as FlaskSQLAlchemy
+from flask import Flask
+
+
+DATABASE_PATH = "postgresql://postgres:g8ln7ze5vm6a@localhost:5432/intex"
 
 
 app = Flask(__name__)
-DATABASE_PATH = "sqlite:///" + "../database.db"
 app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_PATH
-db = SQLAlchemy(app)
+db = FlaskSQLAlchemy(app)
 
 
 def get_uuid():
     return str(uuid4())
-
-
-AssociationTable = db.Table("TaskDelegation",
-                            db.Column("id", db.String, primary_key=True, default=get_uuid),
-                            db.Column("machineid", db.Integer, db.ForeignKey("machine.machineid")),
-                            db.Column("operationid", db.String, db.ForeignKey("operation.opid")),
-                            )
 
 
 OPERATION_TYPES = (
@@ -31,266 +26,186 @@ OPERATION_TYPES = (
 )
 
 
+class TaskDelegation(db.Model):
+    id = Column(String, primary_key=True, default=get_uuid)
+    machineid = Column(ForeignKey("machine.machineid"))
+    operationid = Column(ForeignKey("operation.opid"))
+
+
 class Machine(db.Model):
     __tablename__ = "machine"
-    machineid = s.Column(s.Integer, primary_key=True, autoincrement=True)
-    cncid = s.Column(s.Integer, db.ForeignKey("cnc"), unique=True, nullable=False)
-    machine_name = s.Column(s.String(100), nullable=False, unique=True)
-    x_over = s.Column(s.Integer, nullable=True)
-    y_over = s.Column(s.Integer, nullable=True)
-    z_over = s.Column(s.Integer, nullable=True)
-    x_fspeed = s.Column(s.Integer, nullable=True)
-    y_fspeed = s.Column(s.Integer, nullable=True)
-    z_fspeed = s.Column(s.Integer, nullable=True)
-    spindele_speed = s.Column(s.Integer, nullable=True)
-    input_catalog = s.Column(s.String, nullable=False)
-    output_catalog = s.Column(s.String, nullable=False)
-    operations = relationship("Operation", secondary=AssociationTable)
-    __table__args = (
-        s.CheckConstraint("input_catalog!=''"),
-        s.CheckConstraint("output_catalog!=''"),
+    machineid = Column(Integer, primary_key=True, autoincrement=True)
+    cncid = Column(Integer, db.ForeignKey("cnc"))
+    machine_name = Column(String(100), unique=True)
+    x_over = Column(Integer, nullable=True, default=None)
+    y_over = Column(Integer, nullable=True, default=None)
+    z_over = Column(Integer, nullable=True, default=None)
+    x_fspeed = Column(Integer, nullable=True, default=None)
+    y_fspeed = Column(Integer, nullable=True, default=None)
+    z_fspeed = Column(Integer, nullable=True, default=None)
+    spindele_speed = Column(Integer, nullable=True, default=None)
+    input_catalog = Column(String)
+    output_catalog = Column(String)
+    operations = relationship("Operation", secondary=TaskDelegation.__table__)
+    __table_args__ = (
+        CheckConstraint("machine_name!=''", name="machine_name_empty"),
+        CheckConstraint("input_catalog!=''", name="input_catalog_empty"),
+        CheckConstraint("output_catalog!=''", name="output_catalog_empty"),
     )
 
 
 class Operation(db.Model):
     __tablename__ = "operation"
-    opid = s.Column(s.String, primary_key=True, default=get_uuid)
-    insertid = s.Column(s.Integer, db.ForeignKey("insert.insid"), nullable=True)
-    commentid = s.Column(s.Integer, db.ForeignKey("comment"), nullable=True)
-    uncommentid = s.Column(s.Integer, db.ForeignKey("uncomment.id"), nullable=True)
-    removeid = s.Column(s.Integer, db.ForeignKey("remove"), nullable=True)
-    renameid = s.Column(s.Integer, db.ForeignKey("renam"), nullable=True)
-    replaceid = s.Column(s.Integer, db.ForeignKey("repl"), nullable=True)
-    numerationid = s.Column(s.Integer, db.ForeignKey("num"), nullable=True)
-    is_active = s.Column(s.Boolean, default=True, nullable=False)
-    operation_description = s.Column(s.String(300), default="", nullable=False)
-    machines = relationship("Machine", secondary=AssociationTable)
-    __table__args = (
-        s.CheckConstraint("COALESCE("
-                        "insertid, "
-                        "commentid, "
-                        "uncommentid, "
-                        "removeid, "
-                        "renameid, "
-                        "replaceid, "
-                        "numerationid) IS NOT NULL", name="any_operation_is_not_null"),
+    opid = Column(String, primary_key=True, default=get_uuid)
+    conditionid = Column(String, ForeignKey("cond.cnd"), nullable=True, default=None)
+    insertid = Column(Integer, db.ForeignKey("insert.insid"), nullable=True, default=None)
+    commentid = Column(Integer, db.ForeignKey("comment.commentid"), nullable=True, default=None)
+    uncommentid = Column(Integer, db.ForeignKey("uncomment.id"), nullable=True, default=None)
+    removeid = Column(Integer, db.ForeignKey("remove.removeid"), nullable=True, default=None)
+    renameid = Column(Integer, db.ForeignKey("renam.renameid"), nullable=True, default=None)
+    replaceid = Column(Integer, db.ForeignKey("repl.replaceid"), nullable=True, default=None)
+    numerationid = Column(Integer, db.ForeignKey("num.numerationid"), nullable=True, default=None)
+    is_active = Column(Boolean, default=True)
+    operation_description = Column(String(300), default="")
+    #machines = relationship("Machine", secondary=TaskDelegation.__table__)
+
+
+class Condition(db.Model):
+    __tablename__ = "cond"
+    cnd = Column(String, primary_key=True, default=get_uuid)
+    parent = Column(String, ForeignKey("cond.cnd"), nullable=True, default=None)
+    targetstr = Column(String(100), unique=True, nullable=False)
+    isntfind = Column(Boolean, default=False)
+    findfull = Column(Boolean, default=False)
+    findpart = Column(Boolean, default=False)
+    conditionbasevalue = Column(Boolean, default=True)
+    __table_args__ = (
+        CheckConstraint("targetstr!=''"),
     )
-
-
-db.DDL("CREATE TRIGGER control_operation_type_count"
-       "BEFORE INSERT, UPDATE"
-       "ON operation"
-       "BEGIN"
-       "CREATE TEMP TABLE IF NOT EXISTS Vars (name TEXT PRIMARY KEY, "
-       "ins s.Integer, "
-       "comment_id s.Integer, "
-       "uncomm s.Integer, "
-       "remid s.Integer, "
-       "renid s.Integer, "
-       "replid s.Integer, "
-       "numerateid s.Integer)"
-       "INSERT Vars (name, ins, comment_id, uncomm, remid, renid, replid, numerateid) "
-       "VALUES ('test', 0, 0, 0, 0, 0, 0, 0)"
-       "IF NEW.insertid IS NOT NULL INSERT Vars (ins) VALUES (1)"
-       "IF NEW.commentid IS NOT NULL INSERT Vars (comment_id) VALUES (1)"
-       "IF NEW.uncommentid IS NOT NULL INSERT Vars (uncomm) VALUES (1)"
-       "IF NEW.removeid IS NOT NULL INSERT Vars (remid) VALUES (1)"
-       "IF NEW.renameid IS NOT NULL INSERT Vars (renid) VALUES (1)"
-       "IF NEW.replaceid IS NOT NULL INSERT Vars (replid) VALUES (1)"
-       "IF NEW.numerationid IS NOT NULL INSERT Vars (numerateid) VALUES (1)"
-       "IF (SELECT SUM(ins, comment_id, uncomm, remid, renid, replid, numerateid)"
-       "FROM Vars"
-       "WHERE name='test') > 1 ROLLBACK TRANSACTION"
-       "DROP Vars"
-       "END;")
 
 
 class Cnc(db.Model):
     __tablename__ = "cnc"
-    cncid = s.Column(s.Integer, primary_key=True, autoincrement=True)
-    name = s.Column(s.String(20), nullable=False, unique=True)
-    comment_symbol = s.Column(s.String(1), nullable=False)
-    except_symbols = s.Column(s.String(50), nullable=True, default=None)
+    cncid = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(20), unique=True)
+    comment_symbol = Column(String(1))
+    except_symbols = Column(String(50), nullable=True, default=None)
+    __table_args__ = (
+        CheckConstraint("comment_symbol!=''", name="comment_symbol_empty"),
+        CheckConstraint("name!=''", name="name_empty"),
+    )
 
 
 class HeadVarible(db.Model):
     __tablename__ = "headvar"
-    varid = s.Column(s.String, default=get_uuid, primary_key=True)
-    name = s.Column(s.String, nullable=False, unique=True)
-    separator = s.Column(s.String(1), nullable=False)
-    select_all = s.Column(s.Boolean, nullable=False, default=False)
-    select_numbers = s.Column(s.Boolean, nullable=False, default=False)
-    select_string = s.Column(s.Boolean, nullable=False, default=False)
-    selection_value = s.Column(s.Boolean, nullable=False, default=False)
-    selection_key = s.Column(s.Boolean, nullable=False, default=False)
-    isnotexistsdonothing = s.Column(s.Boolean, nullable=False, default=False)
-    isnotexistsvalue = s.Column(s.Boolean, nullable=False, default=False)
-    isnotexistsbreak = s.Column(s.Boolean, nullable=False, default=False)
+    varid = Column(String, default=get_uuid, primary_key=True)
+    name = Column(String, unique=True)
+    separator = Column(String(7))
+    select_all = Column(Boolean, default=False)
+    select_numbers = Column(Boolean, default=False)
+    select_string = Column(Boolean, default=False)
+    select_reg = Column(Boolean, default=False)
+    isnotexistsdonothing = Column(Boolean, default=False)
+    isnotexistsvalue = Column(Boolean, default=False)
+    isnotexistsbreak = Column(Boolean, default=False)
 
 
 class Insert(db.Model):
     __tablename__ = "insert"
-    insid = s.Column(s.Integer, primary_key=True, autoincrement=True)
-    varid = s.Column(s.String, db.ForeignKey("headvar"), nullable=True, default=None)
-    after = s.Column(s.Boolean, default=False, nullable=False)
-    before = s.Column(s.Boolean, default=False, nullable=False)
-    target = s.Column(s.String, nullable=False)
-    item = s.Column(s.String, nullable=False)
-
-
-db.DDL("CREATE TRIGGER control_option_insert"
-       "BEFORE UPDATE,INSERT"
-       "ON insert"
-       "BEGIN"
-       "CREATE TEMP TABLE IF NOT EXISTS Vcount (pk s.Integer PRIMARY_KEY AUTOINCREMENT,"
-       "optionone s.Boolean DEFAULT FALSE, optiontwo s.Boolean DEFAULT FALSE)"
-       "IF NEW.after = 1 INSERT Vcount (optionone) VALUES (1)"
-       "IF NEW.before = 1 INSERT Vcount (optiontwo) VALUES (1)"
-       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) > 1 ROLLBACK TRANSACTION"
-       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) = 0 ROLLBACK TRANSACTION"
-       "DROP Vcount"
-       "END")
+    insid = Column(Integer, primary_key=True, autoincrement=True)
+    after = Column(Boolean, default=False)
+    before = Column(Boolean, default=False)
+    target = Column(String)
+    item = Column(String)
+    __table_args__ = (
+        CheckConstraint("after!=before", name="after_equal_before"),
+        CheckConstraint("target!=''", name="empty_target"),
+        CheckConstraint("item!=''", name="empty_item"),
+        CheckConstraint("target!=item", name="target_equal_item"),
+    )
 
 
 class Comment(db.Model):
     __tablename__ = "comment"
-    commentid = s.Column(s.Integer, primary_key=True, autoincrement=True)
-    findstr = s.Column(s.String(100), nullable=False)
-    iffullmatch = s.Column(s.Boolean, default=False, nullable=False)
-    ifcontains = s.Column(s.Boolean, default=False, nullable=False)
-
-
-db.DDL("CREATE TRIGGER control_option_comment"
-       "BEFORE UPDATE,INSERT"
-       "ON comment"
-       "BEGIN"
-       "CREATE TEMP TABLE IF NOT EXISTS Vcount (pk s.Integer PRIMARY_KEY AUTOINCREMENT,"
-       "optionone s.Boolean DEFAULT FALSE, optiontwo s.Boolean DEFAULT FALSE)"
-       "IF NEW.iffullmatch = 1 INSERT Vcount (optionone) VALUES (1)"
-       "IF NEW.ifcontains = 1 INSERT Vcount (optiontwo) VALUES (1)"
-       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) > 1 ROLLBACK TRANSACTION"
-       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) = 0 ROLLBACK TRANSACTION"
-       "DROP Vcount"
-       "END")
+    commentid = Column(Integer, primary_key=True, autoincrement=True)
+    findstr = Column(String(100))
+    iffullmatch = Column(Boolean, default=False)
+    ifcontains = Column(Boolean, default=False)
 
 
 class Uncomment(db.Model):
     __tablename__ = "uncomment"
-    id = s.Column(s.Integer, primary_key=True, autoincrement=True)
-    findstr = s.Column(s.String(100), nullable=False)
-    iffullmatch = s.Column(s.Boolean, nullable=False, default=False)
-    ifcontains = s.Column(s.Boolean, nullable=False, default=False)
-
-
-db.DDL("CREATE TRIGGER control_option_uncomment"
-       "BEFORE UPDATE,INSERT"
-       "ON uncomment"
-       "BEGIN"
-       "CREATE TEMP TABLE IF NOT EXISTS Vcount (pk s.Integer PRIMARY_KEY AUTOINCREMENT,"
-       "optionone s.Boolean DEFAULT FALSE, optiontwo s.Boolean DEFAULT FALSE)"
-       "IF NEW.iffullmatch = 1 INSERT Vcount (optionone) VALUES (1)"
-       "IF NEW.ifcontains = 1 INSERT Vcount (optiontwo) VALUES (1)"
-       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) > 1 ROLLBACK TRANSACTION"
-       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) = 0 ROLLBACK TRANSACTION"
-       "DROP Vcount"
-       "END")
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    findstr = Column(String(100))
+    iffullmatch = Column(Boolean, default=False)
+    ifcontains = Column(Boolean, default=False)
+    __table_args__ = (
+        CheckConstraint("findstr!=''", name="empty_findstr"),
+    )
 
 
 class Remove(db.Model):
     __tablename__ = "remove"
-    removeid = s.Column(s.Integer, primary_key=True, autoincrement=True)
-    iffullmatch = s.Column(s.Boolean, nullable=False, default=False)
-    ifcontains = s.Column(s.Boolean, nullable=False, default=False)
-    findstr = s.Column(s.String(100), nullable=False)
+    removeid = Column(Integer, primary_key=True, autoincrement=True)
+    iffullmatch = Column(Boolean, default=False)
+    ifcontains = Column(Boolean, default=False)
+    findstr = Column(String(100))
+    __table_args__ = (
+        CheckConstraint("findstr!=''", name="empty_findstr"),
+        CheckConstraint("iffullmatch!=ifcontains", name="equal_iffullmatch_and_ifcontains"),
+    )
 
 
-db.DDL("CREATE TRIGGER control_option_remove"
-       "BEFORE UPDATE,INSERT"
-       "ON remove"
-       "BEGIN"
-       "CREATE TEMP TABLE IF NOT EXISTS Vcount (pk s.Integer PRIMARY_KEY AUTOINCREMENT,"
-       "optionone s.Boolean DEFAULT FALSE, optiontwo s.Boolean DEFAULT FALSE)"
-       "IF NEW.iffullmatch = 1 INSERT Vcount (optionone) VALUES (1)"
-       "IF NEW.ifcontains = 1 INSERT Vcount (optiontwo) VALUES (1)"
-       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) > 1 ROLLBACK TRANSACTION"
-       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) = 0 ROLLBACK TRANSACTION"
-       "DROP Vcount"
-       "END")
-
-
-class VarSequence(db.Model):
+class HeadVarDelegation(db.Model):
     __tablename__ = "varsec"
-    decid = s.Column(s.String, default=get_uuid, primary_key=True)
-    varid = s.Column(s.String, db.ForeignKey("headvar"), nullable=False)
-    insertid = s.Column(s.Integer, db.ForeignKey("insert.insid"), nullable=True)
-    renameid = s.Column(s.Integer, db.ForeignKey("renam"), nullable=True)
-    strindex = s.Column(s.Integer, nullable=False)
+    secid = Column(String, default=get_uuid, primary_key=True)
+    varid = Column(String, db.ForeignKey("headvar.varid"))
+    insertid = Column(Integer, db.ForeignKey("insert.insid"), nullable=True, default=None)
+    renameid = Column(Integer, db.ForeignKey("renam.renameid"), nullable=True, default=None)
+    strindex = Column(Integer, default=0)
 
 
 class Rename(db.Model):
     __tablename__ = "renam"
-    renameid = s.Column(s.Integer, primary_key=True, autoincrement=True)
-    uppercase = s.Column(s.Boolean, nullable=False, default=False)
-    lowercase = s.Column(s.Boolean, nullable=False, default=False)
-    defaultcase = s.Column(s.Boolean, nullable=False, default=True)
-    prefix = s.Column(s.String(10), nullable=True, default=None)
-    postfix = s.Column(s.String(10), nullable=True, default=None)
-    nametext = s.Column(s.String(20), nullable=True, default=None)
-    removeextension = s.Column(s.Boolean, nullable=False, default=False)
-    setextension = s.Column(s.Boolean, nullable=False, default=False)
-    varibles = relationship("VarSequence")
-    __table__args = (
-        s.CheckConstraint("uppercase > 0 OR lowercase > 0 OR defaultcase > 0", name="any_value_case_rename")
-    )
+    renameid = Column(Integer, primary_key=True, autoincrement=True)
+    uppercase = Column(Boolean, default=False)
+    lowercase = Column(Boolean, default=False)
+    prefix = Column(String(10), nullable=True, default=None)
+    postfix = Column(String(10), nullable=True, default=None)
+    nametext = Column(String(20), nullable=True, default=None)
+    removeextension = Column(Boolean, default=False)
+    setextension = Column(String(10), nullable=True, default=None)
+    #varibles = relationship("HeadVarDelegation")
 
 
 class Numeration(db.Model):
     __tablename__ = "num"
-    numerationid = s.Column(s.Integer, nullable=False, autoincrement=True, primary_key=True)
-    startat = s.Column(s.Integer, nullable=True, default=None)
-    endat = s.Column(s.Integer, nullable=True, default=None)
+    numerationid = Column(Integer, autoincrement=True, primary_key=True)
+    startat = Column(Integer, nullable=True, default=None)
+    endat = Column(Integer, nullable=True, default=None)
+    __table_args__ = (
+        CheckConstraint("startat!=endat", name="startat_equal_endat"),
+        CheckConstraint("startat<=0", name="negatory_startat_value"),
+        CheckConstraint("endat<=0", name="negatory_endat_value"),
+        CheckConstraint("startat>endat", name="startat_more_then_endat"),
+    )
 
 
 class Replace(db.Model):
     __tablename__ = "repl"
-    replaceid = s.Column(s.Integer, primary_key=True, autoincrement=True)
-    findstr = s.Column(s.String(100), nullable=False)
-    ifcontains = s.Column(s.Boolean, nullable=False, default=False)
-    iffullmatch = s.Column(s.Boolean, nullable=False, default=False)
-    item = s.Column(s.String(100), nullable=False)
+    replaceid = Column(Integer, primary_key=True, autoincrement=True)
+    findstr = Column(String(100))
+    ifcontains = Column(Boolean, default=False)
+    iffullmatch = Column(Boolean, default=False)
+    item = Column(String(100))
+    __table_args__ = (
+        CheckConstraint("ifcontains!=iffullmatch", name="ifcontains_equal_iffullmatch"),
+        CheckConstraint("item!=''", name="empty_item"),
+        CheckConstraint("findstr!=''", name="empty_findstr"),
+        CheckConstraint("findstr!=item", name="findstr_equal_item"),
+    )
 
-
-db.DDL("CREATE TRIGGER control_option_replace"
-       "BEFORE UPDATE,INSERT"
-       "ON repl"
-       "BEGIN"
-       "CREATE TEMP TABLE IF NOT EXISTS Vcount (pk Integer PRIMARY_KEY AUTOINCREMENT,"
-       "optionone s.Boolean DEFAULT FALSE, optiontwo s.Boolean DEFAULT FALSE)"
-       "IF NEW.iffullmatch = 1 INSERT Vcount (optionone) VALUES (1)"
-       "IF NEW.ifcontains = 1 INSERT Vcount (optiontwo) VALUES (1)"
-       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) > 1 ROLLBACK TRANSACTION"
-       "IF (SELECT SUM(optionone, optiontwo) FROM Vcount) = 0 ROLLBACK TRANSACTION"
-       "DROP Vcount"
-       "END")
-
-
-test_table = db.Table("t_table",
-                      db.Column("k", db.Integer, primary_key=True, autoincrement=True),
-                      db.Column("test_n", db.Integer, default=0)
-                      )
 
 if __name__ == "__main__":
     db.drop_all()
     db.create_all()
-
-
-db.engine.execute(s.DDL("""
-    CREATE TRIGGER 'rename_case_value'
-    BEFORE INSERT
-    ON 'renam' FOR EACH ROW
-    BEGIN
-    CASE
-        WHEN NEW.uppercase > 0
-    END
-    END;
-    """))
