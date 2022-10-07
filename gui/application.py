@@ -1,5 +1,5 @@
 import sys
-import sqlite3
+import psycopg2
 from PySide2.QtWidgets import QMainWindow, QApplication
 from PySide2.QtCore import Qt, QRect
 from PySide2.QtGui import QPixmap, QBrush
@@ -22,7 +22,7 @@ class Main(QMainWindow, Tools):
 
         def init_database():
             if not database_exists(DATABASE_PATH):
-                raise sqlite3.DatabaseError("База данных не найдена!")
+                raise psycopg2.DatabaseError("База данных не найдена!")
             self.database = db
             self.db_session = self.database.session
 
@@ -32,7 +32,6 @@ class Main(QMainWindow, Tools):
                 self.set_icon_buttons(self.ui, "remove_button", "static/img/minus.png")
                 self.set_icon_buttons(self.ui, "move_right", "static/img/arrow-right.png")
                 self.set_icon_buttons(self.ui, "move_left", "static/img/arrow-left.png")
-
             self.ui = Ui()
             self.ui.setupUi(self)
             init_buttons()

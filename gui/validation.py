@@ -1,10 +1,13 @@
 import re
 from typing import Optional, Iterable
-from PySide2.QtWidgets import QLineEdit, QWidget, QRadioButton
+from PySide2.QtGui import QColor
+from PySide2.QtWidgets import QLineEdit, QWidget, QRadioButton, QComboBox
 from gui.ui import Ui_main_window
 
 
 class Validator:
+    REQUIRED_COMBO_BOX: tuple = tuple()  # имя ComboBox, - не может быть пустым
+    COMBO_BOX_DEFAULT_VALUES: dict[str, str] = {}  # Ключ - имя ComboBox, значение - текст в item по умолчанию
     REQUIRED_RADIO_BUTTONS: dict[str, Iterable[str]] = {}  # Ключ - имя GroupBox, значение - кортеж из кнопок radio, только одна кнопка должна быть enabled
     REQUIRED_TEXT_FIELD_VALUES: tuple = tuple()  # Кортеж имен инпутов, значения которых не могут быть пустыми
     INVALID_TEXT_FIELD_VALUES: dict[str, re] = {}  # Ключи определяют перечень участвующих в валидации полей c текстовым содержимым, значение - регулярка, отображающая "плохое" значение
@@ -20,12 +23,12 @@ class Validator:
 
     @staticmethod
     def set_not_complete_edit_attributes(name: str, widget: QWidget):
-        widget.setStyleSheet(f"#{name} {{border: 1px solid rgba(194, 107, 107, 1);}}")
+        widget.setBackground(QColor("#e86666"))
         widget.setToolTip("Закончите редактирование. Заполните обязательные поля.")
 
     @staticmethod
     def set_complete_edit_attributes(widget) -> None:
-        widget.setStyleSheet("")
+        widget.setBackground(None)
         widget.setToolTip(None)
 
     @staticmethod
@@ -71,5 +74,20 @@ class Validator:
                         self.set_not_complete_edit_attributes(group_box_name, box)
                 if not is_valid_box:
                     valid = False
+        if self.REQUIRED_COMBO_BOX:
+            for field_name in self.REQUIRED_COMBO_BOX:
+                field: QComboBox = getattr(self.ui, field_name, None)
+                if field is not None:
+                    if not field.currentText():
+                        self.set_invalid_text_field(field)
+                        valid = False
+                    else:
+                        self.set_valid_text_field(field)
+        if self.COMBO_BOX_DEFAULT_VALUES:
+            for field_name, base_value in self.COMBO_BOX_DEFAULT_VALUES.items():
+                field: QComboBox = getattr(self.ui, field_name, None)
+                if field is not None:
+                    if field.currentText() == base_value:
+                        valid = False
         self._is_valid = valid
         return valid
