@@ -36,7 +36,7 @@ class TaskDelegation(db.Model):
 class Machine(db.Model):
     __tablename__ = "machine"
     machineid = Column(Integer, primary_key=True, autoincrement=True)
-    cncid = Column(Integer, db.ForeignKey("cnc"), nullable=False)
+    cncid = Column(Integer, db.ForeignKey("cnc", ondelete="SET NULL", onupdate="SET NULL"), nullable=True)
     machine_name = Column(String(100), unique=True, nullable=False)
     x_over = Column(Integer, nullable=True, default=None)
     y_over = Column(Integer, nullable=True, default=None)
