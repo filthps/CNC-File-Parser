@@ -516,7 +516,7 @@ def init_machine_table_triggers():
             IF EXISTS(
                 SELECT 1
                 FROM machine
-                WHERE cncid=NEW.cncid
+                WHERE (cncid=NEW.cncid OR cncid IS NULL)
                 AND machine_name=NEW.machine_name
                 AND (x_over=NEW.x_over OR x_over IS NULL)
                 AND (y_over=NEW.y_over OR y_over IS NULL)
