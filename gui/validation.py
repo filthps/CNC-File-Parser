@@ -22,31 +22,25 @@ class Validator:
         return self._is_valid
 
     @staticmethod
-    def set_not_complete_edit_attributes(name: str, widget: QWidget):
+    def set_not_complete_edit_attributes(name: str, widget: QWidget) -> None:
         widget.setBackground(QColor("#e86666"))
         widget.setToolTip("Закончите редактирование. Заполните обязательные поля.")
 
     @staticmethod
     def set_complete_edit_attributes(widget) -> None:
-        widget.setBackground(None)
+        widget.setBackground(QColor("#FFF"))
         widget.setToolTip(None)
 
     @staticmethod
-    def set_invalid_text_field(field: QLineEdit):
-        field.setStyleSheet("border: 1px solid rgba(194, 107, 107, 1);")
+    def set_invalid_text_field(field: QLineEdit) -> None:
+        field.setStyleSheet("border: 1px solid rgb(194, 107, 107);")
 
     @staticmethod
-    def set_valid_text_field(field: QLineEdit):
+    def set_valid_text_field(field: QLineEdit) -> None:
         field.setStyleSheet("")
 
     def refresh(self) -> bool:
         valid = True
-        if self.REQUIRED_TEXT_FIELD_VALUES:
-            for input_name in self.REQUIRED_TEXT_FIELD_VALUES:
-                input_: QWidget = getattr(self.ui, input_name)
-                if not input_.text():
-                    self.set_invalid_text_field(input_)
-                    valid = False
         if self.INVALID_TEXT_FIELD_VALUES:
             for field_name, reg in self.INVALID_TEXT_FIELD_VALUES.items():
                 field: QWidget = getattr(self.ui, field_name, None)
@@ -57,6 +51,14 @@ class Validator:
                         valid = False
                     else:
                         self.set_valid_text_field(field)
+        if self.REQUIRED_TEXT_FIELD_VALUES:
+            for input_name in self.REQUIRED_TEXT_FIELD_VALUES:
+                input_: QWidget = getattr(self.ui, input_name)
+                if not input_.text():
+                    self.set_invalid_text_field(input_)
+                    valid = False
+                else:
+                    self.set_valid_text_field(input_)
         if self.REQUIRED_RADIO_BUTTONS:
             for group_box_name, buttons in self.REQUIRED_RADIO_BUTTONS.items():
                 result = set()
@@ -88,6 +90,9 @@ class Validator:
                 field: QComboBox = getattr(self.ui, field_name, None)
                 if field is not None:
                     if field.currentText() == base_value:
+                        self.set_invalid_text_field(field)
                         valid = False
+                    else:
+                        self.set_valid_text_field(field)
         self._is_valid = valid
         return valid
