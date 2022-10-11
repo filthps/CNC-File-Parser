@@ -33,36 +33,41 @@ class OptionsPageCreateMachine(Constructor, Tools):
             ui.add_machine_list_0.currentItemChanged.connect(lambda current, prev: self.select_machine(current, prev))
             ui.add_machine_input.clicked.connect(lambda: self.choice_folder("lineEdit_10"))
             ui.add_machine_output.clicked.connect(lambda: self.choice_folder("lineEdit_21"))
-            ui.lineEdit_11.editingFinished.connect(lambda: self.update_field("lineEdit_11"))
-            ui.lineEdit_12.editingFinished.connect(lambda: self.update_field("lineEdit_12"))
-            ui.lineEdit_13.editingFinished.connect(lambda: self.update_field("lineEdit_13"))
-            ui.lineEdit_14.editingFinished.connect(lambda: self.update_field("lineEdit_14"))
-            ui.lineEdit_15.editingFinished.connect(lambda: self.update_field("lineEdit_15"))
-            ui.lineEdit_16.editingFinished.connect(lambda: self.update_field("lineEdit_16"))
-            ui.lineEdit_17.editingFinished.connect(lambda: self.update_field("lineEdit_17"))
+            ui.lineEdit_11.editingFinished.connect(lambda: self.update_data("lineEdit_11"))
+            ui.lineEdit_12.editingFinished.connect(lambda: self.update_data("lineEdit_12"))
+            ui.lineEdit_13.editingFinished.connect(lambda: self.update_data("lineEdit_13"))
+            ui.lineEdit_14.editingFinished.connect(lambda: self.update_data("lineEdit_14"))
+            ui.lineEdit_15.editingFinished.connect(lambda: self.update_data("lineEdit_15"))
+            ui.lineEdit_16.editingFinished.connect(lambda: self.update_data("lineEdit_16"))
+            ui.lineEdit_17.editingFinished.connect(lambda: self.update_data("lineEdit_17"))
 
         def init_validator():
             self.validator = AddMachinePageValidation(self.ui)
-
-        init_validator()
         self.reload()
+        init_validator()
         connect_signals()
 
     def reload(self):
         """ Очистить поля и обновить данные из базы данных """
         self.ui.add_machine_list_0.clear()
         self.clear_property_fields()
+        self.insert_all_cnc_from_db()
         self.insert_machines_from_db()
         self.insert_machines_from_updates_queque()
-        self.insert_all_cnc_from_db()
 
     def insert_machines_from_db(self):
         machines = Machine.query.all()
         for machine in machines:
-            data = machine.__dict__
+            data: dict = machine.__dict__
             name = data.pop('machine_name')
             item = QListWidgetItem(name)
             self.ui.add_machine_list_0.addItem(item)
+            machine_cnc_id = data.pop("cncid", None)
+            if machine_cnc_id is not None:
+                cm_box_data = {"name": self.cnc_names.get(machine_cnc_id, None)}
+                self.update_machine_property_fields(line_edit_values=data, combo_box_values=cm_box_data)
+            else:
+                self.update_machine_property_fields(line_edit_values=data)
 
     def insert_machines_from_updates_queque(self):
         for machine_name, data in self.items.items():
@@ -73,6 +78,10 @@ class OptionsPageCreateMachine(Constructor, Tools):
         self.ui.choice_cnc.addItem(self.DEFAULT_COMBO_BOX_CNC_NAME)
 
     def insert_all_cnc_from_db(self) -> None:
+        """
+        Запрос из БД и установка возможных значений в combo box - 'стойки',
+        наполнение словаря self.cnc_names
+        """
         cnc_items = Cnc.query.all()
         for instance in cnc_items:
             items = instance.__dict__
@@ -126,13 +135,13 @@ class OptionsPageCreateMachine(Constructor, Tools):
 
     @Slot(str)
     def choice_folder(self, line_edit_widget: str):
-        def update_field(value):
+        def update_data(value):
             field: QLineEdit = getattr(self.ui, line_edit_widget)
             field.setText(value)
-            self.update_field(line_edit_widget)
+            self.update_data(line_edit_widget)
         dialog = QFileDialog.getExistingDirectory()
         if dialog:
-            update_field(dialog)
+            update_data(dialog)
 
     @Slot(object)
     def select_machine(self, machine_item: QListWidgetItem, previous_machine_item: QListWidgetItem):
@@ -213,7 +222,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
         dialog.show()
 
     @Slot(str)
-    def update_field(self, field_name):
+    def update_data(self, field_name):
         """ Обновление записей в базе, при изменении текстовых(LineEdit) полей-характеристик """
         update = False
         active_machine = self.get_selected_machine_item()
@@ -256,10 +265,11 @@ class OptionsPageCreateMachine(Constructor, Tools):
                     self.reload()
             machine_data = self.items.get(selected_machine_name, None)
             if machine_data is not None:
-                #  Станок только что добавлен в ui, - его ещё нет в базе данных
-                #  Он находится в словаре self.items
                 machine_data.update({"cncid": cnc_db_instance.cncid})
             else:
+                #  Станок только что добавлен в ui, - его ещё нет в базе данных
+                #  Он находится в словаре self.items
+                self.items.update({"machine_name": selected_machine_name, "cncid": cnc_db_instance.cncid})
                 self.update_items()
 
     def clear_property_fields(self) -> None:
