@@ -9,14 +9,14 @@ def init_operation_delegation_table_triggers():
         BEGIN
             IF EXISTS(SELECT 1
             FROM operation
-            WHERE (conditionid=NEW.conditionid OR conditionid IS NULL)
-            AND (insertid=NEW.insertid OR insertid IS NULL)
-            AND (commentid=NEW.commentid OR commentid IS NULL)
-            AND (uncommentid=NEW.uncommentid OR uncommentid IS NULL)
-            AND (removeid=NEW.removeid OR removeid IS NULL)
-            AND (renameid=NEW.renameid OR renameid IS NULL)
-            AND (replaceid=NEW.replaceid OR replaceid IS NULL)
-            AND (numerationid=NEW.numerationid OR numerationid IS NULL)
+            WHERE (conditionid=NEW.conditionid OR NEW.conditionid IS NULL AND conditionid IS NULL)
+            AND (insertid=NEW.insertid OR NEW.insertid IS NULL AND insertid IS NULL)
+            AND (commentid=NEW.commentid OR NEW.commentid IS NULL AND commentid IS NULL)
+            AND (uncommentid=NEW.uncommentid OR NEW.uncommentid IS NULL AND uncommentid IS NULL)
+            AND (removeid=NEW.removeid OR NEW.removeid IS NULL AND removeid IS NULL)
+            AND (renameid=NEW.renameid OR NEW.renameid IS NULL AND renameid IS NULL)
+            AND (replaceid=NEW.replaceid OR NEW.replaceid IS NULL AND replaceid IS NULL)
+            AND (numerationid=NEW.numerationid OR NEW.numerationid IS NULL AND numerationid IS NULL)
             ) THEN
                 RAISE EXCEPTION 'Данный экземпляр сущности уже существует';
             ELSE
@@ -75,7 +75,7 @@ def init_cnc_table_triggers():
             FROM cnc
             WHERE name=NEW.name 
             AND comment_symbol=NEW.comment_symbol 
-            AND (except_symbols=NEW.except_symbols OR except_symbols IS NULL)
+            AND (except_symbols=NEW.except_symbols OR NEW.except_symbols IS NULL AND except_symbols IS NULL)
             ) THEN
                 RAISE EXCEPTION 'Данный экземпляр сущности уже существует';
             ELSE
@@ -121,7 +121,7 @@ def init_condition_table_triggers():
             IF EXISTS(
                 SELECT 1
                 FROM cond
-                WHERE (parent=NEW.parent OR parent IS NULL)
+                WHERE (parent=NEW.parent OR NEW.parent IS NULL AND parent IS NULL)
                 AND targetstr=NEW.targetstr
                 AND isntfind=NEW.isntfind
                 AND findfull=NEW.findfull
@@ -179,7 +179,7 @@ def init_numeration_table_triggers():
                 SELECT 1
                 FROM num
                 WHERE startat=NEW.startat
-                AND (endat=NEW.endat OR endat IS NULL)
+                AND (endat=NEW.endat OR NEW.endat IS NULL AND endat IS NULL)
             ) THEN
                 RAISE EXCEPTION 'Данный экземпляр сущности уже существует';
             ELSE
@@ -394,11 +394,11 @@ def init_rename_table_triggers():
             FROM renam 
             WHERE uppercase=NEW.uppercase 
             AND lowercase=NEW.lowercase 
-            AND (prefix=NEW.prefix OR prefix IS NULL)
-            AND (postfix=NEW.postfix OR postfix IS NULL)
-            AND (nametext=NEW.nametext OR nametext IS NULL)
+            AND (prefix=NEW.prefix OR NEW.prefix IS NULL AND prefix IS NULL)
+            AND (postfix=NEW.postfix OR NEW.postfix IS NULL AND postfix IS NULL)
+            AND (nametext=NEW.nametext OR NEW.nametext IS NULL AND nametext IS NULL)
             AND removeextension=NEW.removeextension
-            AND (setextension=NEW.setextension OR setextension IS NULL)
+            AND (setextension=NEW.setextension OR NEW.setextension IS NULL AND setextension IS NULL)
             ) THEN
                 RAISE EXCEPTION 'Данный экземпляр сущности уже существует';
             ELSE
@@ -516,15 +516,15 @@ def init_machine_table_triggers():
             IF EXISTS(
                 SELECT 1
                 FROM machine
-                WHERE (cncid=NEW.cncid OR cncid IS NULL)
+                WHERE (cncid=NEW.cncid OR NEW.cncid IS NULL AND cncid IS NULL)
                 AND machine_name=NEW.machine_name
-                AND (x_over=NEW.x_over OR x_over IS NULL)
-                AND (y_over=NEW.y_over OR y_over IS NULL)
-                AND (z_over=NEW.z_over OR z_over IS NULL)
-                AND (x_fspeed=NEW.x_fspeed OR x_fspeed IS NULL)
-                AND (y_fspeed=NEW.y_fspeed OR y_fspeed IS NULL)
-                AND (z_fspeed=NEW.z_fspeed OR z_fspeed IS NULL)
-                AND (spindele_speed=NEW.spindele_speed OR spindele_speed IS NULL)
+                AND (x_over=NEW.x_over OR NEW.x_over IS NULL AND x_over IS NULL)
+                AND (y_over=NEW.y_over OR NEW.y_over IS NULL AND y_over IS NULL)
+                AND (z_over=NEW.z_over OR NEW.z_over IS NULL AND z_over IS NULL)
+                AND (x_fspeed=NEW.x_fspeed OR NEW.x_fspeed IS NULL AND x_fspeed IS NULL)
+                AND (y_fspeed=NEW.y_fspeed OR NEW.y_fspeed IS NULL AND y_fspeed IS NULL)
+                AND (z_fspeed=NEW.z_fspeed OR NEW.z_fspeed IS NULL AND z_fspeed IS NULL)
+                AND (spindele_speed=NEW.spindele_speed OR NEW.spindele_speed IS NULL AND spindele_speed IS NULL)
                 AND input_catalog=NEW.input_catalog
                 AND output_catalog=NEW.output_catalog
                 ) THEN
@@ -615,8 +615,8 @@ def init_headvardelegation_table_triggers():
             IF EXISTS(SELECT 1
                 FROM varsec
                 WHERE varid=NEW.varid
-                AND (insertid=NEW.insertid OR insertid IS NULL)
-                AND (renameid=NEW.renameid OR renameid IS NULL)
+                AND (insertid=NEW.insertid OR NEW.insertid IS NULL AND insertid IS NULL)
+                AND (renameid=NEW.renameid OR NEW.renameid IS NULL AND renameid IS NULL)
             ) THEN 
                 RAISE EXCEPTION 'Данный экземпляр сущности уже существует';
             ELSE
