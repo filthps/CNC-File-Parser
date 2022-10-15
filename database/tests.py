@@ -88,6 +88,25 @@ class TestModelMachine(unittest.TestCase):
         self.assertTrue(exists_status, msg="Объект не добавился в сессию")
         self.test_session.commit()
 
+    def test_update_machine_instance(self):
+        cnc_instance = self.get_or_create_cnc()
+        valid_orm_obj = Machine(cncid=cnc_instance.cncid, machine_name=self.machine_name,
+                                x_over=4000,
+                                input_catalog="C://Heller", output_catalog="D://Heller")
+        self.test_session.add(valid_orm_obj)
+        exists_status = False
+        for instance in self.test_session:
+            if valid_orm_obj == instance:
+                exists_status = True
+                break
+        self.assertTrue(exists_status, msg="Объект не добавился в сессию")
+        self.test_session.commit()
+        saved_instance = Machine.query.filter_by(machine_name=self.machine_name).first()
+        setattr(saved_instance, "x_over", 200)
+        setattr(saved_instance, "y_over", 200)
+        self.test_session.add(saved_instance)
+        self.test_session.commit()
+
     def test_save_invalid_instance___case_empty_input_catalog_value(self):
         cnc_instance = self.get_or_create_cnc()
         invalid_orm_obj = Machine(cncid=cnc_instance.cncid, machine_name=self.machine_name,
