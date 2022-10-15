@@ -57,13 +57,13 @@ class OptionsPageCreateMachine(Constructor, Tools):
         """
         self.ui.add_machine_input.clicked.connect(lambda: self.choice_folder("lineEdit_10"))
         self.ui.add_machine_output.clicked.connect(lambda: self.choice_folder("lineEdit_21"))
-        self.ui.lineEdit_11.textChanged.connect(lambda: self.update_data("lineEdit_11"))
-        self.ui.lineEdit_12.textChanged.connect(lambda: self.update_data("lineEdit_12"))
-        self.ui.lineEdit_13.textChanged.connect(lambda: self.update_data("lineEdit_13"))
-        self.ui.lineEdit_14.textChanged.connect(lambda: self.update_data("lineEdit_14"))
-        self.ui.lineEdit_15.textChanged.connect(lambda: self.update_data("lineEdit_15"))
-        self.ui.lineEdit_16.textChanged.connect(lambda: self.update_data("lineEdit_16"))
-        self.ui.lineEdit_17.textChanged.connect(lambda: self.update_data("lineEdit_17"))
+        self.ui.lineEdit_11.editingFinished.connect(lambda: self.update_data("lineEdit_11"))
+        self.ui.lineEdit_12.editingFinished.connect(lambda: self.update_data("lineEdit_12"))
+        self.ui.lineEdit_13.editingFinished.connect(lambda: self.update_data("lineEdit_13"))
+        self.ui.lineEdit_14.editingFinished.connect(lambda: self.update_data("lineEdit_14"))
+        self.ui.lineEdit_15.editingFinished.connect(lambda: self.update_data("lineEdit_15"))
+        self.ui.lineEdit_16.editingFinished.connect(lambda: self.update_data("lineEdit_16"))
+        self.ui.lineEdit_17.editingFinished.connect(lambda: self.update_data("lineEdit_17"))
 
     def disconnect_fields_signals(self):
         """
@@ -74,15 +74,15 @@ class OptionsPageCreateMachine(Constructor, Tools):
         try:
             self.ui.add_machine_input.clicked.disconnect()
             self.ui.add_machine_output.clicked.disconnect()
-            self.ui.lineEdit_11.textChanged.disconnect()
-            self.ui.lineEdit_12.textChanged.disconnect()
-            self.ui.lineEdit_13.textChanged.disconnect()
-            self.ui.lineEdit_14.textChanged.disconnect()
-            self.ui.lineEdit_15.textChanged.disconnect()
-            self.ui.lineEdit_16.textChanged.disconnect()
-            self.ui.lineEdit_17.textChanged.disconnect()
+            self.ui.lineEdit_11.editingFinished.disconnect()
+            self.ui.lineEdit_12.editingFinished.disconnect()
+            self.ui.lineEdit_13.editingFinished.disconnect()
+            self.ui.lineEdit_14.editingFinished.disconnect()
+            self.ui.lineEdit_15.editingFinished.disconnect()
+            self.ui.lineEdit_16.editingFinished.disconnect()
+            self.ui.lineEdit_17.editingFinished.disconnect()
         except RuntimeError:
-            print("Отключаемые сигналы не были подключены")
+            print("ИНФО. Отключаемые сигналы не были подключены")
 
     def auto_select_machine_item(self, index=0) -> None:
         """
@@ -93,6 +93,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
             machine_item: QListWidgetItem = self.ui.add_machine_list_0.takeItem(index)
             self.ui.add_machine_list_0.addItem(machine_item)
             self.ui.add_machine_list_0.setItemSelected(machine_item, True)
+            self.ui.add_machine_list_0.setCurrentItem(machine_item)
             self.select_machine(machine_item)
 
     def insert_machines_from_db(self):
@@ -150,7 +151,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
     def update_machine_property_fields(self, line_edit_values: Optional[dict] = None,
                                        combo_box_values: Optional[dict] = None) -> None:
         """ Обновление полей ХАРАКТЕРИСТИКИ в интерфейсе """
-        self.disconnect_signals()
+        self.disconnect_fields_signals()
         for ui_field, orm_field in self.__UI__TO_SQL_COLUMN_LINK__LINE_EDIT.items():
             if line_edit_values is not None:
                 value = line_edit_values.get(orm_field)
@@ -169,7 +170,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
                     getattr(self.ui, ui_field).setCurrentText(self.DEFAULT_COMBO_BOX_CNC_NAME)
             else:
                 getattr(self.ui, ui_field).setCurrentText(self.DEFAULT_COMBO_BOX_CNC_NAME)
-        self.connect_signals()
+        self.connect_fields_signals()
 
     @Slot(str)
     def choice_folder(self, line_edit_widget: str):
@@ -263,6 +264,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
     def update_data(self, field_name):
         """ Обновление записей в базе, при изменении текстовых(LineEdit) полей-характеристик """
         active_machine = self.get_selected_machine_item()
+        print("Выделенный станок", active_machine)
         if active_machine is None:
             return
         update = False
@@ -289,6 +291,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
                 self.__UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]: value
             })
         if self.validator.is_valid:
+            print("Обновление" if update else "Сохранение")
             if not update:
                 self.push_items()
             else:
@@ -350,6 +353,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
         while self.items:
             machine_name, data = self.items.popitem()
             query = Machine.query.filter_by(machine_name=machine_name).first()
+            print(f"Сохраняемые поля {str(data.items())}")
             [setattr(query, k, v) for k, v in data.items()]
             session.add(query)
             session.commit()
