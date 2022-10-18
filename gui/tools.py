@@ -1,10 +1,11 @@
 import os
-from typing import Union, Iterator, Optional, Sequence
+from typing import Union, Iterator, Optional, Sequence, Any
 from itertools import count, cycle
 from PySide2.QtCore import Qt
 from PySide2.QtWidgets import QTabWidget, QStackedWidget, QPushButton, QInputDialog, QDialogButtonBox, \
     QListWidgetItem, QListWidget, QDialog, QLabel, QVBoxLayout, QHBoxLayout, QTreeWidgetItem, QTreeWidget, QLineEdit
 from PySide2.QtGui import QIcon
+from database.models import db
 from gui.ui import Ui_main_window as Ui
 from config import PROJECT_PATH
 
@@ -225,3 +226,77 @@ class Constructor:
 
     def _unlock_ui(self):
         self.main_ui.root_tab_widget.setEnabled(True)
+
+
+class ORMHelper:
+    """Класс содержит инструменты для иньекций в базу.
+    Концепция в том, что на одной странице в GUI создаётся или обновляется ТОЛЬКО ОДНА ТАБЛИЦА БД.
+    """
+    def __init__(self, model: db.Model, session: db.Session):
+        self.session = session
+        self.model_obj: db.Model = model
+        self.__values = {}  # Ссылка на словарь со значениями
+        self.__temporary_field_values = {}  # Словарь хранящий последние значения для полей, - для сравнения,
+        # а после сравнения будет понятно: нужно ли сохранять данные в бд
+
+    def get_field_state(self, field_name: str, value: Any) -> bool:
+        """ Получить статус изменения поля """
+        field_data = self.__temporary_field_values.get(field_name, None)
+        if field_data is not None:
+            return field_data == value
+        return False
+
+    def set_field_state(self, field_name: str, value: Any):
+        self.__temporary_field_values[field_name] = value
+
+    def push_items(self):
+        """ SQL INSERT """
+        session = self.session
+        for item_name, data in self:
+            session.add(self.model_obj(**data))
+        session.commit()
+
+    def update_items(self, query_body: dict):
+        """ SQL UPDATE """
+        session = self.session
+        for item_name, data in self.items():
+            query = self.model_obj.query.filter_by(**query_body).first()
+            [setattr(query, k, v) for k, v in data.items()]
+            session.add(query)
+            session.commit()
+            del self[item_name]
+
+    def __setitem__(self, key, value):
+        self.__values[key] = value
+
+    def __getitem__(self, item):
+        if item in self:
+            return self.__values[item]
+
+    def __iter__(self):
+        def func():
+            items = list(self.__values.keys())
+            while items:
+                yield items.pop()
+        return func()
+
+    def __delitem__(self, key):
+        elem = self.__getitem__(key)
+        if elem is not None:
+            del self.__values[key]
+            return elem
+        raise KeyError
+
+    def keys(self):
+        return iter(self)
+
+    def values(self):
+        def func():
+            items = list(self.__values.values())
+            while items:
+                yield items.pop()
+
+        return func()
+
+    def items(self) -> Iterator:
+        return zip(iter(self), self.values())
