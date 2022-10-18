@@ -6,7 +6,7 @@ from PySide2.QtWidgets import QFileDialog
 from gui.validation import Validator
 from database.models import Cnc, Machine
 from gui.ui import Ui_main_window as Ui
-from gui.tools import Constructor, Tools
+from gui.tools import Constructor, Tools, ORMHelper
 
 
 class OptionsPageCreateMachine(Constructor, Tools):
@@ -20,7 +20,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
 
     def __init__(self, main_app_instance, ui: Ui):
         self.validator = None
-        self.items = {}  # Новые станки (словарное представление для **распаковки в сессию базы данных)
+        self.machine_items: Optional[ORMHelper] = None  # Новые станки (словарное представление для **распаковки в сессию базы данных)
         self.main_app = main_app_instance
         self.ui = ui
         self.cnc_names = {}  # Хранить словарь названий стоек, чтобы избежать лишних запросов в БД (cncid: name)
@@ -29,6 +29,10 @@ class OptionsPageCreateMachine(Constructor, Tools):
 
         def init_validator():
             self.validator = AddMachinePageValidation(self.ui)
+
+        def init_db_manager():
+            self.machine_items = ORMHelper(Machine, main_app_instance.db_session)
+        init_db_manager()
         self.reload()
         init_validator()
         self.connect_main_signals()
@@ -106,7 +110,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
             self.machine_names.append(name)
 
     def insert_machines_from_updates_queque(self):
-        for machine_name, data in self.items.items():
+        for machine_name, data in self.machine_items.items():
             item = QListWidgetItem(machine_name)
             self.ui.add_machine_list_0.addItem(item)
             self.machine_names.append(machine_name)
@@ -192,7 +196,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
         self.insert_all_cnc_from_db()
         cm_box_values = None
         if machine_db is None:
-            current_machine_item = self.items.get(name)
+            current_machine_item = self.machine_items.get(name)
             if current_machine_item is not None:
                 current_machine_item = current_machine_item.copy()
                 cnc_id = current_machine_item.get("cncid", None)
@@ -226,9 +230,9 @@ class OptionsPageCreateMachine(Constructor, Tools):
                 dialog.close()
                 error(machine_name)
                 return
-            machine_data = self.items.get(machine_name)
+            machine_data = self.machine_items.get(machine_name)
             if machine_data is None:
-                self.items.update({machine_name: {'machine_name': machine_name}})
+                self.machine_items.update({machine_name: {'machine_name': machine_name}})
             else:
                 error(machine_name)
                 return
@@ -249,7 +253,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
             item_name = item.text()
             if self.load_machine_from_database(item_name) is not None:
                 Machine.query.filter_by(machine_name=item_name).delete()
-            stored = self.items.get(item_name)
+            stored = self.machine_items.get(item_name)
             if stored is not None:
                 del stored
             self.clear_property_fields()
@@ -264,7 +268,6 @@ class OptionsPageCreateMachine(Constructor, Tools):
     def update_data(self, field_name):
         """ Обновление записей в базе, при изменении текстовых(LineEdit) полей-характеристик """
         active_machine = self.get_selected_machine_item()
-        print("Выделенный станок", active_machine)
         if active_machine is None:
             return
         update = False
@@ -272,13 +275,12 @@ class OptionsPageCreateMachine(Constructor, Tools):
         value = getattr(self.ui, field_name).text()
         if not value:
             return
-        machine_data = self.items.get(machine_name)
-        print(f"Поле обновилось {field_name} - {getattr(self.ui, field_name).text()}")
+        machine_data = self.machine_items.get(machine_name)
         if machine_data is None:
             if self.load_machine_from_database(machine_name) is None:
                 return self.reload()
             update = True
-            self.items.update({
+            self.machine_items.update({
                 machine_name: {
                     self.__UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]: value
                 }
@@ -291,11 +293,10 @@ class OptionsPageCreateMachine(Constructor, Tools):
                 self.__UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]: value
             })
         if self.validator.is_valid:
-            print("Обновление" if update else "Сохранение")
             if not update:
-                self.push_items()
+                self.machine_items.push_items()
             else:
-                self.update_items()
+                self.machine_items.update_items({"machine_name": machine_name})
 
     @Slot(str)
     def change_cnc(self, item):
@@ -311,18 +312,18 @@ class OptionsPageCreateMachine(Constructor, Tools):
         selected_machine = self.get_selected_machine_item()
         if selected_machine is not None:
             selected_machine_name = selected_machine.text()
-            machine_local_instance = self.items.get(selected_machine_name, None)
+            machine_local_instance = self.machine_items.get(selected_machine_name)
             if machine_local_instance is None:
                 machine_db_instance = self.load_machine_from_database(selected_machine_name)
                 if machine_db_instance is None:
                     self.reload()
-            machine_data = self.items.get(selected_machine_name, None)
+            machine_data = self.machine_items.get(selected_machine_name)
             if machine_data is not None:
                 machine_data.update({"cncid": cnc_db_instance.cncid})
             else:
                 #  Станок только что добавлен в ui, - его ещё нет в базе данных
-                #  Он находится в словаре self.items
-                self.items.update({
+                #  Он находится в словаре self.machine_items
+                self.machine_items.update({
                     selected_machine_name: {
                         "machine_name": selected_machine_name, "cncid": cnc_db_instance.cncid
                     }
@@ -338,25 +339,6 @@ class OptionsPageCreateMachine(Constructor, Tools):
         self.ui.choice_cnc.setCurrentIndex(0)
         [getattr(self.ui, field_name).setText("") for field_name in self.__UI__TO_SQL_COLUMN_LINK__LINE_EDIT]
         self.cnc_names = {}
-
-    def push_items(self):
-        """ SQL INSERT """
-        session = self.main_app.db_session
-        while self.items:
-            machine_name, data = self.items.popitem()
-            session.add(Machine(**data))
-        session.commit()
-
-    def update_items(self):
-        """ SQL UPDATE """
-        session = self.main_app.db_session
-        while self.items:
-            machine_name, data = self.items.popitem()
-            query = Machine.query.filter_by(machine_name=machine_name).first()
-            print(f"Сохраняемые поля {str(data.items())}")
-            [setattr(query, k, v) for k, v in data.items()]
-            session.add(query)
-            session.commit()
 
 
 class AddMachinePageValidation(Validator):
