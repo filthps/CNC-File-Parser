@@ -1,4 +1,5 @@
 import os
+import threading
 import traceback
 from typing import Union, Iterator, Optional, Sequence, Any
 from itertools import count, cycle
@@ -9,6 +10,7 @@ from PySide2.QtGui import QIcon
 from sqlalchemy.exc import DBAPIError
 from database.models import db
 from gui.ui import Ui_main_window as Ui
+from datatype import LinkedList
 from config import PROJECT_PATH
 
 
@@ -125,7 +127,7 @@ class Constructor:
             dialog.rejected.connect(lambda: window.close())
         ok_button = QDialogButtonBox.Ok
         window = MyAbstractDialog(self.instance, buttons=(ok_button,),
-                                close_callback=self._unlock_ui, init_callback=self._lock_ui)
+                                  close_callback=self._unlock_ui, init_callback=self._lock_ui)
         h_layout = QVBoxLayout(window)
         window.setFocus()
         label = QLabel(window)
@@ -203,7 +205,7 @@ class Constructor:
             window.finished.connect(cancel_callback)
         ok_button, cancel_button = QDialogButtonBox.Ok, QDialogButtonBox.Cancel
         window = MyAbstractDialog(self.instance, buttons=(ok_button, cancel_button,),
-                                close_callback=self._unlock_ui, init_callback=self._lock_ui)
+                                  close_callback=self._unlock_ui, init_callback=self._lock_ui)
 
         h_layout = QVBoxLayout(window)
         window.setFocus()
@@ -230,98 +232,104 @@ class Constructor:
         self.main_ui.root_tab_widget.setEnabled(True)
 
 
-class ORMHelper:
+class ORMHelper(LinkedList):
     """Класс содержит инструменты для иньекций в базу.
-    Концепция в том, что на одной странице в GUI создаётся или обновляется ТОЛЬКО ОДНА ТАБЛИЦА БД.
+    Итерируемый-очередь,
+    В словаре должен находиться ключ action, указывающий на действие DML-SQL(управление данными)
     """
-    def __init__(self, model: db.Model, session: db.Session):
+    RELEASE_TIMER_INTERVAL = 2000  # Мс
+
+    def __init__(self, session: db.Session):
+        self.timer = None
+        self._previous_saved_object = {}
         self.session = session
-        self.model_obj: db.Model = model
-        self.__values = {}  # Ссылка на словарь со значениями
-        self.__temporary_field_values = {}  # Словарь хранящий последние значения для полей, - для сравнения,
-        # а после сравнения будет понятно: нужно ли сохранять данные в бд
+        self._model_obj: db.Model = None  # Текущий класс модели, присваиваемый экземплярам
 
-    def get_field_state(self, field_name: str, value: Any) -> bool:
-        """ Получить статус изменения поля """
-        field_data = self.__temporary_field_values.get(field_name, None)
-        if field_data is not None:
-            return field_data == value
-        return False
+        def init_timer():
+            timer = threading.Timer(self.RELEASE_TIMER_INTERVAL, self.release)
+            timer.start()
+            return timer
+        self.timer = init_timer()
 
-    def set_field_state(self, field_name: str, value: Any):
-        self.__temporary_field_values[field_name] = value
+    @property
+    def model(self):
+        return self._model_obj
 
-    def push_items(self):
+    @model.setter
+    def model(self, obj):
+        self._model_obj = obj
+
+    def insert_items(self, callback=None):
         """ SQL INSERT """
+        if self.model is None:
+            raise AttributeError("Не установлен класс модели")
         session = self.session
-        for item_name, data in self:
-            session.add(self.model_obj(**data))
+        success = False
+        for item_name, data in self.items():
+            if self._is_unique_saved_object(data, self._previous_saved_obj):
+                session.add(self._model_obj(**data))
+                success = True
+        if not success:
+            return
         try:
             session.commit()
         except DBAPIError:
             print("Ошибка API базы данных")
         else:
+            self._previous_saved_obj = dict(self.items()).popitem()
             self.__values = {}
+            if callback is not None:
+                callback()
 
-    def update_items(self, query_body: dict):
+    def update_items(self, query_body: dict, callback=None):
         """ SQL UPDATE """
+        if self.model is None:
+            raise AttributeError("Не установлен класс модели")
         session = self.session
+        success = False
         for item_name, data in self.items():
-            query = self.model_obj.query.filter_by(**query_body).first()
-            [setattr(query, k, v) for k, v in data.items()]
-            session.add(query)
+            if not self._is_unique_saved_object(data, self._previous_saved_obj):
+                return
+            query = self._model_obj.query.filter_by(**query_body)
+            if not query.count():
+                return
+            instance = query.first()
+            [setattr(instance, k, v) for k, v in data.items()]
+            session.add(instance)
+            success = True
+        if not success:
+            return
         try:
             session.commit()
         except DBAPIError:
             traceback.print_exc()
             print("Ошибка API базы данных")
         else:
+            self._previous_saved_obj = dict(self.items()).popitem()
             self.__values = {}
+            if callback is not None:
+                callback()
 
-    def get(self, key, otherwise_value=None):
-        try:
-            item = self.__getitem__(key)
-        except KeyError:
-            item = otherwise_value
-        return item
+    def delete_items(self):
+        ...
 
-    def update(self, item: dict) -> None:
-        if not isinstance(item, dict):
-            raise TypeError
+    def release(self) -> None:
+        """
+        Этот метод стремится высвободить очередь сохраняемых объектов,
+        путём итерации по ним, и попыткой сохранить в базу данных.
+        :return: None
+        """
+        for obj in self.values():
+            pass
 
-        [self.__setitem__(k, v) for k, v in item.items()]
+    @property
+    def _previous_saved_obj(self):
+        return self._previous_saved_object
 
-    def __setitem__(self, key, value):
-        self.__values[key] = value
+    @_previous_saved_obj.setter
+    def _previous_saved_obj(self, item: dict):
+        self._previous_saved_object = item
 
-    def __getitem__(self, item):
-        if item in self:
-            return self.__values[item]
-
-    def __iter__(self):
-        def func():
-            items = list(self.__values.keys())
-            while items:
-                yield items.pop()
-        return func()
-
-    def __delitem__(self, key):
-        elem = self.__getitem__(key)
-        if elem is not None:
-            del self.__values[key]
-            return elem
-        raise KeyError
-
-    def keys(self):
-        return iter(self)
-
-    def values(self):
-        def func():
-            items = list(self.__values.values())
-            while items:
-                yield items.pop()
-
-        return func()
-
-    def items(self) -> Iterator:
-        return zip(iter(self), self.values())
+    @staticmethod
+    def _is_unique_saved_object(obj1: dict, obj2: dict):
+        return obj1 != obj2

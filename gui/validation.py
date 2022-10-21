@@ -10,7 +10,7 @@ class Validator:
     COMBO_BOX_DEFAULT_VALUES: dict[str, str] = {}  # Ключ - имя ComboBox, значение - текст в item по умолчанию
     REQUIRED_RADIO_BUTTONS: dict[str, Iterable[str]] = {}  # Ключ - имя GroupBox, значение - кортеж из кнопок radio, только одна кнопка должна быть enabled
     REQUIRED_TEXT_FIELD_VALUES: tuple = tuple()  # Кортеж имен инпутов, значения которых не могут быть пустыми
-    INVALID_TEXT_FIELD_VALUES: dict[str, re] = {}  # Ключи определяют перечень участвующих в валидации полей c текстовым содержимым, значение - регулярка, отображающая "плохое" значение
+    INVALID_TEXT_FIELD_VALUES: dict[str, re.Pattern] = {}  # Ключи определяют перечень участвующих в валидации полей c текстовым содержимым, значение - регулярка, отображающая "плохое" значение
     INVALID_TEXT: dict[str, str] = {}  # Словарь - имя виджета: текст-подсказка к неправильному полю
 
     def __init__(self, ui: Ui_main_window):
@@ -39,18 +39,31 @@ class Validator:
     def set_valid_text_field(field: QLineEdit) -> None:
         field.setStyleSheet("")
 
-    def refresh(self) -> bool:
+    def refresh(self, input_name: Optional[str] = None) -> bool:
         valid = True
-        if self.INVALID_TEXT_FIELD_VALUES:
-            for field_name, reg in self.INVALID_TEXT_FIELD_VALUES.items():
-                field: QWidget = getattr(self.ui, field_name, None)
-                if field is not None:
-                    result = re.fullmatch(reg, field.text())
-                    if result:
-                        self.set_invalid_text_field(field)
-                        valid = False
-                    else:
-                        self.set_valid_text_field(field)
+        if input_name is not None:
+            #  Способ функционирования №1 - передаём имя проверямоего поля
+            input_: QWidget = getattr(self.ui, input_name, None)
+            if input_ is None:
+                raise ValueError("Валидатор не нашёл в UI поле, которое ему передали на валидацию")
+            input_text = input_.text()
+            if input_name in self.REQUIRED_TEXT_FIELD_VALUES:
+                if not input_text:
+                    self.set_invalid_text_field(input_)
+                    valid = False
+                else:
+                    self.set_valid_text_field(input_)
+            if input_name in self.INVALID_TEXT_FIELD_VALUES:
+                regex_obj: re.Pattern = self.INVALID_TEXT_FIELD_VALUES[input_name]
+                match_obj: Optional[re.Match] = regex_obj.search(input_text)
+                if match_obj is not None and match_obj.group():
+                    self.set_invalid_text_field(input_)
+                    valid = False
+                else:
+                    self.set_valid_text_field(input_)
+            self._is_valid = valid
+            return valid
+        #  Способ функционирования №2 - Обход всех полей, если именованный аргумент не был передан
         if self.REQUIRED_TEXT_FIELD_VALUES:
             for input_name in self.REQUIRED_TEXT_FIELD_VALUES:
                 input_: QWidget = getattr(self.ui, input_name)
@@ -59,6 +72,16 @@ class Validator:
                     valid = False
                 else:
                     self.set_valid_text_field(input_)
+        if self.INVALID_TEXT_FIELD_VALUES:
+            for field_name, reg in self.INVALID_TEXT_FIELD_VALUES.items():
+                field: QWidget = getattr(self.ui, field_name, None)
+                if field is not None:
+                    result = reg.search(field.text())
+                    if result is not None:
+                        self.set_invalid_text_field(field)
+                        valid = False
+                    else:
+                        self.set_valid_text_field(field)
         if self.REQUIRED_RADIO_BUTTONS:
             for group_box_name, buttons in self.REQUIRED_RADIO_BUTTONS.items():
                 result = set()
