@@ -1,4 +1,5 @@
-from typing import Optional, Iterable, Union, Any
+from abc import ABC, abstractmethod
+from typing import Optional, Iterable, Union, Any, Iterator
 
 
 class LinkedListItem:
@@ -21,195 +22,206 @@ class LinkedListItem:
         if not type(item) is cls:
             raise TypeError
 
+    def __repr__(self):
+        return f"{type(self)}({self.value})"
 
-class LinkedList:
-    def __init__(self, items=None):
-        self._head = None
-        self._tail = None
-        self.__length = 0
-        if items is not None:
-            [self.append(item) for item in items]
+    def __str__(self):
+        return str(self.value)
 
-    def append(self, value):
-        new_element = LinkedListItem(value)
-        if len(self):
-            last_elem = self._tail
-            self.__set_next(last_elem, new_element)
-            self._tail = new_element
-        else:
-            self._head = self._tail = new_element
+
+class LinkedListAttributes(ABC):
+
+    @abstractmethod
+    def __init__(self):
+        self._length: int = 0
 
     @classmethod
-    def __is_valid_node(cl, obj):
-        if not isinstance(obj, cl):
-            raise TypeError
-
-    @classmethod
-    def __set_next(cls, left_item: LinkedListItem, right_item: LinkedListItem):
-        try:
-            cls.__is_valid_node(left_item)
-            cls.__is_valid_node(right_item)
-        except TypeError:
-            return
+    def _set_next(cls, left_item: LinkedListItem, right_item: LinkedListItem):
+        cls._is_valid_node(left_item)
+        cls._is_valid_node(right_item)
         left_item.next = right_item
 
-    def __iter__(self):
-        def gen():
-            current_item = self._head
-            while current_item is not None:
-                yield current_item
-                current_item = current_item.next
-        return gen()
+    @staticmethod
+    def _forward_move(start_item: LinkedListItem, index):
+        element = start_item
+        for _ in range(index):
+            element = element.next
+        return element
+
+    @classmethod
+    def _is_valid_node(cls, obj):
+        if not isinstance(obj, LinkedListItem):
+            raise TypeError
+
+    @staticmethod
+    def _gen(start_item: Optional[LinkedListItem] = None) -> Iterator:
+        current_item = start_item
+        while current_item is not None:
+            yield current_item.value
+            current_item = current_item.next
 
     def __len__(self):
-        if self.__length:
-            return self.__length
-        self.__length = sum((1 for _ in self))
-        return self.__length
+        if self._length:
+            return self._length
+        self._length = sum(tuple(1 for _ in self))
+        return self._length
+
+    @abstractmethod
+    def __iter__(self):
+        pass
 
     def __bool__(self):
         if len(self):
             return True
         return False
 
-    def __forward_move(self, index):
-        element = self._head
-        for _ in range(index):
-            element = element.next
-        return element
-
-    def __is_valid_index(self, index):
+    def _is_valid_index(self, index):
         if not isinstance(index, int):
             raise TypeError
         if index >= len(self):
             raise IndexError
 
-    def __getitem__(self, index):
-        self.__is_valid_index(index)
-        return self.__forward_move(index)
 
-    def __setitem__(self, index, value):
+class LinkedList(LinkedListAttributes):
+
+    def __init__(self, items: Optional[Iterable[Any]] = None):
+        self.__head: Optional[LinkedListItem] = None
+        self.__tail: Optional[LinkedListItem] = None
+        super().__init__()
+        if items is not None:
+            [self.append(item) for item in items]
+
+    def append(self, value):
+        new_element = LinkedListItem(value)
+        if self:
+            last_elem = self.__tail
+            self._set_next(last_elem, new_element)
+            self.__tail = new_element
+        else:
+            self.__head = self.__tail = new_element
+
+    def _forward_move(self, index: int):
+        return super()._forward_move(self.__head, index)
+
+    def __getitem__(self, index):
+        self._is_valid_index(index)
+        index = self._support_negative_index(index)
+        return self._forward_move(index)
+
+    def _support_negative_index(self, index: int):
         if index < 0:
             index = len(self) - index
+        return index
+
+    def __setitem__(self, index, value):
+        self._is_valid_index(index)
+        index = self._support_negative_index(index)
         new_element = LinkedListItem(value)
-        self.__is_valid_index(index)
-        if len(self):
-            last_element = self.__forward_move(index)
-            self.__set_next(last_element, new_element)
+        if self:
+            last_element = self._forward_move(index)
+            self._set_next(last_element, new_element)
         else:
-            self._head = self._tail = new_element
+            self.__head = self.__tail = new_element
 
     def __delitem__(self, index):
-        self.__is_valid_index(index)
+        self._is_valid_index(index)
+        index = self._support_negative_index(index)
         if not index:
-            item = self.__forward_move(index)
+            item = self._forward_move(index)
             next_item = item.next
             item.next = None
-            self._head = next_item
+            self.__head = next_item
             return item
-        item_prev = self.__forward_move(index - 1)
+        item_prev = self._forward_move(index - 1)
         if index == len(self) - 1:
             item = item_prev.next
             item_prev.next = None
-            self._tail = item_prev
+            self.__tail = item_prev
             return item
         current_item = item_prev.next
         next_item = current_item.next
         item_prev.next = next_item
         current_item.next = None
         return current_item
+
+    def __iter__(self):
+        return self._gen(self.__head)
 
     def __repr__(self):
         return f"{self.__class__}({tuple(self)})"
 
     def __str__(self):
-        return tuple(self)
+        return str(tuple(self))
 
 
-class LinkedDict(LinkedList):
+class LinkedDict(LinkedListAttributes):
     
-    def __init__(self, items: Iterable[Iterable[Union[tuple[Any, Any], list[Any, Any], frozenset[Any, Any]]]]):
+    def __init__(self, items: Iterable[Union[tuple[Any, Any], list[Any, Any]]]):
         self.__keys = LinkedList()
         self.__values = LinkedList()
-        self.__length = 0
+        super().__init__()
         for item in items:
-            for element in item:
-                if len(element) != 2:
-                    raise ValueError
-                self.update(*element)
+            if len(item) != 2:
+                raise ValueError
+            self.update(*item)
 
     def update(self, key, value):
-        return self.__setitem__(key, value)
+        self.__keys.append(key)
+        self.__values.append(value)
 
     @classmethod
     def __set_next(cls, left_item: LinkedListItem, right_item: LinkedListItem):
         left_item.next = right_item
 
-    def __keys_gen(self):
-        next_element = self.__keys
-        while next_element is not None:
-            current_element = next_element.next
-            yield next_element
-            if current_element is None:
-                break
-            next_element = current_element
-
-
-
     def __iter__(self):
-        return self.__items_gen()
+        return self._gen(self.__keys[0] if len(self.__keys) else None)
 
-    def __len__(self):
-        if self.__length:
-            return self.__length
-        self.__length = sum((1 for _ in self))
-        return self.__length
+    def keys(self):
+        return iter(self)
 
-    def __bool__(self):
-        if len(self):
-            return True
-        return False
+    def values(self):
+        return self._gen(self.__values[0] if len(self.__values) else None)
 
-    def __forward_move(self, index):
-        element = self._head
-        for _ in range(index):
-            element = element.next
-        return element
+    def items(self):
+        return zip(self.keys(), self.values())
 
-    def __getitem__(self, index):
-        self.__is_valid_index(index)
-        return self.__forward_move(index)
+    def __getitem__(self, key: Any):
+        value, index = self.__get_value(key)
+        if value is None:
+            raise KeyError
+        return value
+
+    def __get_value(self, key) -> Optional[tuple[Any, int]]:
+        index = 0
+        for k, value in self.items():
+            if k == key:
+                return value, index
+            index += 1
 
     def __setitem__(self, key, value):
-        new_element = self.ITEM_TYPE(key, value)
-        if len(self):
-            last_element = self.__forward_move(self.keys()[len(self) - 1])
-            self.__set_next(last_element, new_element)
-        else:
-            self._head = self._tail = new_element
+        value = self.__get_value(key)
+        if value is not None:
+            self.__keys.append(key)
+            self.__values.append(value)
 
-    def __delitem__(self, index):
-        self.__is_valid_index(index)
-        if not index:
-            item = self.__forward_move(index)
-            next_item = item.next
-            item.next = None
-            self._head = next_item
-            return item
-        item_prev = self.__forward_move(index - 1)
-        if index == len(self) - 1:
-            item = item_prev.next
-            item_prev.next = None
-            self._tail = item_prev
-            return item
-        current_item = item_prev.next
-        next_item = current_item.next
-        item_prev.next = next_item
-        current_item.next = None
-        return current_item
+    def __delitem__(self, item):
+        value, index = self.__get_value(item)
+        if value is not None:
+            del self.__keys[index]
+            del self.__values[index]
+            return value
+        raise KeyError
 
     def __repr__(self):
         return list(self)
 
     def __str__(self):
-        return str(list(self))
+        return str(tuple(self.items()))
+
+
+if __name__ == "__main__":
+    list_ = LinkedList([6, 8, 10, 434])
+    print(list_)
+    dict_ = LinkedDict([[1, 2], ["key", "value"], ("key", "value")])
+    dict_.update("Ключ", 4)
+    print(dict_)
