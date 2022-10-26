@@ -225,3 +225,4 @@ if __name__ == "__main__":
     dict_ = LinkedDict([[1, 2], ["key", "value"], ("key", "value")])
     dict_.update("Ключ", 4)
     print(dict_)
+    print(dict_["Ключ"])
