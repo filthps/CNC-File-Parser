@@ -156,7 +156,7 @@ class LinkedList(LinkedListAttributes):
 
 class LinkedDict(LinkedListAttributes):
     
-    def __init__(self, items: Iterable[Union[tuple[Any, Any], list[Any, Any]]]):
+    def __init__(self, items: Optional[Iterable[Union[tuple[Any, Any], list[Any, Any]]]] = None):
         self.__keys = LinkedList()
         self.__values = LinkedList()
         super().__init__()

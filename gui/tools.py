@@ -10,8 +10,7 @@ from PySide2.QtGui import QIcon
 from sqlalchemy.exc import DBAPIError
 from database.models import db
 from gui.ui import Ui_main_window as Ui
-from datatype import LinkedList
-from config import PROJECT_PATH
+from datatype import LinkedDict
 
 
 class Tools:
@@ -232,7 +231,7 @@ class Constructor:
         self.main_ui.root_tab_widget.setEnabled(True)
 
 
-class ORMHelper(LinkedList):
+class ORMHelper(LinkedDict):
     """Класс содержит инструменты для иньекций в базу.
     Итерируемый-очередь,
     В словаре должен находиться ключ action, указывающий на действие DML-SQL(управление данными)
@@ -240,6 +239,7 @@ class ORMHelper(LinkedList):
     RELEASE_TIMER_INTERVAL = 2000  # Мс
 
     def __init__(self, session: db.Session):
+        super().__init__()
         self.timer = None
         self._previous_saved_object = {}
         self.session = session
