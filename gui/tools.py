@@ -1,7 +1,7 @@
 import os
 import threading
 import traceback
-from typing import Union, Iterator, Optional, Sequence, Any
+from typing import Union, Iterator, Iterable, Optional, Sequence, Any
 from itertools import count, cycle
 from PySide2.QtCore import Qt
 from PySide2.QtWidgets import QTabWidget, QStackedWidget, QPushButton, QInputDialog, QDialogButtonBox, \
@@ -10,7 +10,8 @@ from PySide2.QtGui import QIcon
 from sqlalchemy.exc import DBAPIError
 from database.models import db
 from gui.ui import Ui_main_window as Ui
-from datatype import LinkedDict
+from datatype import LinkedList, LinkedListItem
+from database.models import Machine
 
 
 class Tools:
@@ -231,25 +232,195 @@ class Constructor:
         self.main_ui.root_tab_widget.setEnabled(True)
 
 
-class ORMHelper(LinkedDict):
-    """Класс содержит инструменты для иньекций в базу.
-    Итерируемый-очередь,
-    В словаре должен находиться ключ action, указывающий на действие DML-SQL(управление данными)
-    """
-    RELEASE_TIMER_INTERVAL = 2000  # Мс
-
-    def __init__(self, session: db.Session):
+class ORMItem(LinkedListItem):
+    """ Именованный атрибут model должен присутствовать при инициализации """
+    def __init__(self, name, **kw):
         super().__init__()
-        self.timer = None
-        self._previous_saved_object = {}
-        self.session = session
-        self._model_obj: db.Model = None  # Текущий класс модели, присваиваемый экземплярам
+        self.__model: db.Model = kw.pop("__model")
+        self.__dml_operation_type = kw.pop("__type")
+        if self.__model is None:
+            raise AttributeError("Не удалось инициализировать экземпляр ORMItem. Среди именованных атрибутов ожидался атрибут model.")
+        self.__is_valid_model_instance(self.__model)
+        if name is None:
+            raise ValueError
+        self.name: Any = name  # Имя для удобного поиска со стороны UI. Это может быть название станка, стойки итп
+        self.value = {}  # Содержимое - пары ключ-значение: поле таблицы бд: значение
+        if len(kw):
+            self.value.update(kw)
+        self.ready = kw.pop("__ready", False)
+
+    @property
+    def type(self):
+        return self.__dml_operation_type
+
+    @property
+    def ready(self):
+        return self.__is_ready
+    
+    @ready.setter
+    def ready(self, status: bool):
+        if not self.value:
+            return
+        if not isinstance(status, bool):
+            raise TypeError("Статус готовности - это тип данных boolean")
+        self.__is_ready = status
+
+    @property
+    def model(self):
+        return self.__model
+
+    @staticmethod
+    def __is_valid_model_instance(item: db.Model):
+        if not type(item) is db.Model:
+            raise TypeError("Значение атрибута model - неподходящего типа")
+
+    def __eq__(self, other: "ORMItem"):
+        try:
+            self.__is_valid_model_instance(other)
+        except TypeError:
+            return False
+        return self.value == other.value
+
+
+class ORMItemContainer(LinkedList):
+    """
+    Очередь
+    """
+    append = None
+
+    LinkedListItem = ORMItem
+
+    def __init__(self, items: Optional[Iterable[dict[str, dict]]] = None):
+        super().__init__()
+        if items is not None:
+            for item in items:
+                for block_name, inner in item.items():
+                    self.enqueue(block_name, **inner)
+
+    def enqueue(self, item_name, **kwargs):
+        """ Если нода с name - item_name найдена, то произойдёт update словарю value,
+        А также нода переносится в конец очереди """
+        item = self.__search_node_by_name(item_name)
+        if item is not None and item.type == "update" == kwargs.get("update", ""):
+            item.value.update(kwargs)
+        else:
+            item = self.LinkedListItem(item_name, **kwargs)
+        if self:
+            last_element = self._tail
+            self._set_prev(last_element, item)
+            self._set_next(item, last_element)
+            self._tail = item
+        else:
+            self._head = self._tail = item
+
+    def remove(self, key):
+        item = self.__search_node_by_name(key)
+        if item is None:
+            return
+        self.__delitem__(key)
+        return item
+
+    def get(self, key):
+        node = self.__search_node_by_name(key)
+        return node.value
+
+    def __getitem__(self, item: str):
+        node = self.__search_node_by_name(item)
+        if node is None:
+            raise KeyError
+        return node.value
+
+    def __delitem__(self, name):
+        node = self.__search_node_by_name(name)
+        if node is None:
+            raise KeyError
+        prev_node = node.prev
+        next_node = node.next
+        if prev_node is None:
+            self._head = next_node
+            node.next = None
+            return
+        if next_node is None:
+            self._tail = prev_node
+            node.prev = None
+            return
+        next_node.prev = prev_node
+        prev_node.next = next_node
+
+    def __str__(self):
+        items = list()
+        for node in self:
+            items.append({node.name: node.value})
+        return str(items)
+
+    def __repr__(self):
+        items = list()
+        for node in self:
+            items.append({node.name: node.value})
+        return f"{self.__class__}({items})"
+
+    def __search_node_by_name(self, name) -> Optional[ORMItem]:
+        for node in self:
+            if node.name == name:
+                return node
+
+
+class ORMHelper:
+    """
+    Класс-контейнер не имеющий своих экземпляров.
+    Связанный список, хранящий ноды, в основе реализована следующая логика при добавлении записи:
+        --CONTAINER--
+        - Присутствует атрибут model, он присваивается всем создающимся элементам-ITEM
+        ----
+        --ITEM--
+        - При добавлении элемента он имеет статус ready=False
+        - При редактировании элемента он получает статус ready=False
+        - При Добавлении происходит попытка найти в связанном списке элемент с таким же name
+        ----
+    """
+    RELEASE_INTERVAL_SECONDS = 10
+    _items: Optional[ORMItemContainer] = None
+    _timer: Optional[threading.Timer] = None
+    _session: Optional[db.session] = None
+    _model_obj: db.Model = None  # Текущий класс модели, присваиваемый автоматически всем экземплярам при добавлении в очередь
+    _previous_saved_obj: Optional[ORMItem] = None
+
+    @classmethod
+    def set_up(cls, session: db.session):
+        cls._session = session
+        cls._items = ORMItemContainer()
 
         def init_timer():
-            timer = threading.Timer(self.RELEASE_TIMER_INTERVAL, self.release)
+            timer = threading.Timer(cls.RELEASE_INTERVAL_SECONDS * 1000, cls.release)
             timer.start()
             return timer
-        self.timer = init_timer()
+        cls._timer = init_timer()
+        return cls
+
+    @classmethod
+    def set_item(cls, key, value: dict, insert=False, update=False, delete=False, ready=False):
+        """
+         Если ключ найден в очереди, то данная пара: ключ-значение удаляется
+          и помещается в конец очереди
+        """
+        if cls.model is None:
+            raise AttributeError("Не установлена модель БД для сохранения записей.")
+        if insert and update and delete or not insert and not update and not delete:
+            raise ValueError("Не правильно задан тип DML-SQL операции!")
+        if not isinstance(value, dict):
+            raise TypeError("Задумано таким образом, что в качестве значений выступают словари")
+        cls._items.append(key, __model=cls.model,
+                          __ready=ready, __insert=insert, __update=update, __delete=delete, **value)
+
+    @classmethod
+    def release(cls) -> None:
+        """
+        Этот метод стремится высвободить очередь сохраняемых объектов,
+        путём итерации по ним, и попыткой сохранить в базу данных.
+        :return: None
+        """
+        for obj in cls._items:
+            operation_type = obj.popitem()
 
     @property
     def model(self):
@@ -259,15 +430,16 @@ class ORMHelper(LinkedDict):
     def model(self, obj):
         self._model_obj = obj
 
-    def insert_items(self, callback=None):
+    @classmethod
+    def _insert_items(cls, callback=None):
         """ SQL INSERT """
-        if self.model is None:
+        if cls.model is None:
             raise AttributeError("Не установлен класс модели")
-        session = self.session
+        session = cls._session
         success = False
-        for item_name, data in self.items():
-            if self._is_unique_saved_object(data, self._previous_saved_obj):
-                session.add(self._model_obj(**data))
+        for item_name, data in cls:
+            if cls._is_unique_saved_object(data, cls._previous_saved_obj):
+                session.add(cls._model_obj(**data))
                 success = True
         if not success:
             return
@@ -276,21 +448,22 @@ class ORMHelper(LinkedDict):
         except DBAPIError:
             print("Ошибка API базы данных")
         else:
-            self._previous_saved_obj = dict(self.items()).popitem()
-            self.__values = {}
+            cls._previous_saved_obj = dict(cls.items()).popitem()
+            cls.__values = {}
             if callback is not None:
                 callback()
 
-    def update_items(self, query_body: dict, callback=None):
+    @classmethod
+    def _update_items(cls, query_body: dict, callback=None):
         """ SQL UPDATE """
-        if self.model is None:
+        if cls.model is None:
             raise AttributeError("Не установлен класс модели")
-        session = self.session
+        session = cls._session
         success = False
-        for item_name, data in self.items():
-            if not self._is_unique_saved_object(data, self._previous_saved_obj):
+        for item_name, data in cls.items():
+            if not cls._is_unique_saved_object(data, cls._previous_saved_obj):
                 return
-            query = self._model_obj.query.filter_by(**query_body)
+            query = cls._model_obj.query.filter_by(**query_body)
             if not query.count():
                 return
             instance = query.first()
@@ -305,31 +478,22 @@ class ORMHelper(LinkedDict):
             traceback.print_exc()
             print("Ошибка API базы данных")
         else:
-            self._previous_saved_obj = dict(self.items()).popitem()
-            self.__values = {}
+            cls._previous_saved_obj = dict(cls.items()).popitem()
+            cls.__values = {}
             if callback is not None:
                 callback()
 
-    def delete_items(self):
-        ...
-
-    def release(self) -> None:
-        """
-        Этот метод стремится высвободить очередь сохраняемых объектов,
-        путём итерации по ним, и попыткой сохранить в базу данных.
-        :return: None
-        """
-        for obj in self.values():
-            pass
-
-    @property
-    def _previous_saved_obj(self):
-        return self._previous_saved_object
-
-    @_previous_saved_obj.setter
-    def _previous_saved_obj(self, item: dict):
-        self._previous_saved_object = item
+    @classmethod
+    def _delete_items(cls):
+        """ SQL DELETE """
+        pass
 
     @staticmethod
-    def _is_unique_saved_object(obj1: dict, obj2: dict):
+    def _is_unique_saved_object(obj1, obj2):
         return obj1 != obj2
+
+
+if __name__ == "__main__":
+    test = ORMHelper.set_up(db.session)
+    test.model = Machine
+    test.update("key", 4, insert=True)

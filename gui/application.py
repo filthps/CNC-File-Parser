@@ -28,7 +28,7 @@ class Main(QMainWindow, Tools):
             self.db_session = self.database.session
 
         def init_db_manager():
-            self.db_items_queque = ORMHelper(self.db_session)
+            self.db_items_queque = ORMHelper.set_up(self.db_session)
 
         def init_ui():
             def init_buttons():
@@ -58,10 +58,10 @@ class Main(QMainWindow, Tools):
             set_window_geometry()
 
         def init_navigation():
-            self.navigation = Navigation(self, self.ui)
+            self.navigation = Navigation.set_up(self, self.ui)
 
         def init_actions():
-            self.actions = Actions(self, self.ui)
+            self.actions = Actions.set_up(self, self.ui)
 
         init_database()
         init_db_manager()
