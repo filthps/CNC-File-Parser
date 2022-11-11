@@ -29,6 +29,8 @@ class LinkedListItem:
 
     @classmethod
     def __is_valid_item(cls, item):
+        if item is None:
+            return
         if not type(item) is cls:
             raise TypeError
 
@@ -51,8 +53,6 @@ class LinkedListAbstraction(ABC):
         self._length: int = 0
 
     def __len__(self):
-        if self._length:
-            return self._length
         self._length = sum(tuple(1 for _ in self))
         return self._length
 
@@ -88,7 +88,9 @@ class LinkedListAbstraction(ABC):
             element = element.next
         return element
 
-    def _is_valid_node(self, obj):
+    def _is_valid_node(self, obj: Optional[LinkedListItem]):
+        if obj is None:
+            return
         if not isinstance(obj, self.LinkedListItem):
             raise TypeError
 
@@ -96,7 +98,7 @@ class LinkedListAbstraction(ABC):
     def _gen(start_item: Optional[LinkedListItem] = None) -> Iterator:
         current_item = start_item
         while current_item is not None:
-            yield current_item.value
+            yield current_item
             current_item = current_item.next
 
 

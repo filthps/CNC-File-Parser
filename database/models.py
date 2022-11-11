@@ -6,11 +6,24 @@ from flask import Flask
 
 
 DATABASE_PATH = "postgresql://postgres:g8ln7ze5vm6a@localhost:5432/intex1"
+RESERVED_WORDS = ("__insert", "__update", "__delete", "__ready", "__model", "__callback", "__node_name",)  # Используются в классе ORMHelper
 
 
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_PATH
 db = FlaskSQLAlchemy(app)
+
+
+class ModelController:
+    """ Класс призван предотвратить использование  """
+    def __new__(cls, *args, **kwargs):
+        for attr_name in kwargs.keys():
+            if attr_name in RESERVED_WORDS:
+                raise AttributeError(
+                    f"Не удалось инциализировать класс-модель {cls.__name__}. "
+                    f"Атрибут {attr_name} использовать нельзя, тк он зарезервирован."
+                )
+        super().__new__(*args, **kwargs)
 
 
 def get_uuid():
@@ -26,14 +39,14 @@ OPERATION_TYPES = (
 )
 
 
-class TaskDelegation(db.Model):
+class TaskDelegation(db.Model, ModelController):
     __tablename__ = "taskdelegate"
     id = Column(String, primary_key=True, default=get_uuid)
     machineid = Column(db.ForeignKey("machine.machineid"), nullable=False)
     operationid = Column(db.ForeignKey("operation.opid"), nullable=False)
 
 
-class Machine(db.Model):
+class Machine(db.Model, ModelController):
     __tablename__ = "machine"
     machineid = Column(Integer, primary_key=True, autoincrement=True)
     cncid = Column(Integer, db.ForeignKey("cnc", ondelete="SET NULL", onupdate="SET NULL"), nullable=True)
@@ -62,7 +75,7 @@ class Machine(db.Model):
     )
 
 
-class Operation(db.Model):
+class Operation(db.Model, ModelController):
     __tablename__ = "operation"
     opid = Column(String, primary_key=True, default=get_uuid)
     conditionid = Column(String, db.ForeignKey("cond.cnd"), nullable=True, default=None)
@@ -78,7 +91,7 @@ class Operation(db.Model):
     machines = relationship("Machine", secondary=TaskDelegation.__table__)
 
 
-class Condition(db.Model):
+class Condition(db.Model, ModelController):
     __tablename__ = "cond"
     cnd = Column(String, primary_key=True, default=get_uuid)
     parent = Column(String, db.ForeignKey("cond.cnd"), nullable=True, default=None)
@@ -92,7 +105,7 @@ class Condition(db.Model):
     )
 
 
-class Cnc(db.Model):
+class Cnc(db.Model, ModelController):
     __tablename__ = "cnc"
     cncid = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(20), unique=True, nullable=False)
@@ -104,7 +117,7 @@ class Cnc(db.Model):
     )
 
 
-class HeadVarible(db.Model):
+class HeadVarible(db.Model, ModelController):
     __tablename__ = "headvar"
     varid = Column(String, default=get_uuid, primary_key=True)
     name = Column(String, unique=True, nullable=False)
@@ -123,7 +136,7 @@ class HeadVarible(db.Model):
     )
 
 
-class Insert(db.Model):
+class Insert(db.Model, ModelController):
     __tablename__ = "insert"
     insid = Column(Integer, primary_key=True, autoincrement=True)
     after = Column(Boolean, default=False, nullable=False)
@@ -138,7 +151,7 @@ class Insert(db.Model):
     )
 
 
-class Comment(db.Model):
+class Comment(db.Model, ModelController):
     __tablename__ = "comment"
     commentid = Column(Integer, primary_key=True, autoincrement=True)
     findstr = Column(String(100), nullable=False)
@@ -146,7 +159,7 @@ class Comment(db.Model):
     ifcontains = Column(Boolean, default=False, nullable=False)
 
 
-class Uncomment(db.Model):
+class Uncomment(db.Model, ModelController):
     __tablename__ = "uncomment"
     id = Column(Integer, primary_key=True, autoincrement=True)
     findstr = Column(String(100), nullable=False)
@@ -157,7 +170,7 @@ class Uncomment(db.Model):
     )
 
 
-class Remove(db.Model):
+class Remove(db.Model, ModelController):
     __tablename__ = "remove"
     removeid = Column(Integer, primary_key=True, autoincrement=True)
     iffullmatch = Column(Boolean, default=False, nullable=False)
@@ -169,7 +182,7 @@ class Remove(db.Model):
     )
 
 
-class HeadVarDelegation(db.Model):
+class HeadVarDelegation(db.Model, ModelController):
     __tablename__ = "varsec"
     secid = Column(String, default=get_uuid, primary_key=True)
     varid = Column(String, db.ForeignKey("headvar.varid"), nullable=False)
@@ -178,7 +191,7 @@ class HeadVarDelegation(db.Model):
     strindex = Column(Integer, default=0, nullable=False)
 
 
-class Rename(db.Model):
+class Rename(db.Model, ModelController):
     __tablename__ = "renam"
     renameid = Column(Integer, primary_key=True, autoincrement=True)
     uppercase = Column(Boolean, default=False, nullable=False)
@@ -191,7 +204,7 @@ class Rename(db.Model):
     #varibles = relationship("HeadVarDelegation")
 
 
-class Numeration(db.Model):
+class Numeration(db.Model, ModelController):
     __tablename__ = "num"
     numerationid = Column(Integer, autoincrement=True, primary_key=True)
     startat = Column(Integer, nullable=False, default=1)
@@ -204,7 +217,7 @@ class Numeration(db.Model):
     )
 
 
-class Replace(db.Model):
+class Replace(db.Model, ModelController):
     __tablename__ = "repl"
     replaceid = Column(Integer, primary_key=True, autoincrement=True)
     findstr = Column(String(100), nullable=False)
