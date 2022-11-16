@@ -17,6 +17,7 @@ class Main(QMainWindow, Tools):
         super().__init__(parent=parent)
         self.db_session = None
         self.database = None
+        self.db_items_queue = None
         self.navigation = None
         self.actions = None
         self.ui = None
@@ -28,7 +29,7 @@ class Main(QMainWindow, Tools):
             self.db_session = self.database.session
 
         def init_db_manager():
-            self.db_items_queque = ORMHelper.set_up(self.db_session)
+            self.db_items_queue = ORMHelper.set_up(self.db_session)
 
         def init_ui():
             def init_buttons():

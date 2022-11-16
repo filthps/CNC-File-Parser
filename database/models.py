@@ -16,14 +16,15 @@ db = FlaskSQLAlchemy(app)
 
 class ModelController:
     """ Класс призван предотвратить использование  """
-    def __new__(cls, *args, **kwargs):
-        for attr_name in kwargs.keys():
-            if attr_name in RESERVED_WORDS:
+    def __new__(cls):
+        class_ = super().__new__(cls)
+        for special_word in RESERVED_WORDS:
+            if hasattr(class_, special_word):
                 raise AttributeError(
                     f"Не удалось инциализировать класс-модель {cls.__name__}. "
-                    f"Атрибут {attr_name} использовать нельзя, тк он зарезервирован."
+                    f"Атрибут {special_word} использовать нельзя, тк он зарезервирован."
                 )
-        super().__new__(*args, **kwargs)
+        return class_
 
 
 def get_uuid():

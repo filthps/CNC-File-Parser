@@ -1,6 +1,5 @@
 import os
 import threading
-import traceback
 from typing import Union, Iterator, Iterable, Optional, Sequence, Any, Callable
 from itertools import count, cycle
 from PySide2.QtCore import Qt
@@ -8,10 +7,8 @@ from PySide2.QtWidgets import QTabWidget, QStackedWidget, QPushButton, QInputDia
     QListWidgetItem, QListWidget, QDialog, QLabel, QVBoxLayout, QHBoxLayout, QTreeWidgetItem, QTreeWidget, QLineEdit
 from PySide2.QtGui import QIcon
 from sqlalchemy.exc import DBAPIError
-from database.models import db
 from gui.ui import Ui_main_window as Ui
 from datatype import LinkedList, LinkedListItem
-from database.models import Machine
 
 
 class Tools:
@@ -94,7 +91,7 @@ class MyAbstractDialog(QDialog):
 
     @staticmethod
     def __set_active(button: QDialogButtonBox):
-        # button.setFocus() todo
+        # button.setFocus()  # todo
         ...
 
 
@@ -233,69 +230,111 @@ class Constructor:
 
 
 class ORMItem(LinkedListItem):
-    """ Именованный атрибут model должен присутствовать при инициализации """
+    """ Иммутабельный класс ноды для связанного спика """
+
     def __init__(self, __node_name, **kw):
         super().__init__()
         self._is_valid_dml_type(kw)
-        self.__model: db.Model = kw.pop("__model", None)
+        self.__model = kw.pop("__model", None)
         self._is_valid_model_instance(self.__model)
         self._callback: Optional[Callable] = kw.pop("__callback", None)
-        self.__insert = kw.pop("__insert")
-        self.__update = kw.pop("__update")
-        self.__delete = kw.pop("__delete")
-
-        if __node_name is None:
+        self.__insert = kw.pop("__insert", False)
+        self.__update = kw.pop("__update", False)
+        self.__delete = kw.pop("__delete", False)
+        self._is_send = False  # После успешной транзакции странет True
+        if self.__delete or self.__update:
+            if "__where" not in kw:
+                raise KeyError("Если тип DML-SQL операции - delete или update, то будь добр установи ключ "
+                               "__where со значением для поиска записи в таблице.")
+        if not isinstance(__node_name, str):
             raise ValueError
-        self.name: Any = __node_name  # Имя для удобного поиска со стороны UI. Это может быть название станка, стойки итп
-        self.value = {}  # Содержимое - пары ключ-значение: поле таблицы бд: значение
-        if len(kw):
-            self.value.update(kw)
-        self.ready = kw.pop("__ready", False)
+        self._name: Any = __node_name  # Имя для удобного поиска со стороны UI. Это может быть название станка, стойки итп
+        self.__is_ready = kw.pop("__ready", False)
+        self._where = kw.pop("__where", None)
+        self._value = {}  # Содержимое - пары ключ-значение: поле таблицы бд: значение
+        if not self.__delete:
+            if len(kw):
+                self._value.update(kw)
 
     @property
-    def type(self) -> str:
-        return "__insert" if self.__insert else "__update" if self.__update else "__delete"
+    def name(self):
+        return self._name
+
+    @property
+    def value(self):
+        return self._value.copy()
+
+    @property
+    def model(self):
+        return self.__model
 
     @property
     def ready(self):
         return self.__is_ready
 
     @property
-    def callback(self) -> Optional[callable]:
+    def callback(self):
         return self._callback
 
     @ready.setter
     def ready(self, status: bool):
-        if not self.value:
-            return
         if not isinstance(status, bool):
             raise TypeError("Статус готовности - это тип данных boolean")
         self.__is_ready = status
 
     @property
-    def model(self) -> db.Model:
-        return self.__model
+    def is_has_been_send(self):
+        return self._is_send
+
+    @property
+    def type(self) -> str:
+        return "__insert" if self.__insert else "__update" if self.__update else "__delete"
 
     def __eq__(self, other: "ORMItem"):
         if not isinstance(other, type(self)):
             return False
         try:
-            self._is_valid_model_instance(other.model)
+            self._is_valid_model_instance(other.__model)
         except TypeError:
             return False
-        return self.model.__name__ == other.model.__name__
+        if self.name == other.name:
+            return self.__model.__name__ == other.__model.__name__
+        return False
 
     def __ne__(self, other: "ORMItem"):
         return not self.__eq__(other)
 
     def __repr__(self):
-        return f"{type(self)}({self.__str__()})"
-
-    def __str__(self):
         result = {}
-        result.update(self.value)
-        result.update({"__model": self.model, "__insert": False, "__update": False, "__delete": False, self.type: True})
-        return f"{{'{self.name}': {result}}}"
+        result.update(self._value)
+        if self.__update or self.__delete:
+            result.update({"__where": self._where})
+        result.update({"__model": self.__model, "__insert": self.__insert,
+                       "__update": self.__update, "__ready": self.ready,
+                       "__delete": self.__delete, "__callback": self._callback})
+        kwargs = ""
+        for k, v in result:
+            kwargs += f"{k}={v}"
+        return f"{self.__class__}({{'{self._name}': {kwargs}}})"
+
+    def commit(self, session):
+        query = None
+        if self.__insert:
+            query = self.model(**self._value)
+        if self.__update or self.__delete:
+            query = self.model.query.filter_by(**self._where).first()
+        if self.__update:
+            while self._value:
+                field, value = self._value.popitem()
+                setattr(query, field, value)
+        if self.__delete:
+            session.delete(query)
+        else:
+            session.add(query)
+        try:
+            session.commit()
+        finally:
+            self._is_send = True
 
     @staticmethod
     def _is_valid_dml_type(data: dict):
@@ -309,7 +348,7 @@ class ORMItem(LinkedListItem):
             raise ValueError
 
     @staticmethod
-    def _is_valid_model_instance(item: db.Model):
+    def _is_valid_model_instance(item):
         if not hasattr(item, "__tablename__"):
             raise TypeError("Значение атрибута model - неподходящего типа")
 
@@ -325,6 +364,7 @@ class ORMItemContainer(LinkedList):
 
     def __init__(self, items: Optional[Iterable[dict[str, dict]]] = None):
         super().__init__()
+        self._model_name = None
         if items is not None:
             for item in items:
                 for block_name, inner in item.items():
@@ -338,9 +378,20 @@ class ORMItemContainer(LinkedList):
         model = kwargs.get("__model", None)
         if model is not None:
             model_name = model.__name__
-        exists_item = self.__search_node_by_name(item_name, model_name=model_name)
+            self._model_name = model_name
+        exists_item = self.search_node_by_name(item_name, model_name=model_name)
         potential_new_item = self.LinkedListItem(item_name, **kwargs)
         new_item = None
+
+        def create_merged_values_node(old_node: ORMItem, new_node: ORMItem) -> ORMItem:
+            """
+            Соединение значений старой и создаваемой ноды
+            """
+            temp_value = old_node.value
+            temp_value.update({"__callback": new_node.callback or old_node.callback})
+            temp_value.update({"__ready": new_node.ready or old_node.ready})
+            temp_value.update(new_node.value)
+            return self.LinkedListItem(item_name, **temp_value)
         if exists_item == potential_new_item:
             new_item_is_update = kwargs.get("__update", False)
             new_item_is_delete = kwargs.get("__delete", False)
@@ -348,23 +399,24 @@ class ORMItemContainer(LinkedList):
             if new_item_is_update == "__update":
                 if exists_item.type == "__update" or exists_item.type == "__insert":
                     self._remove_from_queue(exists_item)
-                    exists_item.value.update(kwargs)
-                    new_item = exists_item
+                    new_item = create_merged_values_node(exists_item, potential_new_item)
+                if exists_item.type == "__delete":
+                    self._remove_from_queue(exists_item)
+                    new_item = potential_new_item
             if new_item_is_delete:
                 self._remove_from_queue(exists_item)
                 new_item = potential_new_item
             if new_item_is_insert:
                 if exists_item.type == "__insert" or exists_item.type == "__update":
                     self._remove_from_queue(exists_item)
-                    exists_item.value.update(kwargs)
-                    new_item = exists_item
+                    new_item = create_merged_values_node(exists_item, potential_new_item)
                 if exists_item.type == "__delete":
                     self._remove_from_queue(exists_item)
                     new_item = potential_new_item
         else:
             new_item = potential_new_item
         if new_item is not None:
-            if self._length:
+            if self:
                 last_element = self._tail
                 self._set_prev(new_item, last_element)
                 self._set_next(last_element, new_item)
@@ -373,25 +425,38 @@ class ORMItemContainer(LinkedList):
                 self._head = self._tail = new_item
 
     def dequeue(self) -> Optional[ORMItem]:
-        """ Узвлечение ноды с начала очереди """
+        """ Извлечение ноды с начала очереди """
         node = self._head
         if node is None:
             return
         self._remove_from_queue(node)
         return node
 
-    def remove_from_queue(self, node_name: str, model_name: str) -> None:
+    def remove_from_queue(self, node_name: str, model_name: str = None) -> None:
         """
-
+        Экстренное изъятие ноды из очереди
         :param node_name: Имя сущности, сохраняющейся в БД
-        :param model_name: Имя модели, к которой сущность привязана,
-        :return:
+        :param model_name: Имя модели, к которой сущность привязана
         """
+        if model_name is None:
+            model_name = self._model_name
         if type(node_name) is not str or type(model_name) is not str:
             raise TypeError
-        node = self.__search_node_by_name(node_name, model_name)
+        node = self.search_node_by_name(node_name, model_name)
         if node is not None:
             self._remove_from_queue(node)
+
+    def __repr__(self):
+        return f"{self.__class__}({tuple(str(i) for i in self)})"
+
+    def __str__(self):
+        return str(tuple(str(i) for i in self))
+
+    def __getitem__(self, item: str):
+        if not isinstance(item, str):
+            raise KeyError
+        node = self.search_node_by_name(item, model_name=self._model_name)
+        return node
 
     def _remove_from_queue(self, node) -> None:
         prev_node = node.prev
@@ -407,7 +472,9 @@ class ORMItemContainer(LinkedList):
         next_node.prev = prev_node
         prev_node.next = next_node
 
-    def __search_node_by_name(self, name: str, model_name: Optional[str] = None) -> Optional[ORMItem]:
+    def search_node_by_name(self, name: str, model_name: Optional[str] = None) -> Optional[ORMItem]:
+        if model_name is None:
+            model_name = self._model_name
         for node in self:
             if node.name == name:
                 if model_name is not None:
@@ -416,11 +483,10 @@ class ORMItemContainer(LinkedList):
                 else:
                     return node
 
-    def __repr__(self):
-        return f"{self.__class__}({tuple(str(i) for i in self)})"
-
-    def __str__(self):
-        return str(tuple(str(i) for i in self))
+    def search_node_by_model(self, model_name: str) -> Optional[ORMItem]:
+        for node in self:
+            if node.model.__name__ == model_name:
+                return node
 
 
 class ORMHelper:
@@ -438,43 +504,106 @@ class ORMHelper:
         ----
     """
     RELEASE_INTERVAL_SECONDS = 10
-    _items: Optional[ORMItemContainer] = None
+    items: Optional[ORMItemContainer] = None
     _timer: Optional[threading.Timer] = None
-    _session: Optional[db.session] = None
-    _model_obj: db.Model = None  # Текущий класс модели, присваиваемый автоматически всем экземплярам при добавлении в очередь
+    _session = None
+    _model_obj = None  # Текущий класс модели, присваиваемый автоматически всем экземплярам при добавлении в очередь
 
     @classmethod
-    def set_up(cls, session: db.session):
+    def set_up(cls, session):
+        cls._is_valid_session(session)
         cls._session = session
-        cls._items = ORMItemContainer()
-
-        def init_timer():
-            timer = threading.Timer(cls.RELEASE_INTERVAL_SECONDS * 1000, cls.release)
-            timer.start()
-            return timer
-        cls._timer = init_timer()
+        cls.items = ORMItemContainer()
         return cls
 
     @classmethod
-    def set_item(cls, key, value: dict, insert=False, update=False, delete=False, ready=False, callback=None):
-        """
-         Если ключ найден в очереди, то данная пара: ключ-значение удаляется
-          и помещается в конец очереди
-        """
+    def init_timer(cls):
+        timer = threading.Timer(cls.RELEASE_INTERVAL_SECONDS * 1000, cls.release)
+        timer.start()
+        return timer
+
+    @classmethod
+    def set_item(cls, key, value: Optional[dict] = None, insert=False, update=False,
+                 delete=False, ready=False, callback=None, where=None, model=None):
+        cls._is_valid_node_name(key)
         if cls._model_obj is None:
             raise AttributeError("Не установлена модель БД для сохранения записей.")
         if not insert and not update and not delete:
             raise ValueError("Задайте тип DML операции: insert, update или delete")
+        if update or delete:
+            if where is None:
+                raise ValueError("Если тип DML-SQL операции - delete или update, то будь добр установи ключ "
+                                 "__where со значением для поиска записи в таблице.")
         if insert and update and delete:
             raise ValueError("Не правильно задан тип DML-SQL операции!")
-        if not isinstance(value, dict):
-            raise TypeError("В качестве значений выступают словари")
-        cls._items.enqueue(key, __model=cls._model_obj, __ready=ready,
-                           __insert=insert, __update=update, __delete=delete, __callback=callback, **value)
+        if not delete:
+            if not isinstance(value, dict):
+                raise TypeError("В качестве значений выступают словари")
+        cls.items.enqueue(key, __model=model or cls._model_obj, __ready=ready,
+                          __insert=insert, __update=update,
+                          __delete=delete, __where=where, __callback=callback, **value)
+        cls._timer = cls.init_timer()
+
+    @classmethod
+    def get_item(cls, item_name, where=None, model=None, only_db=False, only_queue=False) -> dict:
+        """
+        Получение записи из базы данных.
+        Model.query.fetchone()
+        """
+        cls._is_valid_node_name(item_name)
+        model = model or cls._model_obj
+        cls._is_valid_model_instance(model)
+        if only_queue:
+            node = cls.items.search_node_by_name(item_name, model_name=model)
+            if node is None:
+                return {}
+            data_node = node.value
+            return data_node
+        if type(where) is not dict:
+            raise ValueError("В качестве значения для 'where' предусмотрен словарь."
+                             "Данный словарь будет распакован в выражении: Model.query.filter_by(**)")
+        query = model.query.filter_by(**where).first()
+        data_db = {} if query is None else query.__dict__
+        if only_db:
+            return data_db
+        node = cls.items.search_node_by_name(item_name, model_name=model)
+        if node is None:
+            return data_db
+        if node.type == "__delete":
+            return {}
+        data_node = node.value
+        data_db.update(data_node)
+        return data_db
+
+    @classmethod
+    def get_items(cls, model=None, only_db=False, only_queue=False) -> list[dict]:  # todo: придумать пагинатор
+        """
+        Получение множества записей из базы данных.
+        Model.query.all()
+        """
+        model = model or cls._model_obj
+        cls._is_valid_model_instance(model)
+        items_db = model.query.all()
+        output = []
+        for item in items_db:
+            data_db = {} if item is None else item.__dict__
+            node = cls.items.search_node_by_model(model.__name__)
+            if node is not None:
+                if not node.type == "__delete":
+                    data_node = node.value
+                    data_db.update(data_node)
+                else:
+                    data_db = {}
+            if data_db:
+                output.append(data_db)
+        return output
 
     @classmethod
     def remove_item(cls, name: str):
-        return cls._items.remove_from_queue(name, cls._model_obj)
+        """
+        Удалить ноду из очереди на сохранение
+        """
+        return cls.items.remove_from_queue(name, cls._model_obj)
 
     @classmethod
     def release(cls) -> None:
@@ -483,63 +612,40 @@ class ORMHelper:
         путём итерации по ним, и попыткой сохранить в базу данных.
         :return: None
         """
-        orm_element = cls._items.dequeue()
+        orm_element = cls.items.dequeue()
         while orm_element is not None:
-            orm_element = cls._items.dequeue()
+            orm_element = cls.items.dequeue()
             if orm_element is None:
                 return
-            dml_method = getattr(cls, f"_{cls.__name__}{orm_element.type}", None)
-            if dml_method is None:
-                raise AttributeError
-            try:
-                dml_method(orm_element)
-            except DBAPIError:
-                print("Установка элементов в очередь")
-                cls._items.enqueue(orm_element.name, **orm_element.value)
-            finally:
-                callback = orm_element.callback
-                if callback is not None:
-                    callback()
+            if not orm_element.is_has_been_send:
+                if orm_element.ready:
+                    try:
+                        orm_element.commit(cls._session)
+                    except DBAPIError:
+                        cls.items.enqueue(orm_element.name, **orm_element.value)
+                    finally:
+                        callback = orm_element.callback
+                        if callback is not None:
+                            callback()
+                else:
+                    cls.items.enqueue(orm_element.name, **orm_element.value)
+        cls._session.commit()
 
     @classmethod
-    def set_model(cls, obj: db.Model):
+    def set_model(cls, obj):
         cls._is_valid_model_instance(obj)
         cls._model_obj = obj
 
     @classmethod
-    def items(cls):
-        return cls._items
-
-    @classmethod
-    def __insert(cls, orm_node):
-        """ SQL INSERT """
-        print(f"INSERT {orm_node}")
-
-    @classmethod
-    def __update(cls, orm_node):
-        """ SQL UPDATE """
-        print(f"UPDATE {orm_node}")
-
-    @classmethod
-    def __delete(cls, orm_node):
-        """ SQL DELETE """
-        print(f"DELETE {orm_node}")
+    def _is_valid_node_name(cls, name):
+        if type(name) is not str:
+            raise ValueError
 
     @staticmethod
-    def _is_valid_model_instance(item: db.Model):
+    def _is_valid_model_instance(item):
         if item is None or not hasattr(item, "__tablename__"):
             raise TypeError("Значение атрибута model - неподходящего типа")
 
-
-if __name__ == "__main__":
-    TestORMAdapter = ORMHelper.set_up(db.session)
-    TestORMAdapter.set_model(Machine)
-    TestORMAdapter.set_item("Heller", {"id": 3, "name": "Heller"}, insert=True, callback=lambda: print("Сработал callback"))
-    TestORMAdapter.set_item("Fidia", {"id": 2, "name": "Rambaudi"}, update=True)
-    TestORMAdapter.set_item("Fidia", {"id": 4, "name": "Rambaudi123"}, update=True)
-    TestORMAdapter.set_item("Fidia", {"id": 4}, delete=True)
-    print(TestORMAdapter.items())
-    #TestORMAdapter.release()
-    #print(TestORMAdapter.items())
-    #print(len(TestORMAdapter.items()))
-
+    @staticmethod
+    def _is_valid_session(obj):  # todo: Пока не знаю как проверить
+        return

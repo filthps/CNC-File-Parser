@@ -15,7 +15,7 @@ class Navigation:
         0: None, 1: None, 2: None, 3: None
     }
     CONVERTER_OPTIONS_TAB_WIDGET = {  # QTabWidget с навигацией по настройкам: Стойки|Станки|Операции|Привязать
-        0: AddCNC, 1: OptionsPageCreateMachine, 2: ..., 3: ..., 4: AddOperationMainPage
+        0: AddCNC, 1: OptionsPageCreateMachine, 2: None, 3: None, 4: AddOperationMainPage
     }
     TASK_OPTIONS_TAB_WIDGET = {  # Включение/выключение|Поменять последовательность|Добавить
 
@@ -55,6 +55,7 @@ class Navigation:
             tab_widgets()
         connect_ui_signals()
         cls.nav_home_page()
+        return cls
 
     @classmethod
     @Slot(int)
@@ -112,6 +113,7 @@ class Actions:
     def set_up(cls, main_app, ui: Ui):
         cls.app = main_app
         cls.ui = ui
+        return cls
 
     @classmethod
     def re_init(cls, page: Callable):

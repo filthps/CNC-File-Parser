@@ -5,7 +5,7 @@ from typing import Optional, Iterable, Union, Any, Iterator
 class LinkedListItem:
 
     def __init__(self, val=None):
-        self.value = val
+        self.val = val
         self.__next = None
         self.__prev = None
 
@@ -36,25 +36,20 @@ class LinkedListItem:
 
     def __eq__(self, other: "LinkedListItem"):
         self.__is_valid_item(other)
-        return self.value == other.value
+        return self.val == other.val
 
     def __repr__(self):
-        return f"{type(self)}({self.value})"
+        return f"{type(self)}({self.val})"
 
     def __str__(self):
-        return str(self.value)
+        return str(self.val)
 
 
 class LinkedListAbstraction(ABC):
     LinkedListItem = LinkedListItem
 
-    @abstractmethod
-    def __init__(self):
-        self._length: int = 0
-
     def __len__(self):
-        self._length = sum(tuple(1 for _ in self))
-        return self._length
+        return sum(tuple(1 for _ in self))
 
     @abstractmethod
     def __iter__(self):
@@ -108,7 +103,6 @@ class LinkedList(LinkedListAbstraction):
     def __init__(self, items: Optional[Iterable[Any]] = None):
         self._head: Optional[LinkedListItem] = None
         self._tail: Optional[LinkedListItem] = None
-        super().__init__()
         if items is not None:
             [self.append(item) for item in items]
 
