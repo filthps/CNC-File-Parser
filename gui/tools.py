@@ -230,7 +230,9 @@ class Constructor:
 
 
 class ORMItem(LinkedListItem):
-    """ Иммутабельный класс ноды для связанного спика """
+    """ Иммутабельный класс ноды для ORMItemContainer.
+
+    """
 
     def __init__(self, __node_name, **kw):
         super().__init__()
@@ -290,8 +292,17 @@ class ORMItem(LinkedListItem):
     def type(self) -> str:
         return "__insert" if self.__insert else "__update" if self.__update else "__delete"
 
+    def remove(self, key) -> bool:
+        if key in self.value:
+            del self._value[key]
+            return True
+        return False
+
+    def __delitem__(self, key):
+        return self.remove(key)
+
     def __eq__(self, other: "ORMItem"):
-        if not isinstance(other, type(self)):
+        if not isinstance(other, self.__class__):
             return False
         try:
             self._is_valid_model_instance(other.__model)
@@ -304,7 +315,7 @@ class ORMItem(LinkedListItem):
     def __ne__(self, other: "ORMItem"):
         return not self.__eq__(other)
 
-    def __repr__(self):
+    def __format_kwargs(self):
         result = {}
         result.update(self._value)
         if self.__update or self.__delete:
@@ -313,11 +324,22 @@ class ORMItem(LinkedListItem):
                        "__update": self.__update, "__ready": self.ready,
                        "__delete": self.__delete, "__callback": self._callback})
         kwargs = ""
-        for k, v in result:
-            kwargs += f"{k}={v}"
-        return f"{self.__class__}({{'{self._name}': {kwargs}}})"
+        for k, v in result.items():
+            kwargs += f"{k}={v}, "
+        return result
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}({{'{self._name}': {self.__format_kwargs()}}})"
+
+    def __str__(self):
+        return str({self.name: self.__format_kwargs()})
+
+    def __del__(self):
+        print(f"Нода {self.name} удалилась")
 
     def commit(self, session):
+        if self._is_send:
+            return
         query = None
         if self.__insert:
             query = self.model(**self._value)
@@ -325,7 +347,7 @@ class ORMItem(LinkedListItem):
             query = self.model.query.filter_by(**self._where).first()
         if self.__update:
             while self._value:
-                field, value = self._value.popitem()
+                field, value = self.value.popitem()
                 setattr(query, field, value)
         if self.__delete:
             session.delete(query)
@@ -335,6 +357,7 @@ class ORMItem(LinkedListItem):
             session.commit()
         finally:
             self._is_send = True
+            print("Всё ахуэнно. сработал insert, update или delete")
 
     @staticmethod
     def _is_valid_dml_type(data: dict):
@@ -353,10 +376,26 @@ class ORMItem(LinkedListItem):
             raise TypeError("Значение атрибута model - неподходящего типа")
 
 
+class EmptyOrmItem:
+    """
+    Пустой класс для возврата пустой "ноды".
+    """
+    def __init__(self):
+        pass
+
+    def remove(self):
+        pass
+
+    def __delitem__(self, key):
+        pass
+
+
 class ORMItemContainer(LinkedList):
     """
-    Очередь
+    Очередь на основе связанного списка.
+    Управляется через адаптер ORMHelper.
     Класс-контейнер умеет только ставить в очередь ((enqueue) зашита особая логика) и снимать с очереди (dequeue)
+    см логику в методе enqueue.
     """
     append = None
     __delitem__ = None
@@ -364,7 +403,7 @@ class ORMItemContainer(LinkedList):
 
     def __init__(self, items: Optional[Iterable[dict[str, dict]]] = None):
         super().__init__()
-        self._model_name = None
+        self._model_name = None  # Внимание! Содержит модель от элемента, который добавлялся крайний раз!!!
         if items is not None:
             for item in items:
                 for block_name, inner in item.items():
@@ -376,14 +415,14 @@ class ORMItemContainer(LinkedList):
         А также нода переносится в конец очереди """
         model_name = None
         model = kwargs.get("__model", None)
-        if model is not None:
+        if model:
             model_name = model.__name__
             self._model_name = model_name
         exists_item = self.search_node_by_name(item_name, model_name=model_name)
         potential_new_item = self.LinkedListItem(item_name, **kwargs)
         new_item = None
 
-        def create_merged_values_node(old_node: ORMItem, new_node: ORMItem) -> ORMItem:
+        def create_merged_values_node(old_node: ORMItem, new_node: ORMItem, dml_type: str) -> ORMItem:
             """
             Соединение значений старой и создаваемой ноды
             """
@@ -391,31 +430,29 @@ class ORMItemContainer(LinkedList):
             temp_value.update({"__callback": new_node.callback or old_node.callback})
             temp_value.update({"__ready": new_node.ready or old_node.ready})
             temp_value.update(new_node.value)
+            temp_value.update({dml_type: True, "__model": potential_new_item.model})
             return self.LinkedListItem(item_name, **temp_value)
         if exists_item == potential_new_item:
             new_item_is_update = kwargs.get("__update", False)
             new_item_is_delete = kwargs.get("__delete", False)
             new_item_is_insert = kwargs.get("__insert", False)
-            if new_item_is_update == "__update":
+            if new_item_is_update:
                 if exists_item.type == "__update" or exists_item.type == "__insert":
-                    self._remove_from_queue(exists_item)
-                    new_item = create_merged_values_node(exists_item, potential_new_item)
+                    new_item_dml_operation_type = "__insert" if exists_item.type == "__insert" else "__update"
+                    new_item = create_merged_values_node(exists_item, potential_new_item, new_item_dml_operation_type)
                 if exists_item.type == "__delete":
-                    self._remove_from_queue(exists_item)
                     new_item = potential_new_item
             if new_item_is_delete:
-                self._remove_from_queue(exists_item)
                 new_item = potential_new_item
             if new_item_is_insert:
                 if exists_item.type == "__insert" or exists_item.type == "__update":
-                    self._remove_from_queue(exists_item)
-                    new_item = create_merged_values_node(exists_item, potential_new_item)
+                    new_item = create_merged_values_node(exists_item, potential_new_item, "__insert")
                 if exists_item.type == "__delete":
-                    self._remove_from_queue(exists_item)
                     new_item = potential_new_item
+            self._remove_from_queue(exists_item)
         else:
             new_item = potential_new_item
-        if new_item is not None:
+        if new_item:
             if self:
                 last_element = self._tail
                 self._set_prev(new_item, last_element)
@@ -435,7 +472,7 @@ class ORMItemContainer(LinkedList):
     def remove_from_queue(self, node_name: str, model_name: str = None) -> None:
         """
         Экстренное изъятие ноды из очереди
-        :param node_name: Имя сущности, сохраняющейся в БД
+        :param node_name: Имя сущности, сохраняющейся в БД, - идентификатор ноды
         :param model_name: Имя модели, к которой сущность привязана
         """
         if model_name is None:
@@ -443,7 +480,7 @@ class ORMItemContainer(LinkedList):
         if type(node_name) is not str or type(model_name) is not str:
             raise TypeError
         node = self.search_node_by_name(node_name, model_name)
-        if node is not None:
+        if node:
             self._remove_from_queue(node)
 
     def __repr__(self):
@@ -452,25 +489,11 @@ class ORMItemContainer(LinkedList):
     def __str__(self):
         return str(tuple(str(i) for i in self))
 
-    def __getitem__(self, item: str):
+    def __getitem__(self, item: str) -> Union[ORMItem, EmptyOrmItem]:
         if not isinstance(item, str):
             raise KeyError
         node = self.search_node_by_name(item, model_name=self._model_name)
-        return node
-
-    def _remove_from_queue(self, node) -> None:
-        prev_node = node.prev
-        next_node = node.next
-        if prev_node is None:
-            self._head = next_node
-            node.next = None
-            return
-        if next_node is None:
-            self._tail = prev_node
-            node.prev = None
-            return
-        next_node.prev = prev_node
-        prev_node.next = next_node
+        return node if node else EmptyOrmItem()
 
     def search_node_by_name(self, name: str, model_name: Optional[str] = None) -> Optional[ORMItem]:
         if model_name is None:
@@ -488,20 +511,38 @@ class ORMItemContainer(LinkedList):
             if node.model.__name__ == model_name:
                 return node
 
+    def _remove_from_queue(self, node: ORMItem) -> None:
+        prev_node = node.prev
+        next_node = node.next
+        node.next = None
+        node.prev = None
+        if prev_node is None:
+            self._head = next_node
+        else:
+            prev_node.next = next_node
+        if next_node is None:
+            self._tail = prev_node
+        else:
+            next_node.prev = prev_node
+
 
 class ORMHelper:
     """
-    Адаптер
-    Класс-контейнер не имеющий своих экземпляров.
-    Связанный список, хранящий ноды, в основе реализована следующая логика при добавлении записи:
-        --CONTAINER--
-        - Присутствует атрибут model, он присваивается всем создающимся элементам-ITEM
-        ----
-        --ITEM--
-        - При добавлении элемента он имеет статус ready=False
-        - При редактировании элемента он получает статус ready=False
-        - При Добавлении происходит попытка найти в связанном списке элемент с таким же name
-        ----
+    Адаптер для ORMItemContainer
+    Имеет таймер для единовременного высвобождения очереди объектов,
+    при добавлении элемента в очередь таймер обнуляется.
+    items - ссылка на экземпляр ORMItemContainer.
+    1) Инициализация
+        LinkToObj = ORMHelper.set_up(db.session)
+    2) Установка ссылки на класс модели Flask-SqlAlchemy
+        LinkToObj.set_model(Model)
+    3) Использование
+        LinkToObj.set_item(name, data, **kwargs) - Установка в очередь, обнуление таймера
+        LinkToObj.get_item(name, **kwargs) - получение данных из бд и из ноды
+        LinkToObj.get_items(model=None) - получение данных из бд и из ноды
+        LinkToObj.release() - высвобождение очереди с попыткой сохранить объекты в базе данных
+        в случае неудачи нода переносится в конец очереди
+        LinkToObj.remove_item - принудительное изъятие ноды из очереди
     """
     RELEASE_INTERVAL_SECONDS = 10
     items: Optional[ORMItemContainer] = None
@@ -539,6 +580,8 @@ class ORMHelper:
         if not delete:
             if not isinstance(value, dict):
                 raise TypeError("В качестве значений выступают словари")
+        else:
+            value = {}
         cls.items.enqueue(key, __model=model or cls._model_obj, __ready=ready,
                           __insert=insert, __update=update,
                           __delete=delete, __where=where, __callback=callback, **value)
@@ -547,8 +590,9 @@ class ORMHelper:
     @classmethod
     def get_item(cls, item_name, where=None, model=None, only_db=False, only_queue=False) -> dict:
         """
-        Получение записи из базы данных.
-        Model.query.fetchone()
+        1) Получаем запись из таблицы в виде словаря
+        2) Получаем данные из очереди в виде словаря
+        3) db_data.update(quque_data)
         """
         cls._is_valid_node_name(item_name)
         model = model or cls._model_obj
@@ -563,10 +607,10 @@ class ORMHelper:
             raise ValueError("В качестве значения для 'where' предусмотрен словарь."
                              "Данный словарь будет распакован в выражении: Model.query.filter_by(**)")
         query = model.query.filter_by(**where).first()
-        data_db = {} if query is None else query.__dict__
+        data_db = {} if not query else query.__dict__
         if only_db:
             return data_db
-        node = cls.items.search_node_by_name(item_name, model_name=model)
+        node = cls.items.search_node_by_name(item_name, model_name=model.__name__)
         if node is None:
             return data_db
         if node.type == "__delete":
@@ -576,10 +620,11 @@ class ORMHelper:
         return data_db
 
     @classmethod
-    def get_items(cls, model=None, only_db=False, only_queue=False) -> list[dict]:  # todo: придумать пагинатор
+    def get_items(cls, model=None) -> list[dict]:  # todo: придумать пагинатор
         """
-        Получение множества записей из базы данных.
-        Model.query.all()
+        1) Получаем запись из таблицы в виде словаря
+        2) Получаем данные из очереди в виде словаря
+        3) db_data.update(quque_data)
         """
         model = model or cls._model_obj
         cls._is_valid_model_instance(model)
@@ -603,7 +648,7 @@ class ORMHelper:
         """
         Удалить ноду из очереди на сохранение
         """
-        return cls.items.remove_from_queue(name, cls._model_obj)
+        return cls.items.remove_from_queue(name, cls._model_obj.__name__)
 
     @classmethod
     def release(cls) -> None:
@@ -612,6 +657,7 @@ class ORMHelper:
         путём итерации по ним, и попыткой сохранить в базу данных.
         :return: None
         """
+        print("Сработал плановый release", cls.items)
         orm_element = cls.items.dequeue()
         while orm_element is not None:
             orm_element = cls.items.dequeue()

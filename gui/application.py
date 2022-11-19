@@ -1,5 +1,4 @@
 import sys
-import threading
 import psycopg2
 from PySide2.QtWidgets import QMainWindow, QApplication
 from PySide2.QtCore import Qt, QRect
