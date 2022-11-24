@@ -39,31 +39,8 @@ class Validator:
     def set_valid_text_field(field: QLineEdit) -> None:
         field.setStyleSheet("")
 
-    def refresh(self, input_name: Optional[str] = None) -> bool:
+    def refresh(self) -> bool:
         valid = True
-        if input_name is not None:
-            #  Способ функционирования №1 - передаём имя проверямоего поля
-            input_: QWidget = getattr(self.ui, input_name, None)
-            if input_ is None:
-                raise ValueError("Валидатор не нашёл в UI поле, которое ему передали на валидацию")
-            input_text = input_.text()
-            if input_name in self.REQUIRED_TEXT_FIELD_VALUES:
-                if not input_text:
-                    self.set_invalid_text_field(input_)
-                    valid = False
-                else:
-                    self.set_valid_text_field(input_)
-            if input_name in self.INVALID_TEXT_FIELD_VALUES:
-                regex_obj: re.Pattern = self.INVALID_TEXT_FIELD_VALUES[input_name]
-                match_obj: Optional[re.Match] = regex_obj.search(input_text)
-                if match_obj is not None and match_obj.group():
-                    self.set_invalid_text_field(input_)
-                    valid = False
-                else:
-                    self.set_valid_text_field(input_)
-            self._is_valid = valid
-            return valid
-        #  Способ функционирования №2 - Обход всех полей, если именованный аргумент не был передан
         if self.REQUIRED_TEXT_FIELD_VALUES:
             for input_name in self.REQUIRED_TEXT_FIELD_VALUES:
                 input_: QWidget = getattr(self.ui, input_name)

@@ -66,13 +66,13 @@ class Machine(db.Model, ModelController):
         CheckConstraint("machine_name!=''", name="machine_name_empty"),
         CheckConstraint("input_catalog!=''", name="input_catalog_empty"),
         CheckConstraint("output_catalog!=''", name="output_catalog_empty"),
-        CheckConstraint("x_over>0", name="x_over_must_be_positive"),
-        CheckConstraint("y_over>0", name="y_over_must_be_positive"),
-        CheckConstraint("z_over>0", name="z_over_must_be_positive"),
-        CheckConstraint("x_fspeed>0", name="x_fspeed_must_be_positive"),
-        CheckConstraint("y_fspeed>0", name="y_fspeed_must_be_positive"),
-        CheckConstraint("z_fspeed>0", name="z_fspeed_must_be_positive"),
-        CheckConstraint("spindele_speed>0", name="spindele_speed_must_be_positive"),
+        CheckConstraint("x_over>=0", name="x_over_must_be_positive"),
+        CheckConstraint("y_over>=0", name="y_over_must_be_positive"),
+        CheckConstraint("z_over>=0", name="z_over_must_be_positive"),
+        CheckConstraint("x_fspeed>=0", name="x_fspeed_must_be_positive"),
+        CheckConstraint("y_fspeed>=0", name="y_fspeed_must_be_positive"),
+        CheckConstraint("z_fspeed>=0", name="z_fspeed_must_be_positive"),
+        CheckConstraint("spindele_speed>=0", name="spindele_speed_must_be_positive"),
     )
 
 

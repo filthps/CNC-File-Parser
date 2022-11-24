@@ -17,6 +17,8 @@ class OptionsPageCreateMachine(Constructor, Tools):
                                            "lineEdit_17": "spindele_speed"}
     __UI__TO_SQL_COLUMN_LINK__COMBO_BOX = {"choice_cnc": "name"}
     DEFAULT_COMBO_BOX_CNC_NAME = "Выберите стойку"
+    INTEGER_FIELDS_LINE_EDIT = ("lineEdit_11", "lineEdit_12", "lineEdit_13", "lineEdit_14",
+                                "lineEdit_15", "lineEdit_16", "lineEdit_17")  # Для замены пустых значений нулями при отправке в бд
 
     def __init__(self, main_app_instance, ui: Ui):
         self.validator = None
@@ -34,15 +36,17 @@ class OptionsPageCreateMachine(Constructor, Tools):
         set_db_manager_model()
         init_validator()
         self.reload()
-        self.auto_select_machine_item()
         self.connect_main_signals()
 
     def reload(self):
         """ Очистить поля и обновить данные из базы данных """
-        self.ui.add_machine_list_0.clear()
+        self.disconnect_fields_signals()
         self.clear_property_fields()
+        self.ui.add_machine_list_0.clear()
         self.insert_all_cnc_from_db()
         self.insert_machines_from_db()
+        self.auto_select_machine_item()
+        self.connect_fields_signals()
 
     def connect_main_signals(self):
         """
@@ -51,12 +55,12 @@ class OptionsPageCreateMachine(Constructor, Tools):
         self.ui.add_button_0.clicked.connect(self.add_machine)
         self.ui.remove_button_0.clicked.connect(self.remove_machine)
         self.ui.add_machine_list_0.currentItemChanged.connect(lambda current, prev: self.select_machine(current))
-        self.ui.choice_cnc.textActivated.connect(lambda str_: self.change_cnc(str_))
 
     def connect_fields_signals(self):
         """
         Поключение временных сигналов редактируемых полях
         """
+        self.ui.choice_cnc.textActivated.connect(lambda str_: self.change_cnc(str_))
         self.ui.add_machine_input.clicked.connect(lambda: self.choice_folder("lineEdit_10"))
         self.ui.add_machine_output.clicked.connect(lambda: self.choice_folder("lineEdit_21"))
         self.ui.lineEdit_11.textChanged.connect(lambda: self.update_data("lineEdit_11"))
@@ -74,6 +78,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
         не вызывали сигналы, которые,  в свою очередь, инициируют UPDATE в БД.
         """
         try:
+            self.ui.choice_cnc.textActivated.disconnect()
             self.ui.add_machine_input.clicked.disconnect()
             self.ui.add_machine_output.clicked.disconnect()
             self.ui.lineEdit_11.textChanged.disconnect()
@@ -91,7 +96,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
         Выделить станок в списке автоматически, после инициализации
         :param index: Индекс QListWidgetItem в QListWidget
         """
-        if len(self.db_items.items):
+        if len(self.db_items.get_items()):
             machine_item: QListWidgetItem = self.ui.add_machine_list_0.takeItem(index)
             self.ui.add_machine_list_0.addItem(machine_item)
             self.ui.add_machine_list_0.setItemSelected(machine_item, True)
@@ -125,7 +130,6 @@ class OptionsPageCreateMachine(Constructor, Tools):
     def update_machine_property_fields(self, line_edit_values: Optional[dict] = None,
                                        combo_box_values: Optional[dict] = None) -> None:
         """ Обновление полей ХАРАКТЕРИСТИКИ в интерфейсе """
-        self.disconnect_fields_signals()
         for ui_field, orm_field in self.__UI__TO_SQL_COLUMN_LINK__LINE_EDIT.items():
             if line_edit_values:
                 value = line_edit_values.get(orm_field)
@@ -144,7 +148,6 @@ class OptionsPageCreateMachine(Constructor, Tools):
                     getattr(self.ui, ui_field).setCurrentText(self.DEFAULT_COMBO_BOX_CNC_NAME)
             else:
                 getattr(self.ui, ui_field).setCurrentText(self.DEFAULT_COMBO_BOX_CNC_NAME)
-        self.connect_fields_signals()
 
     @Slot(str)
     def choice_folder(self, line_edit_widget: str):
@@ -167,6 +170,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
         if not machine:
             self.reload()
             return
+        self.disconnect_fields_signals()
         self.clear_property_fields()
         self.insert_all_cnc_from_db()
         cm_box_values = {}
@@ -174,6 +178,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
         cm_box_values.update({"name": cnc_name}) if cnc_name else None
         self.update_machine_property_fields(line_edit_values=machine,
                                             combo_box_values=cm_box_values)
+        self.connect_fields_signals()
         self.validator.set_machine(machine_item)
 
     @Slot()
@@ -187,16 +192,21 @@ class OptionsPageCreateMachine(Constructor, Tools):
             dialog_.show()
 
         def add(machine_name):
-            if self.db_items.get_item(machine_name, where={"machine_name": machine_name}):
-                error(machine_name)
-                dialog.close()
+            if self.db_items.get_item(machine_name, where={"machine_name": machine_name}, only_db=True):
+                if not self.db_items.get_item(machine_name, where={"machine_name": machine_name}, only_queue=True):
+                    error(machine_name)
+                    dialog.close()
+                    return
+                self.reload()
                 return
             self.db_items.set_item(machine_name, {"machine_name": machine_name}, insert=True)
             item = QListWidgetItem(machine_name)
+            self.disconnect_fields_signals()
             self.ui.add_machine_list_0.addItem(item)
             self.ui.add_machine_list_0.setCurrentItem(item)
             self.clear_property_fields()
             self.insert_all_cnc_from_db()
+            self.connect_fields_signals()
             dialog.close()
         dialog = self.get_prompt_dialog("Введите название станка", ok_callback=add)
         dialog.show()
@@ -206,10 +216,12 @@ class OptionsPageCreateMachine(Constructor, Tools):
         def ok():
             item: QListWidgetItem = self.get_selected_machine_item()
             item_name = item.text()
-            self.db_items.set_item(item_name, delete=True, where={"machine_name": item_name})
+            self.db_items.set_item(item_name, delete=True, where={"machine_name": item_name}, ready=True)
+            self.disconnect_fields_signals()
             self.clear_property_fields()
             dialog.close()
             self.ui.add_machine_list_0.takeItem(self.ui.add_machine_list_0.row(item))
+            self.connect_fields_signals()
         dialog = self.get_confirm_dialog("Удалить станок?", "Внимание! Информация о свойствах станка будетм утеряна",
                                          ok_callback=ok)
         dialog.show()
@@ -217,19 +229,21 @@ class OptionsPageCreateMachine(Constructor, Tools):
     @Slot(str)
     def update_data(self, field_name):
         """ Обновление записей в базе, при изменении текстовых(LineEdit) полей-характеристик """
+        def filter_value_for_integer_fields(field, val):
+            if val == "":
+                if field in self.INTEGER_FIELDS_LINE_EDIT:
+                    return 0
+            return val
+
         active_machine = self.get_selected_machine_item()
         if active_machine is None:
             return
         machine_name = active_machine.text()
         value = getattr(self.ui, field_name).text()
-        if not value:
-            return
         machine_db = self.db_items.get_item(machine_name, where={"machine_name": machine_name}, only_db=True)
-        if machine_db is None:
-            return self.reload()
-        self.validator.refresh(field=field_name)
+        self.validator.refresh()
         self.db_items.set_item(machine_name, {
-            self.__UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]: value
+            self.__UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]: filter_value_for_integer_fields(field_name, value)
         }, ready=self.validator.is_valid, where={"machine_name": machine_name},
                                **{("insert" if not machine_db else "update"): True})
 
@@ -296,8 +310,8 @@ class AddMachinePageValidation(Validator):
         if self.current_machine:
             self.refresh()
 
-    def refresh(self, field=None):
-        valid = super().refresh(input_name=field)
+    def refresh(self):
+        valid = super().refresh()
         if self.current_machine:
             def mark_machine_list_widget_item():
                 """ Выделить красным фотном станок или снять выделение """
