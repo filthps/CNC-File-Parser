@@ -158,9 +158,7 @@ class Constructor:
         ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
         """
         def get_value():
-            value = input_.text()
-            if value:
-                return ok_callback(input_.text())
+            return ok_callback(input_.text())
 
         def set_signals():
             dialog.accepted.connect(get_value if ok_callback is not None else None)
@@ -222,10 +220,6 @@ class Constructor:
         window.setWindowTitle(title_text)
         set_signals()
         return window
-
-    @staticmethod
-    def get_current__q_list_widget_item(widget: QListWidget) -> QListWidgetItem:
-        return widget.currentItem()
 
     def _lock_ui(self):
         self.main_ui.root_tab_widget.setDisabled(True)
@@ -398,7 +392,7 @@ class ORMItemContainer(LinkedList):
                 for block_name, inner in item.items():
                     self.enqueue(block_name, **inner)
 
-    def enqueue(self, item_name, **kwargs):  # todo: Если будут ошмбки с БД - ищи их тут!
+    def enqueue(self, item_name, **kwargs):
         """ Установка ноды в конец очереди.
         Если нода с name - item_name найдена, то произойдёт update словарю value,
         А также нода переносится в конец очереди """
@@ -490,9 +484,24 @@ class ORMItemContainer(LinkedList):
         node = self.search_node_by_name(item, model_name=self._model_name)
         return node if node else EmptyOrmItem()
 
+    def __contains__(self, item):
+        try:
+            self._is_valid_node(item)
+        except TypeError:
+            return False
+        if not item:
+            return False
+        for node in self:
+            if node == item:
+                return True
+        return False
+
     def search_node_by_name(self, name: str, model_name: Optional[str] = None) -> Optional[ORMItem]:
         if model_name is None:
             model_name = self._model_name
+        else:
+            if type(model_name) is not str:
+                raise TypeError
         for node in self:
             if node.name == name:
                 if model_name is not None:
@@ -537,7 +546,7 @@ class ORMHelper:
         LinkToObj.get_items(model=None) - получение данных из бд и из ноды
         LinkToObj.release() - высвобождение очереди с попыткой сохранить объекты в базе данных
         в случае неудачи нода переносится в конец очереди
-        LinkToObj.remove_item - принудительное изъятие ноды из очереди.
+        LinkToObj.remove_items - принудительное изъятие ноды из очереди.
     """
     MEMCACHED_CONFIG = "127.0.0.1:11211"
     _store: Optional[Client] = None
@@ -547,6 +556,7 @@ class ORMHelper:
     _items: ORMItemContainer = ORMItemContainer()  # Temp
     _session = None
     _model_obj = None  # Текущий класс модели, присваиваемый автоматически всем экземплярам при добавлении в очередь
+    _primary_field = None
 
     @classmethod
     def set_up(cls, session):
@@ -557,6 +567,9 @@ class ORMHelper:
         def connect_to_storage():
             store = Client(cls.MEMCACHED_CONFIG, serde=serde.pickle_serde)
             return store
+
+        def drop_cache():
+            cls._store.flush_all()
         cls._is_valid_session(session)
         cls._session = session
         cls._store = connect_to_storage()
@@ -589,32 +602,45 @@ class ORMHelper:
                 raise TypeError("В качестве значений выступают словари")
         else:
             value = {}
-        cls._items.enqueue(key, __model=model or cls._model_obj, __ready=ready,
-                           __insert=insert, __update=update,
-                           __delete=delete, __where=where, __callback=callback, **value)
-        cls.__set_cache()
+        print("Установка ноды", key, value, ready)
+        cls.items.enqueue(key, __model=model or cls._model_obj, __ready=ready,
+                          __insert=insert, __update=update,
+                          __delete=delete, __where=where, __callback=callback, **value)
+        cls.__set_cache(cls.items)
         cls._timer.cancel() if cls._timer else None
         cls._timer = cls.init_timer()
 
     @classmethod
-    def get_item(cls, item_name, where=None, model=None, only_db=False, only_queue=False) -> dict:
+    def get_item(cls, item_name, primary_field=None, where=None, model=None, only_db=False, only_queue=False) -> dict:
         """
         1) Получаем запись из таблицы в виде словаря
         2) Получаем данные из очереди в виде словаря
         3) db_data.update(quque_data)
+        Если primary_field со значением node.name найден в БД, то нода удаляется
         """
+        def create_where_clause(wh, p_field):
+            updated_where = {p_field: item_name}
+            if where:
+                if not isinstance(where, dict):
+                    raise TypeError
+                updated_where.update(where)
+            return updated_where
         cls._is_valid_node_name(item_name)
-        model = model or cls._model_obj
-        cls._is_valid_model_instance(model)
+        if model:
+            if not primary_field:
+                raise ValueError("Если указана отличная от стандартной модель - то нужно указать и поле, "
+                                 "по которому будет происходить выборка")
+        else:
+            primary_field = primary_field or cls._primary_field
+            model = cls._model_obj
+        cls._is_valid_model_instance(model, primary_field)
         if only_queue:
-            node = cls.items.search_node_by_name(item_name, model_name=model)
+            node = cls.items.search_node_by_name(item_name, model_name=model.__name__)
             if node is None:
                 return {}
             data_node = node.value
             return data_node
-        if type(where) is not dict:
-            raise ValueError("В качестве значения для 'where' предусмотрен словарь."
-                             "Данный словарь будет распакован в выражении: Model.query.filter_by(**)")
+        where = create_where_clause(where, primary_field)
         query = model.query.filter_by(**where).first()
         data_db = {} if not query else query.__dict__
         if only_db:
@@ -624,41 +650,81 @@ class ORMHelper:
             return data_db
         if node.type == "__delete":
             return {}
-        data_node = node.value
-        data_db.update(data_node)
+        if node.type == "__insert":
+            if data_db:
+                cls.remove_items((item_name,))
+                return data_db
+        data_db.update(node.value)
         return data_db
 
     @classmethod
-    def get_items(cls, model=None) -> list[dict]:  # todo: придумать пагинатор
+    def get_items(cls, model=None, primary_field=None, db_only=False) -> list[dict]:  # todo: придумать пагинатор
         """
         1) Получаем запись из таблицы в виде словаря
         2) Получаем данные из очереди в виде словаря
         3) db_data.update(quque_data)
+        primary_field - поле, по которому происходит фильтрация
+        Если primary_field со значением node.name найден в БД, то нода удаляется
         """
-        model = model or cls._model_obj
-        cls._is_valid_model_instance(model)
+        if model:
+            if not primary_field:
+                raise ValueError("Если указана отличная от стандартной модель - то нужно указать и поле, "
+                                 "по которому будет происходить выборка")
+        else:
+            primary_field = primary_field or cls._primary_field
+            model = cls._model_obj
+        cls._is_valid_model_instance(model, primary_field)
         items_db = model.query.all()
+        if db_only:
+            return [item.__dict__ for item in items_db]
         output = []
-        for item in items_db:
-            data_db = {} if item is None else item.__dict__
-            node = cls.items.search_node_by_model(model.__name__)
-            if node is not None:
-                if not node.type == "__delete":
-                    data_node = node.value
-                    data_db.update(data_node)
+        if items_db:
+            nodes_implements_db = ORMItemContainer()
+            node_names_to_remove = []
+            for db_item in items_db:  # O(n)
+                db_data: dict = db_item.__dict__
+                if primary_field not in db_data:  # O(i)
+                    raise KeyError("Несогласованность данных при получении из кеша и бд")
+                primary_field_value = db_data.get(primary_field, None)  # O(1)
+                node = cls.items.search_node_by_name(primary_field_value, model_name=model.__name__)  # O(k)
+                if node:
+                    new_node_attrs = cls._create_node_attrs_dict_from_other_node(node)  # O(1)
+                    nodes_implements_db.enqueue(node.name, **new_node_attrs)  # O(k)
+                    if node.type == "__insert":
+                        node_names_to_remove.append(node.name)
+                    elif node.type == "__update":
+                        db_data.update(node.value)
+                    if not node.type == "__delete":
+                        output.append(db_data)
                 else:
-                    data_db = {}
-            if data_db:
-                output.append(data_db)
+                    output.append(db_data)
+            if node_names_to_remove:
+                cls.remove_items(node_names_to_remove, model=model)
+            for node in cls.items:  # O(k)
+                if node not in nodes_implements_db:  # O(l)
+                    if node.model.__name__ == model.__name__:
+                        val = node.value
+                        output.append(val) if val else None
+            return output
+        for node in cls.items:  # O(k)
+            if node.model.__name__ == model.__name__:
+                val = node.value
+                output.append(val) if val else None
         return output
 
     @classmethod
-    def remove_item(cls, name: str):
+    def remove_items(cls, node_names: Iterable[str], model=None):
         """
         Удалить ноду из очереди на сохранение
         """
-        cls._items.remove_from_queue(name, cls._model_obj.__name__)
-        cls.__set_cache()
+        model = model or cls._model_obj
+        [cls.items.remove_from_queue(name, model.__name__) for name in node_names]
+        cls.__set_cache(cls.items)
+
+    @classmethod
+    def is_node_from_cache(cls, node_name):
+        node = cls.items.search_node_by_name(node_name)
+        return node
 
     @classmethod
     def release(cls) -> None:
@@ -668,25 +734,24 @@ class ORMHelper:
         :return: None
         """
         def enqueue(node):
-            new_node_attributes = {"__insert": False, "__update": False, "__delete": False, "__model": node.model,
-                                   "__where": node.where, "__callback": node.callback}
-            new_node_attributes.update({node.type: True})
-            new_node_attributes.update(**node.value)
+            new_node_attributes = cls._create_node_attrs_dict_from_other_node(node)
             enqueue_items.enqueue(node.name, **new_node_attributes)
         orm_element = True
         is_nodes_in_session = False
         enqueue_items = ORMItemContainer()
+        cls._items = cls.items
         while orm_element:
-            orm_element = cls.items.dequeue()
+            orm_element = cls._items.dequeue()
             if orm_element is None:
                 break
             if orm_element.ready:
                 query = orm_element.make_query()
-                if orm_element.type == "__delete":
-                    cls._session.delete(query)
-                else:
-                    cls._session.add(query)
-                is_nodes_in_session = True
+                if query:
+                    if orm_element.type == "__delete":
+                        cls._session.delete(query)
+                    else:
+                        cls._session.add(query)
+                    is_nodes_in_session = True
             else:
                 enqueue(orm_element)
         cls.__set_cache(enqueue_items or None)
@@ -706,9 +771,15 @@ class ORMHelper:
         return items
 
     @classmethod
-    def set_model(cls, obj):
-        cls._is_valid_model_instance(obj)
+    def set_model(cls, obj, primary_field):
+        """
+
+        :param obj: Класс модели Flask-SQLAlchemy
+        :param primary_field: поле по которому обычно идёт выборка
+        """
+        cls._is_valid_model_instance(obj, primary_field)
         cls._model_obj = obj
+        cls._primary_field = primary_field
 
     @classmethod
     def _is_valid_node_name(cls, name):
@@ -716,15 +787,25 @@ class ORMHelper:
             raise ValueError
 
     @staticmethod
-    def _is_valid_model_instance(item):
+    def _is_valid_model_instance(item, special_field):
         if item is None or not hasattr(item, "__tablename__"):
             raise TypeError("Значение атрибута model - неподходящего типа")
+        if not hasattr(item, special_field):
+            raise AttributeError
 
     @staticmethod
     def _is_valid_session(obj):  # todo: Пока не знаю как проверить
         return
 
     @classmethod
-    def __set_cache(cls, container=None):
-        cls._items = container or cls.items
+    def __set_cache(cls, container: Optional[ORMItemContainer]):
         cls._store.set("ORMItems", container, cls.CACHE_LIFETIME_HOURS)
+        cls._items = container
+
+    @staticmethod
+    def _create_node_attrs_dict_from_other_node(node: ORMItem) -> dict:
+        new_node_attributes = {"__insert": False, "__update": False, "__delete": False, "__model": node.model,
+                               "__where": node.where, "__callback": node.callback}
+        new_node_attributes.update({node.type: True})
+        new_node_attributes.update(**node.value)
+        return new_node_attributes
