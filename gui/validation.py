@@ -22,7 +22,7 @@ class Validator:
         return self._is_valid
 
     @staticmethod
-    def set_not_complete_edit_attributes(name: str, widget: QWidget) -> None:
+    def set_not_complete_edit_attributes(widget: QWidget) -> None:
         widget.setBackground(QColor("#e86666"))
         widget.setToolTip("Закончите редактирование. Заполните обязательные поля.")
 
@@ -41,12 +41,15 @@ class Validator:
 
     def refresh(self) -> bool:
         valid = True
+        invalid_text_fields = []
+        
         if self.REQUIRED_TEXT_FIELD_VALUES:
             for input_name in self.REQUIRED_TEXT_FIELD_VALUES:
                 input_: QWidget = getattr(self.ui, input_name)
                 if not input_.text():
                     self.set_invalid_text_field(input_)
                     valid = False
+                    invalid_text_fields.append(input_name)
                 else:
                     self.set_valid_text_field(input_)
         if self.INVALID_TEXT_FIELD_VALUES:
@@ -57,8 +60,9 @@ class Validator:
                     if result is not None:
                         self.set_invalid_text_field(field)
                         valid = False
+                        invalid_text_fields.append(field_name)
                     else:
-                        self.set_valid_text_field(field)
+                        self.set_valid_text_field(field) if field_name not in invalid_text_fields else None
         if self.REQUIRED_RADIO_BUTTONS:
             for group_box_name, buttons in self.REQUIRED_RADIO_BUTTONS.items():
                 result = set()
