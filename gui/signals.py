@@ -42,7 +42,6 @@ class Navigation:
             def content_refresh():
                 """ На все виджеты, где есть навигация, повесить сигналы синхронизации с БД! """
                 def update_db(nav_place: dict, page_index: int) -> None:
-                    cls.app.save()
                     cls.app.actions.re_init(nav_place[page_index])
                 ui.to_converter.clicked.connect(update_db)
                 ui.to_options.clicked.connect(update_db)

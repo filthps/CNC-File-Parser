@@ -70,9 +70,6 @@ class Main(QMainWindow, Tools):
         init_navigation()
         init_actions()
 
-    def save(self):
-        self.db_session.commit()
-
     def resizeEvent(self, event) -> None:
         pal = self.palette()
         if self.background_image.width() >= self.width() and self.background_image.height() >= self.height():
