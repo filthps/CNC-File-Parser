@@ -32,7 +32,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
             self.validator = AddMachinePageValidation(self.ui)
 
         def set_db_manager_model():
-            self.db_items.set_model(Machine)
+            self.db_items.set_model(Machine, "machine_name")
         set_db_manager_model()
         init_validator()
         self.reload()
@@ -40,11 +40,20 @@ class OptionsPageCreateMachine(Constructor, Tools):
 
     def reload(self):
         """ Очистить поля и обновить данные из базы данных """
+        def insert_machines_from_db():
+            machines = self.db_items.get_items()
+            for data in machines:
+                name = data.pop('machine_name')
+                item = QListWidgetItem(name)
+                self.ui.add_machine_list_0.addItem(item)
+                if self.db_items.is_node_from_cache(name):
+                    self.validator.set_not_complete_edit_attributes(item)
+
         self.disconnect_fields_signals()
         self.clear_property_fields()
         self.ui.add_machine_list_0.clear()
         self.insert_all_cnc_from_db()
-        self.insert_machines_from_db()
+        insert_machines_from_db()
         self.auto_select_machine_item()
         self.connect_fields_signals()
 
@@ -96,29 +105,18 @@ class OptionsPageCreateMachine(Constructor, Tools):
         Выделить станок в списке автоматически, после инициализации
         :param index: Индекс QListWidgetItem в QListWidget
         """
-        if len(self.db_items.get_items()):
-            machine_item: QListWidgetItem = self.ui.add_machine_list_0.takeItem(index)
-            self.ui.add_machine_list_0.addItem(machine_item)
-            self.ui.add_machine_list_0.setItemSelected(machine_item, True)
-            self.ui.add_machine_list_0.setCurrentItem(machine_item)
-            self.select_machine(machine_item)
-
-    def insert_machines_from_db(self):
-        machines = self.db_items.get_items()
-        for data in machines:
-            name = data.pop('machine_name')
-            item = QListWidgetItem(name)
-            self.ui.add_machine_list_0.addItem(item)
-
-    def insert_empty_cnc_item(self) -> None:
-        self.ui.choice_cnc.addItem(self.DEFAULT_COMBO_BOX_CNC_NAME)
+        machine_item: QListWidgetItem = self.ui.add_machine_list_0.takeItem(index)
+        self.ui.add_machine_list_0.addItem(machine_item)
+        self.ui.add_machine_list_0.setItemSelected(machine_item, True)
+        self.ui.add_machine_list_0.setCurrentItem(machine_item)
+        self.select_machine(machine_item)
 
     def insert_all_cnc_from_db(self) -> None:
         """
         Запрос из БД и установка возможных значений в combo box - 'стойки',
         наполнение словаря self.cnc_names
         """
-        cnc_items = self.db_items.get_items(model=Cnc)
+        cnc_items = self.db_items.get_items(model=Cnc, primary_field="name", db_only=True)
         for data in cnc_items:
             cnc_name = data["name"]
             self.cnc_names.update({data["cncid"]: cnc_name})
@@ -167,10 +165,10 @@ class OptionsPageCreateMachine(Constructor, Tools):
             return
         name = machine_item.text()
         machine = self.db_items.get_item(name, where={"machine_name": name})
+        self.disconnect_fields_signals()
         if not machine:
             self.reload()
             return
-        self.disconnect_fields_signals()
         self.clear_property_fields()
         self.insert_all_cnc_from_db()
         cm_box_values = {}
@@ -185,27 +183,27 @@ class OptionsPageCreateMachine(Constructor, Tools):
     def add_machine(self):
         def error(machine_name: str):
             def callback():
-                dialog.close()
+                dialog_.close()
                 self.reload()
             dialog_ = self.get_alert_dialog("Ошибка", f"Станок {machine_name} уже добавлен",
                                             callback=callback)
             dialog_.show()
 
         def add(machine_name):
-            if self.db_items.get_item(machine_name, where={"machine_name": machine_name}, only_db=True):
-                if not self.db_items.get_item(machine_name, where={"machine_name": machine_name}, only_queue=True):
-                    error(machine_name)
-                    dialog.close()
-                    return
-                self.reload()
+            if not machine_name:
+                return
+            if self.db_items.get_item(machine_name, where={"machine_name": machine_name}):
+                error(machine_name)
+                dialog.close()
                 return
             self.db_items.set_item(machine_name, {"machine_name": machine_name}, insert=True)
             item = QListWidgetItem(machine_name)
-            self.disconnect_fields_signals()
             self.ui.add_machine_list_0.addItem(item)
-            self.ui.add_machine_list_0.setCurrentItem(item)
+            self.auto_select_machine_item()
+            self.disconnect_fields_signals()
             self.clear_property_fields()
             self.insert_all_cnc_from_db()
+            self.validator.refresh()
             self.connect_fields_signals()
             dialog.close()
         dialog = self.get_prompt_dialog("Введите название станка", ok_callback=add)
@@ -257,8 +255,9 @@ class OptionsPageCreateMachine(Constructor, Tools):
         selected_machine_name = selected_machine.text()
         if item == self.DEFAULT_COMBO_BOX_CNC_NAME:
             del self.db_items.items[selected_machine_name]["cncid"]
+            self.validator.refresh()
             return
-        cnc_db_instance = self.db_items.get_item(item, model=Cnc, where={"name": item})
+        cnc_db_instance = self.db_items.get_item(item, model=Cnc, where={"name": item}, primary_field="name")
         if not cnc_db_instance:
             self.reload()
             return
@@ -275,8 +274,12 @@ class OptionsPageCreateMachine(Constructor, Tools):
         """
         Установить в стандартное значение все поля ХАРАКТЕРИСТИКИ
         """
+
+        def insert_empty_cnc_item() -> None:
+            self.ui.choice_cnc.addItem(self.DEFAULT_COMBO_BOX_CNC_NAME)
+
         self.ui.choice_cnc.clear()
-        self.insert_empty_cnc_item()
+        insert_empty_cnc_item()
         self.ui.choice_cnc.setCurrentIndex(0)
         [getattr(self.ui, field_name).setText("") for field_name in self.__UI__TO_SQL_COLUMN_LINK__LINE_EDIT]
         self.cnc_names = {}
@@ -316,7 +319,7 @@ class AddMachinePageValidation(Validator):
             def mark_machine_list_widget_item():
                 """ Выделить красным фотном станок или снять выделение """
                 if not valid:
-                    self.set_not_complete_edit_attributes(self.current_machine.text(), self.current_machine)
+                    self.set_not_complete_edit_attributes(self.current_machine)
                 else:
                     self.set_complete_edit_attributes(self.current_machine)
             mark_machine_list_widget_item()
