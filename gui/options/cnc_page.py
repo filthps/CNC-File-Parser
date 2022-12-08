@@ -1,5 +1,5 @@
 from PySide2.QtCore import Slot
-from PySide2.QtWidgets import QListWidgetItem, QLineEdit
+from PySide2.QtWidgets import QListWidgetItem, QLineEdit, QTextEdit
 from database.models import Cnc
 from gui.tools import Constructor, Tools, ORMHelper
 from gui.ui import Ui_main_window
@@ -80,6 +80,7 @@ class AddCNC(Constructor, Tools):
             self.auto_select_cnc_item()
             self.connect_text_field_signals()
             dialog.close()
+            self.reload()
         dialog = self.get_prompt_dialog("Добавление стойки", label_text="Название стойки, включая версию",
                                         ok_callback=add)
         dialog.show()
@@ -89,13 +90,16 @@ class AddCNC(Constructor, Tools):
         def ok():
             current_item = self.get_current_cnc_item()
             if not current_item:
+                dialog.close()
                 return
-            self.db_items.set_item(current_item.text(), delete=True, ready=True)
-            widget = self.ui.cnc_list
-            widget.removeItemWidget(widget.currentItem())
+            cnc_name = current_item.text()
+            self.db_items.set_item(cnc_name, delete=True, ready=True, where={"name": cnc_name})
+            self.reload()
+            dialog.close()
         if not self.get_current_cnc_item():
             return
-        self.get_confirm_dialog("Удалить стойку?", "Все данные", ok_callback=ok)
+        dialog = self.get_confirm_dialog("Удалить стойку?", ok_callback=ok)
+        dialog.show()
 
     @Slot()
     def select_cnc(self, item: QListWidgetItem):
@@ -118,8 +122,14 @@ class AddCNC(Constructor, Tools):
         if not current_cnc_item:
             return
         cnc_name = current_cnc_item.text()
+        field = getattr(self.ui, field_name)
+        value = None
+        if isinstance(field, QTextEdit):
+            value = field.toPlainText()
+        if isinstance(field, QLineEdit):
+            value = field.text()
         self.db_items.set_item(cnc_name,
-                               {self.__UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]: getattr(self.ui, field_name).text()
+                               {self.__UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]: value
                                 }, ready=self.validator.refresh(), update=True, where={"name": cnc_name})
 
     def update_fields(self, orm_data: dict):
