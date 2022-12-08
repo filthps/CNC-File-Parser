@@ -6,6 +6,7 @@ class LinkedListItem:
 
     def __init__(self, val=None):
         self.val = val
+        self._index = 0
         self.__next = None
         self.__prev = None
 
@@ -14,18 +15,40 @@ class LinkedListItem:
         return self.__next
 
     @next.setter
-    def next(self, val):
+    def next(self, val: Optional["LinkedListItem"]):
         self.__is_valid_item(val)
         self.__next = val
+        if not val:
+            return
+        val._index = self._index + 1
 
     @property
     def prev(self):
         return self.__prev
 
+    @property
+    def index(self):
+        return self._index
+
+    @index.setter
+    def index(self, value):
+        if not isinstance(value, int):
+            raise TypeError
+        if value < 0:
+            raise ValueError
+        self._index = value
+
     @prev.setter
-    def prev(self, item):
+    def prev(self, item: Optional["LinkedListItem"]):
         self.__is_valid_item(item)
         self.__prev = item
+        if not item:
+            return
+        if not self._index:
+            item._index = 0
+            self._index = 1
+        else:
+            item._index = self._index - 1
 
     @classmethod
     def __is_valid_item(cls, item):
@@ -58,6 +81,18 @@ class LinkedListAbstraction(ABC):
     def __bool__(self):
         if len(self):
             return True
+        return False
+
+    def __contains__(self, item):
+        try:
+            self._is_valid_node(item)
+        except TypeError:
+            return False
+        if not item:
+            return False
+        for node in self:
+            if node == item:
+                return True
         return False
 
     def _is_valid_index(self, index):
@@ -136,12 +171,17 @@ class LinkedList(LinkedListAbstraction):
             self._head = self._tail = new_element
 
     def __delitem__(self, index):
+        def decr_index_for_nex_items(cur_item: LinkedListItem):  # O(n)
+            while cur_item:
+                cur_item.index -= 1
+                cur_item = cur_item.next
         index = self._support_negative_index(index)
         self._is_valid_index(index)
         if not index:
             item = self._forward_move(index)
             next_item = item.next
             item.next = None
+            next_item.index = 0
             self._head = next_item
             return item
         item_prev = self._forward_move(index - 1)
@@ -154,6 +194,7 @@ class LinkedList(LinkedListAbstraction):
         next_item = current_item.next
         item_prev.next = next_item
         current_item.next = None
+        decr_index_for_nex_items(current_item)
         return current_item
 
     def __iter__(self):
