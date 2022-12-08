@@ -47,7 +47,6 @@ class AddCNC(Constructor, Tools):
         self.ui.cnc_list.currentItemChanged.connect(lambda cur, prev: self.select_cnc(cur))
 
     def connect_text_field_signals(self):
-        print("Подключение сигналов cnc_page")
         self.ui.textEdit_2.textChanged.connect(lambda: self.update_data("textEdit_2"))
         self.ui.lineEdit_22.textChanged.connect(lambda: self.update_data("lineEdit_22"))
 

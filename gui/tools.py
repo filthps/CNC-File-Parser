@@ -1,6 +1,5 @@
 import os
 import sys
-import traceback
 import threading
 from typing import Union, Iterator, Iterable, Optional, Sequence, Any, Callable
 from itertools import count, cycle
@@ -232,7 +231,6 @@ class ORMItem(LinkedListItem):
     """ Иммутабельный класс ноды для ORMItemContainer.
 
     """
-
     def __init__(self, __node_name, **kw):
         super().__init__()
         self._is_valid_dml_type(kw)
@@ -484,18 +482,6 @@ class ORMItemContainer(LinkedList):
         node = self.search_node_by_name(item, model_name=self._model_name)
         return node if node else EmptyOrmItem()
 
-    def __contains__(self, item):
-        try:
-            self._is_valid_node(item)
-        except TypeError:
-            return False
-        if not item:
-            return False
-        for node in self:
-            if node == item:
-                return True
-        return False
-
     def search_node_by_name(self, name: str, model_name: Optional[str] = None) -> Optional[ORMItem]:
         if model_name is None:
             model_name = self._model_name
@@ -677,16 +663,18 @@ class ORMHelper:
         items_db = model.query.all()
         if db_only:
             return [item.__dict__ for item in items_db]
+        db_items = []
+        queue_items = {}  # index: node_value
         output = []
         if items_db:
-            nodes_implements_db = ORMItemContainer()
+            nodes_implements_db = ORMItemContainer()  # Ноды, значения которых совпали с записями в БД
             node_names_to_remove = []
             for db_item in items_db:  # O(n)
                 db_data: dict = db_item.__dict__
                 if primary_field not in db_data:  # O(i)
                     raise KeyError("Несогласованность данных при получении из кеша и бд")
                 primary_field_value = db_data.get(primary_field, None)  # O(1)
-                node = cls.items.search_node_by_name(primary_field_value, model_name=model.__name__)  # O(k)
+                node: ORMItem = cls.items.search_node_by_name(primary_field_value, model_name=model.__name__)  # O(k)
                 if node:
                     new_node_attrs = cls._create_node_attrs_dict_from_other_node(node)  # O(1)
                     nodes_implements_db.enqueue(node.name, **new_node_attrs)  # O(k)
@@ -695,16 +683,24 @@ class ORMHelper:
                     elif node.type == "__update":
                         db_data.update(node.value)
                     if not node.type == "__delete":
-                        output.append(db_data)
+                        queue_items.update({node.index: db_data})
                 else:
-                    output.append(db_data)
+                    db_items.append(db_data)
             if node_names_to_remove:
                 cls.remove_items(node_names_to_remove, model=model)
             for node in cls.items:  # O(k)
                 if node not in nodes_implements_db:  # O(l)
                     if node.model.__name__ == model.__name__:
                         val = node.value
-                        output.append(val) if val else None
+                        queue_items.update({node.index: val}) if val else None
+            # queue_items - нужен для сортировки
+            # теперь все элементы отправим в output в следующей последовательности:
+            # 1) ноды которые пересеклись со значениями из базы (сортировка по index)
+            # 2) остальные ноды из очереди (сортировка по index)
+            # 3) значения из базы
+            sorted_nodes = dict(sorted(queue_items.items(), reverse=True))
+            output.extend(sorted_nodes.values())
+            output.extend(db_items)
             return output
         for node in cls.items:  # O(k)
             if node.model.__name__ == model.__name__:
