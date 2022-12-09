@@ -7,8 +7,8 @@ from gui.ui import Ui_main_window
 
 class Validator:
     REQUIRED_COMBO_BOX: tuple = tuple()  # имя ComboBox, - не может быть пустым
+    REQUIRED_RADIO_BUTTONS: dict[str, tuple[str, str]] = {}  # Ключ - groupbox_name,  Во внутреннем коретеже одна из кнопок должна быть enabled
     COMBO_BOX_DEFAULT_VALUES: dict[str, str] = {}  # Ключ - имя ComboBox, значение - текст в item по умолчанию
-    REQUIRED_RADIO_BUTTONS: dict[str, Iterable[str]] = {}  # Ключ - имя GroupBox, значение - кортеж из кнопок radio, только одна кнопка должна быть enabled
     REQUIRED_TEXT_FIELD_VALUES: tuple = tuple()  # Кортеж имен инпутов, значения которых не могут быть пустыми
     INVALID_TEXT_FIELD_VALUES: dict[str, re.Pattern] = {}  # Ключи определяют перечень участвующих в валидации полей c текстовым содержимым, значение - регулярка, отображающая "плохое" значение
     INVALID_TEXT: dict[str, str] = {}  # Словарь - имя виджета: текст-подсказка к неправильному полю
@@ -64,22 +64,20 @@ class Validator:
                     else:
                         self.set_valid_text_field(field) if field_name not in invalid_text_fields else None
         if self.REQUIRED_RADIO_BUTTONS:
-            for group_box_name, buttons in self.REQUIRED_RADIO_BUTTONS.items():
-                result = set()
-                for button_name in buttons:
-                    button: Optional[QRadioButton] = getattr(self.ui, button_name, None)
-                    if button is not None:
-                        button_is_enabled = button.isChecked()
-                        result.add(int(button_is_enabled))
-                box = getattr(self.ui, group_box_name, None)
-                is_valid_box = bool(sum(result))
-                if box is not None:
-                    if is_valid_box:
-                        self.set_complete_edit_attributes(box)
-                    else:
-                        self.set_not_complete_edit_attributes(group_box_name, box)
-                if not is_valid_box:
+            for group_box_name, buttons_group in self.REQUIRED_RADIO_BUTTONS.items():
+                i = 0
+                for button in buttons_group:
+                    button: QRadioButton = getattr(self.ui, button)
+                    if button.isChecked():
+                        i += 1
+                group_box = getattr(self.ui, group_box_name, None)
+                if i != 1:
                     valid = False
+                    if group_box:
+                        self.set_invalid_text_field(group_box)
+                else:
+                    if group_box:
+                        self.set_valid_text_field(group_box)
         if self.REQUIRED_COMBO_BOX:
             for field_name in self.REQUIRED_COMBO_BOX:
                 field: QComboBox = getattr(self.ui, field_name, None)

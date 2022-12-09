@@ -122,9 +122,6 @@ class OptionsPageCreateMachine(Constructor, Tools):
             self.cnc_names.update({data["cncid"]: cnc_name})
             self.ui.choice_cnc.addItem(cnc_name)
 
-    def get_selected_machine_item(self) -> Optional[QListWidgetItem]:
-        return self.ui.add_machine_list_0.currentItem()
-
     @Slot(str)
     def choice_folder(self, line_edit_widget: str):
         def update_data(value):
