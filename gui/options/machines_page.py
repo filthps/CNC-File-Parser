@@ -197,7 +197,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
 
     @Slot(str)
     def update_data(self, field_name):
-        """ Обновление записей в базе, при изменении текстовых(LineEdit) полей-характеристик """
+        """ Обновление записей в базе """
         active_machine = self.get_selected_machine_item()
         if active_machine is None:
             return

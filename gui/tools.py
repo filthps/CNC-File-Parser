@@ -20,9 +20,10 @@ class Tools:
     _UI__TO_SQL_COLUMN_LINK__LINE_EDIT = {}
     _UI__TO_SQL_COLUMN_LINK__COMBO_BOX = {}
     _COMBO_BOX_DEFAULT_VALUES = {}
-    _INTEGER_FIELDS = {}
-    _STRING_FIELDS = {}
-    _FLOAT_FIELDS = {}
+    _INTEGER_FIELDS = tuple()
+    _STRING_FIELDS = tuple()
+    _FLOAT_FIELDS = tuple()
+    _NULLABLE_FIELDS = tuple()
 
     def update_fields(self, line_edit_values: Optional[dict] = None,
                       combo_box_values: Optional[dict] = None, combo_box_default_values: Optional[dict] = None):
@@ -49,15 +50,25 @@ class Tools:
     def check_output_values(self, field_name, value):
         """ Форматировать типы выходных значений перед установкой в очередь отправки """
         if field_name in self._INTEGER_FIELDS:
+            if not value:
+                return 0
             if type(value) is int:
                 return value
             return int(value) if str.isdigit(value) else value
         if field_name in self._FLOAT_FIELDS:
+            if not value:
+                return float()
             if isinstance(value, float):
                 return value
             return float(value) if str.isdecimal(value) else value
         if field_name in self._STRING_FIELDS:
-            return str(field_name)
+            if not value:
+                return ""
+            return str(value)
+        if field_name in self._NULLABLE_FIELDS:
+            if not value:
+                return None
+        return value
 
     @staticmethod
     def __get_widget_index_by_tab_name(widget_instance: Union[QTabWidget, QStackedWidget], tab_name: str) -> int:
