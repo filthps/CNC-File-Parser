@@ -7,7 +7,7 @@ from gui.validation import Validator
 
 
 class AddCNC(Constructor, Tools):
-    __UI__TO_SQL_COLUMN_LINK__LINE_EDIT = {"textEdit_2": "except_symbols", "lineEdit_22": "comment_symbol"}
+    _UI__TO_SQL_COLUMN_LINK__LINE_EDIT = {"textEdit_2": "except_symbols", "lineEdit_22": "comment_symbol"}
 
     def __init__(self, app, ui: Ui_main_window):
         super().__init__(app, ui)
@@ -111,7 +111,7 @@ class AddCNC(Constructor, Tools):
         if not data:
             self.reload()
             return
-        self.update_fields(data)
+        self.update_fields(line_edit_values=data)
         self.validator.set_cnc(item)
         self.validator.refresh()
         self.connect_text_field_signals()
@@ -128,20 +128,11 @@ class AddCNC(Constructor, Tools):
         if isinstance(field, QLineEdit):
             value = field.text()
         self.db_items.set_item(cnc_name,
-                               {self.__UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]: value
+                               {self._UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]: value
                                 }, ready=self.validator.refresh(), update=True, where={"name": cnc_name})
 
-    def update_fields(self, orm_data: dict):
-        for line_edit_name, db_field_name in self.__UI__TO_SQL_COLUMN_LINK__LINE_EDIT.items():
-            val = orm_data.pop(db_field_name, None)
-            input_: QLineEdit = getattr(self.ui, line_edit_name)
-            if val:
-                input_.setText(str(val))
-            else:
-                input_.setText("")
-
     def clean_fields(self):
-        for field_name in self.__UI__TO_SQL_COLUMN_LINK__LINE_EDIT:
+        for field_name in self._UI__TO_SQL_COLUMN_LINK__LINE_EDIT:
             field: QLineEdit = getattr(self.ui, field_name)
             field.setText("")
 

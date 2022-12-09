@@ -10,13 +10,13 @@ from gui.tools import Constructor, Tools, ORMHelper
 
 
 class OptionsPageCreateMachine(Constructor, Tools):
-    __UI__TO_SQL_COLUMN_LINK__LINE_EDIT = {"lineEdit_10": "input_catalog",
-                                           "lineEdit_21": "output_catalog",
-                                           "lineEdit_11": "x_over", "lineEdit_12": "y_over", "lineEdit_13": "z_over",
-                                           "lineEdit_14": "x_fspeed", "lineEdit_15": "y_fspeed", "lineEdit_16": "z_fspeed",
-                                           "lineEdit_17": "spindele_speed"}
-    __UI__TO_SQL_COLUMN_LINK__COMBO_BOX = {"choice_cnc": "name"}
-    DEFAULT_COMBO_BOX_CNC_NAME = "Выберите стойку"
+    _UI__TO_SQL_COLUMN_LINK__LINE_EDIT = {"lineEdit_10": "input_catalog",
+                                          "lineEdit_21": "output_catalog",
+                                          "lineEdit_11": "x_over", "lineEdit_12": "y_over", "lineEdit_13": "z_over",
+                                          "lineEdit_14": "x_fspeed", "lineEdit_15": "y_fspeed", "lineEdit_16": "z_fspeed",
+                                          "lineEdit_17": "spindele_speed"}
+    _UI__TO_SQL_COLUMN_LINK__COMBO_BOX = {"choice_cnc": "name"}
+    DEFAULT_COMBO_BOX_CNC_NAME = {"choice_cnc": "Выберите стойку"}
     INTEGER_FIELDS_LINE_EDIT = ("lineEdit_11", "lineEdit_12", "lineEdit_13", "lineEdit_14",
                                 "lineEdit_15", "lineEdit_16", "lineEdit_17")  # Для замены пустых значений нулями при отправке в бд
 
@@ -125,28 +125,6 @@ class OptionsPageCreateMachine(Constructor, Tools):
     def get_selected_machine_item(self) -> Optional[QListWidgetItem]:
         return self.ui.add_machine_list_0.currentItem()
 
-    def update_machine_property_fields(self, line_edit_values: Optional[dict] = None,
-                                       combo_box_values: Optional[dict] = None) -> None:
-        """ Обновление полей ХАРАКТЕРИСТИКИ в интерфейсе """
-        for ui_field, orm_field in self.__UI__TO_SQL_COLUMN_LINK__LINE_EDIT.items():
-            if line_edit_values:
-                value = line_edit_values.get(orm_field)
-                if value:
-                    getattr(self.ui, ui_field).setText(str(value))
-                else:
-                    getattr(self.ui, ui_field).setText("")
-            else:
-                getattr(self.ui, ui_field).setText("")
-        for ui_field, orm_field in self.__UI__TO_SQL_COLUMN_LINK__COMBO_BOX.items():
-            if combo_box_values:
-                value = combo_box_values.get(orm_field)
-                if value:
-                    getattr(self.ui, ui_field).setCurrentText(str(value))
-                else:
-                    getattr(self.ui, ui_field).setCurrentText(self.DEFAULT_COMBO_BOX_CNC_NAME)
-            else:
-                getattr(self.ui, ui_field).setCurrentText(self.DEFAULT_COMBO_BOX_CNC_NAME)
-
     @Slot(str)
     def choice_folder(self, line_edit_widget: str):
         def update_data(value):
@@ -174,8 +152,8 @@ class OptionsPageCreateMachine(Constructor, Tools):
         cm_box_values = {}
         cnc_name = self.cnc_names.get(machine.pop("cncid", None))
         cm_box_values.update({"name": cnc_name}) if cnc_name else None
-        self.update_machine_property_fields(line_edit_values=machine,
-                                            combo_box_values=cm_box_values)
+        self.update_fields(line_edit_values=machine,
+                           combo_box_values=cm_box_values, combo_box_default_values=self.DEFAULT_COMBO_BOX_CNC_NAME)
         self.connect_fields_signals()
         self.validator.set_machine(machine_item)
 
@@ -235,7 +213,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
         machine_db = self.db_items.get_item(machine_name, where={"machine_name": machine_name}, only_db=True)
         self.validator.refresh()
         self.db_items.set_item(machine_name, {
-            self.__UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]: filter_value_for_integer_fields(field_name, value)
+            self._UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]: filter_value_for_integer_fields(field_name, value)
         }, ready=self.validator.is_valid, where={"machine_name": machine_name},
                                **{("insert" if not machine_db else "update"): True})
 
@@ -269,13 +247,10 @@ class OptionsPageCreateMachine(Constructor, Tools):
         Установить в стандартное значение все поля ХАРАКТЕРИСТИКИ
         """
 
-        def insert_empty_cnc_item() -> None:
-            self.ui.choice_cnc.addItem(self.DEFAULT_COMBO_BOX_CNC_NAME)
-
         self.ui.choice_cnc.clear()
-        insert_empty_cnc_item()
+        self.update_fields(combo_box_default_values=self.DEFAULT_COMBO_BOX_CNC_NAME)
         self.ui.choice_cnc.setCurrentIndex(0)
-        [getattr(self.ui, field_name).setText("") for field_name in self.__UI__TO_SQL_COLUMN_LINK__LINE_EDIT]
+        [getattr(self.ui, field_name).setText("") for field_name in self._UI__TO_SQL_COLUMN_LINK__LINE_EDIT]
         self.cnc_names = {}
 
 

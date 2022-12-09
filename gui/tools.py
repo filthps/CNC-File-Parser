@@ -7,7 +7,8 @@ from pymemcache.client.base import Client
 from pymemcache import serde
 from PySide2.QtCore import Qt
 from PySide2.QtWidgets import QTabWidget, QStackedWidget, QPushButton, QInputDialog, QDialogButtonBox, \
-    QListWidgetItem, QListWidget, QDialog, QLabel, QVBoxLayout, QHBoxLayout, QTreeWidgetItem, QTreeWidget, QLineEdit
+    QListWidgetItem, QListWidget, QDialog, QLabel, QVBoxLayout, QHBoxLayout, QTreeWidgetItem, QTreeWidget, QLineEdit, \
+    QComboBox
 from PySide2.QtGui import QIcon
 from sqlalchemy.orm import Query
 from gui.ui import Ui_main_window as Ui
@@ -15,6 +16,33 @@ from datatype import LinkedList, LinkedListItem
 
 
 class Tools:
+    ui = None
+    _UI__TO_SQL_COLUMN_LINK__LINE_EDIT = {}
+    _UI__TO_SQL_COLUMN_LINK__COMBO_BOX = {}
+
+    def update_fields(self, line_edit_values: Optional[dict] = None,
+                      combo_box_values: Optional[dict] = None, combo_box_default_values: Optional[dict] = None):
+        """ Обновление содержимого полей """
+        for line_edit_name, db_field_name in self._UI__TO_SQL_COLUMN_LINK__LINE_EDIT.items():
+            val = line_edit_values.pop(db_field_name, None) if line_edit_values else None
+            input_: QLineEdit = getattr(self.ui, line_edit_name)
+            if val:
+                input_.setText(str(val))
+            else:
+                input_.setText("")
+        for ui_field, orm_field in self._UI__TO_SQL_COLUMN_LINK__COMBO_BOX.items():
+            input_: QComboBox = getattr(self.ui, ui_field)
+            value = combo_box_values.get(orm_field) if combo_box_values else None
+            if value:
+                input_.setCurrentText(str(value))
+            else:
+                default_value = combo_box_default_values.get(orm_field, None)
+                if default_value:
+                    input_.setCurrentText(default_value)
+                else:
+                    input_.setCurrentText("")
+
+
 
     @staticmethod
     def __get_widget_index_by_tab_name(widget_instance: Union[QTabWidget, QStackedWidget], tab_name: str) -> int:
