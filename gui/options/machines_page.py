@@ -16,9 +16,9 @@ class OptionsPageCreateMachine(Constructor, Tools):
                                           "lineEdit_14": "x_fspeed", "lineEdit_15": "y_fspeed", "lineEdit_16": "z_fspeed",
                                           "lineEdit_17": "spindele_speed"}
     _UI__TO_SQL_COLUMN_LINK__COMBO_BOX = {"choice_cnc": "name"}
-    DEFAULT_COMBO_BOX_CNC_NAME = {"choice_cnc": "Выберите стойку"}
-    INTEGER_FIELDS_LINE_EDIT = ("lineEdit_11", "lineEdit_12", "lineEdit_13", "lineEdit_14",
-                                "lineEdit_15", "lineEdit_16", "lineEdit_17")  # Для замены пустых значений нулями при отправке в бд
+    _COMBO_BOX_DEFAULT_VALUES = {"choice_cnc": "Выберите стойку"}
+    _INTEGER_FIELDS = ("lineEdit_11", "lineEdit_12", "lineEdit_13", "lineEdit_14",
+                       "lineEdit_15", "lineEdit_16", "lineEdit_17")  # Для замены пустых значений нулями при отправке в бд
 
     def __init__(self, main_app_instance, ui: Ui):
         self.validator = None
@@ -152,8 +152,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
         cm_box_values = {}
         cnc_name = self.cnc_names.get(machine.pop("cncid", None))
         cm_box_values.update({"name": cnc_name}) if cnc_name else None
-        self.update_fields(line_edit_values=machine,
-                           combo_box_values=cm_box_values, combo_box_default_values=self.DEFAULT_COMBO_BOX_CNC_NAME)
+        self.update_fields(line_edit_values=machine, combo_box_values=cm_box_values)
         self.connect_fields_signals()
         self.validator.set_machine(machine_item)
 
@@ -199,12 +198,6 @@ class OptionsPageCreateMachine(Constructor, Tools):
     @Slot(str)
     def update_data(self, field_name):
         """ Обновление записей в базе, при изменении текстовых(LineEdit) полей-характеристик """
-        def filter_value_for_integer_fields(field, val):
-            if val == "":
-                if field in self.INTEGER_FIELDS_LINE_EDIT:
-                    return 0
-            return val
-
         active_machine = self.get_selected_machine_item()
         if active_machine is None:
             return
@@ -213,7 +206,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
         machine_db = self.db_items.get_item(machine_name, where={"machine_name": machine_name}, only_db=True)
         self.validator.refresh()
         self.db_items.set_item(machine_name, {
-            self._UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]: filter_value_for_integer_fields(field_name, value)
+            self._UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]: self.check_output_values(field_name, value)
         }, ready=self.validator.is_valid, where={"machine_name": machine_name},
                                **{("insert" if not machine_db else "update"): True})
 
@@ -225,7 +218,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
         if not selected_machine:
             return
         selected_machine_name = selected_machine.text()
-        if item == self.DEFAULT_COMBO_BOX_CNC_NAME:
+        if item == self._COMBO_BOX_DEFAULT_VALUES:
             del self.db_items.items[selected_machine_name]["cncid"]
             self.validator.refresh()
             return
@@ -246,9 +239,12 @@ class OptionsPageCreateMachine(Constructor, Tools):
         """
         Установить в стандартное значение все поля ХАРАКТЕРИСТИКИ
         """
+        def insert_empty_cnc_item() -> None:
+            self.ui.choice_cnc.addItem(self._COMBO_BOX_DEFAULT_VALUES["choice_cnc"])
 
         self.ui.choice_cnc.clear()
-        self.update_fields(combo_box_default_values=self.DEFAULT_COMBO_BOX_CNC_NAME)
+        insert_empty_cnc_item()
+        self.update_fields()
         self.ui.choice_cnc.setCurrentIndex(0)
         [getattr(self.ui, field_name).setText("") for field_name in self._UI__TO_SQL_COLUMN_LINK__LINE_EDIT]
         self.cnc_names = {}
