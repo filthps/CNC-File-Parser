@@ -581,6 +581,7 @@ class ORMHelper:
     2) Установка ссылки на класс модели Flask-SqlAlchemy
         LinkToObj.set_model(Model)
     3) Использование
+        name - Это всегда либо действующий PK или поле с ограничением UNIQUE=TRUE!
         LinkToObj.set_item(name, data, **kwargs) - Установка в очередь, обнуление таймера
         LinkToObj.get_item(name, **kwargs) - получение данных из бд и из ноды
         LinkToObj.get_items(model=None) - получение данных из бд и из ноды

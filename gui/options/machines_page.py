@@ -181,7 +181,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
     @Slot()
     def remove_machine(self):
         def ok():
-            item: QListWidgetItem = self.get_selected_machine_item()
+            item: QListWidgetItem = self.ui.add_machine_list_0.currentItem()
             item_name = item.text()
             self.db_items.set_item(item_name, delete=True, where={"machine_name": item_name}, ready=True)
             self.disconnect_fields_signals()
@@ -195,7 +195,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
     @Slot(str)
     def update_data(self, field_name):
         """ Обновление записей в базе """
-        active_machine = self.get_selected_machine_item()
+        active_machine = self.ui.add_machine_list_0.currentItem()
         if active_machine is None:
             return
         machine_name = active_machine.text()
@@ -211,7 +211,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
     def change_cnc(self, item):
         if not item:
             return
-        selected_machine = self.get_selected_machine_item()
+        selected_machine = self.ui.add_machine_list_0.currentItem()
         if not selected_machine:
             return
         selected_machine_name = selected_machine.text()
