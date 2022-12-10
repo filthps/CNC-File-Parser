@@ -276,12 +276,12 @@ class AddMachinePageValidation(Validator):
             self.refresh()
 
     def refresh(self):
+        def mark_machine_list_widget_item():
+            """ Выделить красным фотном станок или снять выделение """
+            if not valid:
+                self.set_not_complete_edit_attributes(self.current_machine)
+            else:
+                self.set_complete_edit_attributes(self.current_machine)
         valid = super().refresh()
         if self.current_machine:
-            def mark_machine_list_widget_item():
-                """ Выделить красным фотном станок или снять выделение """
-                if not valid:
-                    self.set_not_complete_edit_attributes(self.current_machine)
-                else:
-                    self.set_complete_edit_attributes(self.current_machine)
             mark_machine_list_widget_item()
