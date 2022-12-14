@@ -100,7 +100,11 @@ class Condition(db.Model, ModelController):
     isntfind = Column(Boolean, default=False, nullable=False)
     findfull = Column(Boolean, default=False, nullable=False)
     findpart = Column(Boolean, default=False, nullable=False)
-    conditionbasevalue = Column(Boolean, default=True, nullable=False)
+    parentconditiontrue = Column(Boolean, default=False, nullable=False)
+    parentconditionfalse = Column(Boolean, default=False, nullable=False)
+    equal = Column(Boolean, default=False, nullable=False)
+    less = Column(Boolean, default=False, nullable=False)
+    larger = Column(Boolean, default=False, nullable=False)
     __table_args__ = (
         CheckConstraint("targetstr!=''", name="cond_targetstr_empty"),
     )
