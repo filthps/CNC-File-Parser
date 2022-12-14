@@ -19,6 +19,7 @@ class Tools:
     ui = None
     _UI__TO_SQL_COLUMN_LINK__LINE_EDIT = {}
     _UI__TO_SQL_COLUMN_LINK__COMBO_BOX = {}
+    _UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON: dict[dict[str, str]] = {}
     _COMBO_BOX_DEFAULT_VALUES = {}
     _INTEGER_FIELDS = tuple()
     _STRING_FIELDS = tuple()
@@ -762,6 +763,15 @@ class ORMHelper:
                 val = node.value
                 output.append(val) if val else None
         return output
+
+    @classmethod
+    def get_node_dml_type(cls, node_name: str, model=None) -> Optional[str]:
+        """ Получить тип операции с базой, например 'update', по названию ноды, если она найдена, иначе - None """
+        model_name = model.__name__ if model else None
+        node = cls.items.search_node_by_name(node_name, model_name=model_name)
+        if not node:
+            return
+        return node.type
 
     @classmethod
     def remove_items(cls, node_names: Iterable[str], model=None):
