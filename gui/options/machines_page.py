@@ -200,12 +200,13 @@ class OptionsPageCreateMachine(Constructor, Tools):
             return
         machine_name = active_machine.text()
         value = getattr(self.ui, field_name).text()
-        machine_db = self.db_items.get_item(machine_name, where={"machine_name": machine_name}, only_db=True)
+        exists_node_type = self.db_items.get_node_dml_type(machine_name, model=Machine)
+        sql_column_name = self._UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]
         self.validator.refresh()
         self.db_items.set_item(machine_name, {
-            self._UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]: self.check_output_values(field_name, value)
+            sql_column_name: self.check_output_values(field_name, value)
         }, ready=self.validator.is_valid, where={"machine_name": machine_name},
-                               **{("insert" if not machine_db else "update"): True})
+                               **{("update" if exists_node_type == "update" else "insert"): True})
 
     @Slot(str)
     def change_cnc(self, item):
