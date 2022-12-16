@@ -494,8 +494,8 @@ class Ui_main_window(object):
         self.converter_options.addTab(self.options_tab_machines, "")
         self.tab_7 = QWidget()
         self.tab_7.setObjectName(u"tab_7")
-        self.horizontalLayout_63 = QHBoxLayout(self.tab_7)
-        self.horizontalLayout_63.setObjectName(u"horizontalLayout_63")
+        self.horizontalLayout_65 = QHBoxLayout(self.tab_7)
+        self.horizontalLayout_65.setObjectName(u"horizontalLayout_65")
         self.verticalLayout_67 = QVBoxLayout()
         self.verticalLayout_67.setObjectName(u"verticalLayout_67")
         self.conditions_list = QListWidget(self.tab_7)
@@ -519,17 +519,41 @@ class Ui_main_window(object):
         self.verticalLayout_67.addLayout(self.horizontalLayout_64)
 
 
-        self.horizontalLayout_63.addLayout(self.verticalLayout_67)
+        self.horizontalLayout_65.addLayout(self.verticalLayout_67)
 
         self.line = QFrame(self.tab_7)
         self.line.setObjectName(u"line")
         self.line.setFrameShape(QFrame.VLine)
         self.line.setFrameShadow(QFrame.Sunken)
 
-        self.horizontalLayout_63.addWidget(self.line)
+        self.horizontalLayout_65.addWidget(self.line)
 
         self.verticalLayout_83 = QVBoxLayout()
         self.verticalLayout_83.setObjectName(u"verticalLayout_83")
+        self.groupBox_26 = QGroupBox(self.tab_7)
+        self.groupBox_26.setObjectName(u"groupBox_26")
+        self.horizontalLayout_63 = QHBoxLayout(self.groupBox_26)
+        self.horizontalLayout_63.setObjectName(u"horizontalLayout_63")
+        self.radioButton_45 = QRadioButton(self.groupBox_26)
+        self.radioButton_45.setObjectName(u"radioButton_45")
+
+        self.horizontalLayout_63.addWidget(self.radioButton_45)
+
+        self.radioButton_46 = QRadioButton(self.groupBox_26)
+        self.radioButton_46.setObjectName(u"radioButton_46")
+
+        self.horizontalLayout_63.addWidget(self.radioButton_46)
+
+
+        self.verticalLayout_83.addWidget(self.groupBox_26)
+
+        self.line_20 = QFrame(self.tab_7)
+        self.line_20.setObjectName(u"line_20")
+        self.line_20.setFrameShape(QFrame.HLine)
+        self.line_20.setFrameShadow(QFrame.Sunken)
+
+        self.verticalLayout_83.addWidget(self.line_20)
+
         self.groupBox_19 = QGroupBox(self.tab_7)
         self.groupBox_19.setObjectName(u"groupBox_19")
         self.horizontalLayout_58 = QHBoxLayout(self.groupBox_19)
@@ -550,6 +574,11 @@ class Ui_main_window(object):
         self.radioButton_25.setObjectName(u"radioButton_25")
 
         self.verticalLayout_62.addWidget(self.radioButton_25)
+
+        self.radioButton_47 = QRadioButton(self.groupBox_19)
+        self.radioButton_47.setObjectName(u"radioButton_47")
+
+        self.verticalLayout_62.addWidget(self.radioButton_47)
 
 
         self.horizontalLayout_58.addLayout(self.verticalLayout_62)
@@ -692,7 +721,7 @@ class Ui_main_window(object):
         self.verticalLayout_83.addItem(self.verticalSpacer_26)
 
 
-        self.horizontalLayout_63.addLayout(self.verticalLayout_83)
+        self.horizontalLayout_65.addLayout(self.verticalLayout_83)
 
         self.converter_options.addTab(self.tab_7, "")
         self.tab_4 = QWidget()
@@ -2404,10 +2433,14 @@ class Ui_main_window(object):
         self.converter_options.setTabText(self.converter_options.indexOf(self.options_tab_machines), QCoreApplication.translate("main_window", u"\u0421\u0442\u0430\u043d\u043a\u0438", None))
         self.add_button_3.setText("")
         self.remove_button_3.setText("")
-        self.groupBox_19.setTitle(QCoreApplication.translate("main_window", u"\u0423\u0441\u043b\u043e\u0432\u0438\u0435 \u043f\u0440\u043e\u0432\u0435\u0440\u043a\u0438 (\u0443\u0441\u043b\u043e\u0432\u0438\u0435 \u0432\u0435\u0440\u043d\u043e, \u0435\u0441\u043b\u0438 \u044d\u043b\u0435\u043c\u0435\u043d\u0442:)", None))
+        self.groupBox_26.setTitle(QCoreApplication.translate("main_window", u"\u0417\u043d\u0430\u0447\u0435\u043d\u0438\u0435 \u0443\u0441\u043b\u043e\u0432\u0438\u044f:", None))
+        self.radioButton_45.setText(QCoreApplication.translate("main_window", u"\u0418\u0441\u0442\u0438\u043d\u0430", None))
+        self.radioButton_46.setText(QCoreApplication.translate("main_window", u"\u041b\u043e\u0436\u044c", None))
+        self.groupBox_19.setTitle(QCoreApplication.translate("main_window", u"\u0423\u0441\u043b\u043e\u0432\u0438\u0435 \u043f\u0440\u043e\u0432\u0435\u0440\u043a\u0438:", None))
         self.radioButton_24.setText(QCoreApplication.translate("main_window", u"\u0421\u043e\u0432\u043f\u0430\u0434\u0430\u0435\u0442", None))
         self.radioButton_38.setText(QCoreApplication.translate("main_window", u"\u0421\u043e\u0434\u0435\u0440\u0436\u0438\u0442", None))
         self.radioButton_25.setText(QCoreApplication.translate("main_window", u"\u041d\u0435 \u0441\u043e\u0432\u043f\u0430\u0434\u0430\u0435\u0442", None))
+        self.radioButton_47.setText(QCoreApplication.translate("main_window", u"\u041d\u0435 \u0441\u043e\u0434\u0435\u0440\u0436\u0438\u0442", None))
         self.radioButton_35.setText(QCoreApplication.translate("main_window", u"\u041c\u0435\u043d\u044c\u0448\u0435", None))
         self.radioButton_36.setText(QCoreApplication.translate("main_window", u"\u0420\u0430\u0432\u0435\u043d", None))
         self.radioButton_37.setText(QCoreApplication.translate("main_window", u"\u0411\u043e\u043b\u044c\u0448\u0435", None))

@@ -685,7 +685,7 @@
                <attribute name="title">
                 <string>Условия</string>
                </attribute>
-               <layout class="QHBoxLayout" name="horizontalLayout_63">
+               <layout class="QHBoxLayout" name="horizontalLayout_65">
                 <item>
                  <layout class="QVBoxLayout" name="verticalLayout_67">
                   <item>
@@ -721,9 +721,39 @@
                 <item>
                  <layout class="QVBoxLayout" name="verticalLayout_83">
                   <item>
+                   <widget class="QGroupBox" name="groupBox_26">
+                    <property name="title">
+                     <string>Значение условия:</string>
+                    </property>
+                    <layout class="QHBoxLayout" name="horizontalLayout_63">
+                     <item>
+                      <widget class="QRadioButton" name="radioButton_45">
+                       <property name="text">
+                        <string>Истина</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="QRadioButton" name="radioButton_46">
+                       <property name="text">
+                        <string>Ложь</string>
+                       </property>
+                      </widget>
+                     </item>
+                    </layout>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="Line" name="line_20">
+                    <property name="orientation">
+                     <enum>Qt::Horizontal</enum>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
                    <widget class="QGroupBox" name="groupBox_19">
                     <property name="title">
-                     <string>Условие проверки (условие верно, если элемент:)</string>
+                     <string>Условие проверки:</string>
                     </property>
                     <layout class="QHBoxLayout" name="horizontalLayout_58">
                      <item>
@@ -746,6 +776,13 @@
                         <widget class="QRadioButton" name="radioButton_25">
                          <property name="text">
                           <string>Не совпадает</string>
+                         </property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QRadioButton" name="radioButton_47">
+                         <property name="text">
+                          <string>Не содержит</string>
                          </property>
                         </widget>
                        </item>
