@@ -95,9 +95,13 @@ class Operation(db.Model, ModelController):
 class Condition(db.Model, ModelController):
     __tablename__ = "cond"
     cnd = Column(String, primary_key=True, default=get_uuid)
+    conditiontrue = Column(Boolean, default=True, nullable=False)
+    conditionfalse = Column(Boolean, default=False, nullable=False)
     parent = Column(String, db.ForeignKey("cond.cnd"), nullable=True, default=None)
-    targetstr = Column(String(100), unique=True, nullable=False)
-    isntfind = Column(Boolean, default=False, nullable=False)
+    conditionstring = Column(String(100), nullable=False, default="")
+    conditionvalue = Column(String(100), nullable=False, default="")
+    isntfindfull = Column(Boolean, default=False, nullable=False)
+    isntfindpart = Column(Boolean, default=False, nullable=False)
     findfull = Column(Boolean, default=False, nullable=False)
     findpart = Column(Boolean, default=False, nullable=False)
     parentconditiontrue = Column(Boolean, default=False, nullable=False)
@@ -106,7 +110,10 @@ class Condition(db.Model, ModelController):
     less = Column(Boolean, default=False, nullable=False)
     larger = Column(Boolean, default=False, nullable=False)
     __table_args__ = (
-        CheckConstraint("targetstr!=''", name="cond_targetstr_empty"),
+        CheckConstraint("conditionstring!=''", name="cond_targetstr_empty"),
+        CheckConstraint("conditionstring!=conditionvalue", name="cond_equal_strings"),
+        CheckConstraint("conditionvalue!=''", name="cond_value_empty"),
+        CheckConstraint("conditiontrue!=conditionfalse", name="cond_value_unique"),
     )
 
 

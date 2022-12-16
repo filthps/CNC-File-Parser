@@ -122,11 +122,19 @@ def init_condition_table_triggers():
                 SELECT 1
                 FROM cond
                 WHERE (parent=NEW.parent OR NEW.parent IS NULL AND parent IS NULL)
-                AND targetstr=NEW.targetstr
-                AND isntfind=NEW.isntfind
+                AND conditiontrue=NEW.conditiontrue
+                AND conditionfalse=NEW.conditionfalse
+                AND conditionstring=NEW.conditionstring
+                AND conditionvalue=NEW.conditionvalue
+                AND isntfindfull=NEW.isntfindfull
+                AND isntfindpart=NEW.isntfindpart
                 AND findfull=NEW.findfull
                 AND findpart=NEW.findpart
-                AND conditionbasevalue=NEW.conditionbasevalue
+                AND parentconditiontrue=NEW.parentconditiontrue
+                AND parentconditionfalse=NEW.parentconditionfalse
+                AND equal=NEW.equal
+                AND less=NEW.less
+                AND larger=NEW.larger
             ) THEN
                 RAISE EXCEPTION 'Данный экземпляр сущности уже существует!';
             ELSE
@@ -149,12 +157,16 @@ def init_condition_table_triggers():
         DECLARE
             counter smallint := 0;
         BEGIN
-            SELECT counter + (CASE WHEN NEW.isntfind THEN 1 ELSE 0 END) INTO counter;
+            SELECT counter + (CASE WHEN NEW.isntfindfull THEN 1 ELSE 0 END) INTO counter;
+            SELECT counter + (CASE WHEN NEW.isntfindpart THEN 1 ELSE 0 END) INTO counter;
             SELECT counter + (CASE WHEN NEW.findfull THEN 1 ELSE 0 END) INTO counter;
             SELECT counter + (CASE WHEN NEW.findpart THEN 1 ELSE 0 END) INTO counter;
+            SELECT counter + (CASE WHEN NEW.equal THEN 1 ELSE 0 END) INTO counter;
+            SELECT counter + (CASE WHEN NEW.less THEN 1 ELSE 0 END) INTO counter;
+            SELECT counter + (CASE WHEN NEW.larger THEN 1 ELSE 0 END) INTO counter;
             IF counter != 1
             THEN
-                RAISE EXCEPTION 'Невалидное состояние опций isntfind, findfull и findpart!';
+                RAISE EXCEPTION 'Невалидное состояние опций isntfind, findfull, findpart, less, equal, larger!';
             ELSE
                 RETURN NEW;
             END IF;
@@ -167,6 +179,31 @@ def init_condition_table_triggers():
         BEFORE INSERT OR UPDATE
         ON cond FOR EACH ROW
         EXECUTE PROCEDURE check_condition_options();
+    """)
+
+    db.engine.execute("""
+    CREATE OR REPLACE FUNCTION check_parent_condition() RETURNS trigger
+    AS $body$
+    DECLARE
+        counter smallint := 0;
+    BEGIN
+        IF NEW.parent IS NOT NULL
+        THEN
+            SELECT counter + (CASE WHEN NEW.parentconditiontrue THEN 1 ELSE 0 END) INTO counter;
+            SELECT counter + (CASE WHEN NEW.parentconditionfalse THEN 1 ELSE 0 END) INTO counter;
+            IF counter != 1 THEN 
+                RAISE EXCEPTION 'Недействительные опции для родительского условия';
+                END IF;
+        END IF;
+    END; $body$
+    LANGUAGE PLPGSQL
+    """)
+
+    db.engine.execute("""
+    CREATE TRIGGER check_parent_condition_if
+    BEFORE INSERT OR UPDATE
+    ON cond FOR EACH ROW
+    EXECUTE PROCEDURE check_parent_condition();
     """)
 
 
