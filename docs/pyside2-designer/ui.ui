@@ -685,11 +685,11 @@
                <attribute name="title">
                 <string>Условия</string>
                </attribute>
-               <layout class="QHBoxLayout" name="horizontalLayout_65">
+               <layout class="QHBoxLayout" name="horizontalLayout_63">
                 <item>
                  <layout class="QVBoxLayout" name="verticalLayout_67">
                   <item>
-                   <widget class="QListWidget" name="listWidget"/>
+                   <widget class="QListWidget" name="conditions_list"/>
                   </item>
                   <item>
                    <layout class="QHBoxLayout" name="horizontalLayout_64">
@@ -719,34 +719,13 @@
                  </widget>
                 </item>
                 <item>
-                 <layout class="QVBoxLayout" name="verticalLayout_66">
-                  <item>
-                   <layout class="QHBoxLayout" name="horizontalLayout_58">
-                    <item>
-                     <widget class="QLabel" name="label_36">
-                      <property name="text">
-                       <string>Элемент проверки:</string>
-                      </property>
-                     </widget>
-                    </item>
-                    <item>
-                     <widget class="QLineEdit" name="lineEdit_28"/>
-                    </item>
-                   </layout>
-                  </item>
-                  <item>
-                   <widget class="Line" name="line_20">
-                    <property name="orientation">
-                     <enum>Qt::Horizontal</enum>
-                    </property>
-                   </widget>
-                  </item>
+                 <layout class="QVBoxLayout" name="verticalLayout_83">
                   <item>
                    <widget class="QGroupBox" name="groupBox_19">
                     <property name="title">
                      <string>Условие проверки (условие верно, если элемент:)</string>
                     </property>
-                    <layout class="QHBoxLayout" name="horizontalLayout_63">
+                    <layout class="QHBoxLayout" name="horizontalLayout_58">
                      <item>
                       <layout class="QVBoxLayout" name="verticalLayout_62">
                        <item>
@@ -794,6 +773,20 @@
                           <string>Больше</string>
                          </property>
                         </widget>
+                       </item>
+                      </layout>
+                     </item>
+                     <item>
+                      <layout class="QVBoxLayout" name="verticalLayout_66">
+                       <item>
+                        <widget class="QLabel" name="label_36">
+                         <property name="text">
+                          <string>Значение/совпадающая строка:</string>
+                         </property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QLineEdit" name="lineEdit_28"/>
                        </item>
                       </layout>
                      </item>
@@ -922,6 +915,9 @@
                     </item>
                     <item>
                      <widget class="QCommandLinkButton" name="commandLinkButton_9">
+                      <property name="enabled">
+                       <bool>false</bool>
+                      </property>
                       <property name="text">
                        <string>Сохранить условие</string>
                       </property>
@@ -1199,13 +1195,13 @@
                 <item>
                  <widget class="QTabWidget" name="tabWidget_2">
                   <property name="currentIndex">
-                   <number>2</number>
+                   <number>0</number>
                   </property>
                   <widget class="QWidget" name="add_operation_list">
                    <attribute name="title">
                     <string>Включение / выключение задач</string>
                    </attribute>
-                   <layout class="QVBoxLayout" name="verticalLayout_25">
+                   <layout class="QVBoxLayout" name="verticalLayout_82">
                     <item>
                      <layout class="QHBoxLayout" name="horizontalLayout_6">
                       <item>
@@ -1254,7 +1250,14 @@
                      </layout>
                     </item>
                     <item>
-                     <layout class="QHBoxLayout" name="horizontalLayout_35">
+                     <widget class="Line" name="line_32">
+                      <property name="orientation">
+                       <enum>Qt::Horizontal</enum>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <layout class="QHBoxLayout" name="horizontalLayout_66">
                       <item>
                        <layout class="QVBoxLayout" name="verticalLayout_16">
                         <item>
@@ -1267,7 +1270,7 @@
                            </font>
                           </property>
                           <property name="text">
-                           <string>Выключенные:</string>
+                           <string>Архив задач:</string>
                           </property>
                          </widget>
                         </item>
@@ -1303,23 +1306,69 @@
                        </layout>
                       </item>
                       <item>
-                       <layout class="QVBoxLayout" name="verticalLayout_17">
+                       <layout class="QVBoxLayout" name="verticalLayout_81">
                         <item>
-                         <widget class="QLabel" name="label_19">
-                          <property name="font">
-                           <font>
-                            <pointsize>20</pointsize>
-                            <weight>75</weight>
-                            <bold>true</bold>
-                           </font>
-                          </property>
-                          <property name="text">
-                           <string>Действующие:</string>
+                         <layout class="QHBoxLayout" name="horizontalLayout_35">
+                          <item>
+                           <spacer name="horizontalSpacer_31">
+                            <property name="orientation">
+                             <enum>Qt::Horizontal</enum>
+                            </property>
+                            <property name="sizeHint" stdset="0">
+                             <size>
+                              <width>40</width>
+                              <height>20</height>
+                             </size>
+                            </property>
+                           </spacer>
+                          </item>
+                          <item>
+                           <layout class="QVBoxLayout" name="verticalLayout_25">
+                            <item>
+                             <widget class="QLabel" name="label_42">
+                              <property name="text">
+                               <string>Краткое описание происходящего в задаче:</string>
+                              </property>
+                             </widget>
+                            </item>
+                            <item>
+                             <widget class="QTextEdit" name="textEdit">
+                              <property name="enabled">
+                               <bool>false</bool>
+                              </property>
+                             </widget>
+                            </item>
+                           </layout>
+                          </item>
+                         </layout>
+                        </item>
+                        <item>
+                         <widget class="Line" name="line_31">
+                          <property name="orientation">
+                           <enum>Qt::Horizontal</enum>
                           </property>
                          </widget>
                         </item>
                         <item>
-                         <widget class="QListWidget" name="enabled_operations_list"/>
+                         <layout class="QVBoxLayout" name="verticalLayout_17">
+                          <item>
+                           <widget class="QLabel" name="label_19">
+                            <property name="font">
+                             <font>
+                              <pointsize>20</pointsize>
+                              <weight>75</weight>
+                              <bold>true</bold>
+                             </font>
+                            </property>
+                            <property name="text">
+                             <string>Действующие:</string>
+                            </property>
+                           </widget>
+                          </item>
+                          <item>
+                           <widget class="QListWidget" name="enabled_operations_list"/>
+                          </item>
+                         </layout>
                         </item>
                        </layout>
                       </item>
@@ -1352,7 +1401,7 @@
                        <enum>QFrame::Plain</enum>
                       </property>
                       <property name="currentIndex">
-                       <number>6</number>
+                       <number>7</number>
                       </property>
                       <widget class="QWidget" name="add_operation_first">
                        <layout class="QVBoxLayout" name="verticalLayout_5">
@@ -1536,7 +1585,7 @@
                        </layout>
                       </widget>
                       <widget class="QWidget" name="page_6">
-                       <layout class="QVBoxLayout" name="verticalLayout_40">
+                       <layout class="QVBoxLayout" name="verticalLayout_78">
                         <item>
                          <layout class="QHBoxLayout" name="horizontalLayout_27">
                           <item>
@@ -1635,7 +1684,7 @@
                            </layout>
                           </item>
                           <item>
-                           <layout class="QVBoxLayout" name="verticalLayout_13">
+                           <layout class="QVBoxLayout" name="verticalLayout_40">
                             <item>
                              <widget class="QGroupBox" name="groupBox_5">
                               <property name="sizePolicy">
@@ -1669,17 +1718,41 @@
                              </widget>
                             </item>
                             <item>
-                             <spacer name="verticalSpacer_22">
-                              <property name="orientation">
-                               <enum>Qt::Vertical</enum>
+                             <widget class="QGroupBox" name="groupBox_24">
+                              <property name="title">
+                               <string>Условие</string>
                               </property>
-                              <property name="sizeHint" stdset="0">
-                               <size>
-                                <width>20</width>
-                                <height>40</height>
-                               </size>
-                              </property>
-                             </spacer>
+                              <layout class="QVBoxLayout" name="verticalLayout_77">
+                               <item>
+                                <widget class="QRadioButton" name="radioButton_41">
+                                 <property name="text">
+                                  <string>Выкл</string>
+                                 </property>
+                                 <property name="checked">
+                                  <bool>true</bool>
+                                 </property>
+                                </widget>
+                               </item>
+                               <item>
+                                <layout class="QVBoxLayout" name="verticalLayout_13">
+                                 <item>
+                                  <widget class="QRadioButton" name="radioButton_42">
+                                   <property name="text">
+                                    <string>Вкл</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item>
+                                  <widget class="QComboBox" name="comboBox_6">
+                                   <property name="enabled">
+                                    <bool>false</bool>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                </layout>
+                               </item>
+                              </layout>
+                             </widget>
                             </item>
                            </layout>
                           </item>
@@ -1771,7 +1844,7 @@
                        </layout>
                       </widget>
                       <widget class="QWidget" name="page_7">
-                       <layout class="QVBoxLayout" name="verticalLayout_48">
+                       <layout class="QVBoxLayout" name="verticalLayout_80">
                         <item>
                          <layout class="QHBoxLayout" name="horizontalLayout_33">
                           <item>
@@ -1870,7 +1943,14 @@
                            </layout>
                           </item>
                           <item>
-                           <layout class="QVBoxLayout" name="verticalLayout_37">
+                           <widget class="Line" name="line_30">
+                            <property name="orientation">
+                             <enum>Qt::Vertical</enum>
+                            </property>
+                           </widget>
+                          </item>
+                          <item>
+                           <layout class="QVBoxLayout" name="verticalLayout_48">
                             <item>
                              <widget class="QGroupBox" name="groupBox_6">
                               <property name="sizePolicy">
@@ -1910,17 +1990,41 @@
                              </widget>
                             </item>
                             <item>
-                             <spacer name="verticalSpacer_21">
-                              <property name="orientation">
-                               <enum>Qt::Vertical</enum>
+                             <widget class="QGroupBox" name="groupBox_25">
+                              <property name="title">
+                               <string>Условие</string>
                               </property>
-                              <property name="sizeHint" stdset="0">
-                               <size>
-                                <width>20</width>
-                                <height>40</height>
-                               </size>
-                              </property>
-                             </spacer>
+                              <layout class="QVBoxLayout" name="verticalLayout_79">
+                               <item>
+                                <widget class="QRadioButton" name="radioButton_43">
+                                 <property name="text">
+                                  <string>Выкл</string>
+                                 </property>
+                                 <property name="checked">
+                                  <bool>true</bool>
+                                 </property>
+                                </widget>
+                               </item>
+                               <item>
+                                <layout class="QVBoxLayout" name="verticalLayout_37">
+                                 <item>
+                                  <widget class="QRadioButton" name="radioButton_44">
+                                   <property name="text">
+                                    <string>Вкл</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item>
+                                  <widget class="QComboBox" name="comboBox_7">
+                                   <property name="enabled">
+                                    <bool>false</bool>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                </layout>
+                               </item>
+                              </layout>
+                             </widget>
                             </item>
                            </layout>
                           </item>
@@ -2508,7 +2612,7 @@
                        </layout>
                       </widget>
                       <widget class="QWidget" name="page_4">
-                       <layout class="QVBoxLayout" name="verticalLayout_9">
+                       <layout class="QVBoxLayout" name="verticalLayout_76">
                         <item>
                          <layout class="QHBoxLayout" name="horizontalLayout_18">
                           <item>
@@ -2561,31 +2665,31 @@
                          </widget>
                         </item>
                         <item>
-                         <layout class="QHBoxLayout" name="horizontalLayout_34">
-                          <item>
-                           <spacer name="horizontalSpacer_29">
-                            <property name="orientation">
-                             <enum>Qt::Horizontal</enum>
-                            </property>
-                            <property name="sizeHint" stdset="0">
-                             <size>
-                              <width>40</width>
-                              <height>20</height>
-                             </size>
-                            </property>
-                           </spacer>
-                          </item>
+                         <layout class="QHBoxLayout" name="horizontalLayout_20">
                           <item>
                            <layout class="QHBoxLayout" name="horizontalLayout_19">
                             <item>
                              <widget class="QLabel" name="label_11">
                               <property name="text">
-                               <string>Оригинал:</string>
+                               <string>Найти:</string>
                               </property>
                              </widget>
                             </item>
                             <item>
                              <widget class="QLineEdit" name="lineEdit_6"/>
+                            </item>
+                            <item>
+                             <spacer name="horizontalSpacer_29">
+                              <property name="orientation">
+                               <enum>Qt::Horizontal</enum>
+                              </property>
+                              <property name="sizeHint" stdset="0">
+                               <size>
+                                <width>40</width>
+                                <height>20</height>
+                               </size>
+                              </property>
+                             </spacer>
                             </item>
                            </layout>
                           </item>
@@ -2597,45 +2701,73 @@
                            </widget>
                           </item>
                           <item>
-                           <widget class="QGroupBox" name="groupBox_10">
-                            <property name="title">
-                             <string>Исходный кадр</string>
-                            </property>
-                            <layout class="QVBoxLayout" name="verticalLayout_28">
-                             <item>
-                              <widget class="QRadioButton" name="radioButton_6">
-                               <property name="text">
-                                <string>Содержит</string>
-                               </property>
-                              </widget>
-                             </item>
-                             <item>
-                              <widget class="QRadioButton" name="radioButton_7">
-                               <property name="text">
-                                <string>Совпадает полностью</string>
-                               </property>
-                              </widget>
-                             </item>
-                            </layout>
-                           </widget>
-                          </item>
-                          <item>
-                           <spacer name="horizontalSpacer_31">
-                            <property name="orientation">
-                             <enum>Qt::Horizontal</enum>
-                            </property>
-                            <property name="sizeHint" stdset="0">
-                             <size>
-                              <width>40</width>
-                              <height>20</height>
-                             </size>
-                            </property>
-                           </spacer>
+                           <layout class="QVBoxLayout" name="verticalLayout_75">
+                            <item>
+                             <widget class="QGroupBox" name="groupBox_10">
+                              <property name="title">
+                               <string>Исходный кадр</string>
+                              </property>
+                              <layout class="QVBoxLayout" name="verticalLayout_28">
+                               <item>
+                                <widget class="QRadioButton" name="radioButton_6">
+                                 <property name="text">
+                                  <string>Содержит</string>
+                                 </property>
+                                </widget>
+                               </item>
+                               <item>
+                                <widget class="QRadioButton" name="radioButton_7">
+                                 <property name="text">
+                                  <string>Совпадает полностью</string>
+                                 </property>
+                                </widget>
+                               </item>
+                              </layout>
+                             </widget>
+                            </item>
+                            <item>
+                             <widget class="QGroupBox" name="groupBox_23">
+                              <property name="title">
+                               <string>Условие</string>
+                              </property>
+                              <layout class="QVBoxLayout" name="verticalLayout_68">
+                               <item>
+                                <widget class="QRadioButton" name="radioButton_39">
+                                 <property name="text">
+                                  <string>Выкл</string>
+                                 </property>
+                                 <property name="checked">
+                                  <bool>true</bool>
+                                 </property>
+                                </widget>
+                               </item>
+                               <item>
+                                <layout class="QVBoxLayout" name="verticalLayout_9">
+                                 <item>
+                                  <widget class="QRadioButton" name="radioButton_40">
+                                   <property name="text">
+                                    <string>Вкл</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item>
+                                  <widget class="QComboBox" name="comboBox_5">
+                                   <property name="enabled">
+                                    <bool>false</bool>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                </layout>
+                               </item>
+                              </layout>
+                             </widget>
+                            </item>
+                           </layout>
                           </item>
                          </layout>
                         </item>
                         <item>
-                         <layout class="QHBoxLayout" name="horizontalLayout_20">
+                         <layout class="QHBoxLayout" name="horizontalLayout_34">
                           <item>
                            <spacer name="horizontalSpacer_34">
                             <property name="orientation">
