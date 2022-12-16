@@ -1,5 +1,4 @@
 import re
-from typing import Optional, Iterable
 from PySide2.QtGui import QColor
 from PySide2.QtWidgets import QLineEdit, QWidget, QRadioButton, QComboBox
 from gui.ui import Ui_main_window
@@ -27,7 +26,7 @@ class Validator:
         widget.setToolTip("Закончите редактирование. Заполните обязательные поля.")
 
     @staticmethod
-    def set_complete_edit_attributes(widget) -> None:
+    def set_complete_edit_attributes(widget: QWidget) -> None:
         widget.setBackground(QColor("#FFF"))
         widget.setToolTip(None)
 
@@ -37,6 +36,14 @@ class Validator:
 
     @staticmethod
     def set_valid_text_field(field: QLineEdit) -> None:
+        field.setStyleSheet("")
+
+    @staticmethod
+    def set_invalid_radio_button(filed: QRadioButton):
+        filed.setStyleSheet("color: rgb(194, 107, 107);")
+
+    @staticmethod
+    def set_valid_radio_button(field: QRadioButton):
         field.setStyleSheet("")
 
     def refresh(self) -> bool:
@@ -75,9 +82,15 @@ class Validator:
                     valid = False
                     if group_box:
                         self.set_invalid_text_field(group_box)
+                    for button in buttons_group:
+                        button: QRadioButton = getattr(self.ui, button)
+                        self.set_invalid_radio_button(button)
                 else:
                     if group_box:
                         self.set_valid_text_field(group_box)
+                    for button in buttons_group:
+                        button: QRadioButton = getattr(self.ui, button)
+                        self.set_valid_radio_button(button)
         if self.REQUIRED_COMBO_BOX:
             for field_name in self.REQUIRED_COMBO_BOX:
                 field: QComboBox = getattr(self.ui, field_name, None)

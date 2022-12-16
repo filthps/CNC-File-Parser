@@ -1,14 +1,14 @@
 import os
 import sys
 import threading
-from typing import Union, Iterator, Iterable, Optional, Sequence, Any, Callable
+from typing import Union, Iterator, Iterable, Optional, Sequence, Callable
 from itertools import count, cycle
 from pymemcache.client.base import Client
 from pymemcache import serde
 from PySide2.QtCore import Qt
-from PySide2.QtWidgets import QTabWidget, QStackedWidget, QPushButton, QInputDialog, QDialogButtonBox, \
-    QListWidgetItem, QListWidget, QDialog, QLabel, QVBoxLayout, QHBoxLayout, QTreeWidgetItem, QTreeWidget, QLineEdit, \
-    QComboBox
+from PySide2.QtWidgets import QTabWidget, QStackedWidget, QPushButton, QDialogButtonBox,\
+    QDialog, QLabel, QVBoxLayout, QLineEdit, \
+    QComboBox, QRadioButton
 from PySide2.QtGui import QIcon
 from sqlalchemy.orm import Query
 from gui.ui import Ui_main_window as Ui
@@ -21,6 +21,8 @@ class Tools:
     _UI__TO_SQL_COLUMN_LINK__COMBO_BOX = {}
     _UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON: dict[dict[str, str]] = {}
     _COMBO_BOX_DEFAULT_VALUES = {}
+    _RADIO_BUTTON_DEFAULT_VALUES = tuple()
+    _LINE_EDIT_DEFAULT_VALUES = {}
     _INTEGER_FIELDS = tuple()
     _STRING_FIELDS = tuple()
     _FLOAT_FIELDS = tuple()
@@ -70,6 +72,19 @@ class Tools:
             if not value:
                 return None
         return value
+
+    def reset_fields_to_default(self):
+        for radio_button_name in self._RADIO_BUTTON_DEFAULT_VALUES:
+            field: QRadioButton = getattr(self.ui, radio_button_name)
+            field.setChecked(True)
+        for combo_box_name, default_text in self._COMBO_BOX_DEFAULT_VALUES.items():
+            field: QComboBox = getattr(self.ui, combo_box_name)
+            field.clear()
+            field.addItem(default_text)
+            field.setCurrentIndex(0)
+        for line_edit_name, default_value in self._LINE_EDIT_DEFAULT_VALUES.items():
+            field: QLineEdit = getattr(self.ui, line_edit_name)
+            field.setText(default_value)
 
     @staticmethod
     def __get_widget_index_by_tab_name(widget_instance: Union[QTabWidget, QStackedWidget], tab_name: str) -> int:

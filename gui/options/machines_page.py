@@ -17,6 +17,9 @@ class OptionsPageCreateMachine(Constructor, Tools):
                                           "lineEdit_17": "spindele_speed"}
     _UI__TO_SQL_COLUMN_LINK__COMBO_BOX = {"choice_cnc": "name"}
     _COMBO_BOX_DEFAULT_VALUES = {"choice_cnc": "Выберите стойку"}
+    _LINE_EDIT_DEFAULT_VALUES = {"lineEdit_10": "", "lineEdit_21": "",
+                                 "lineEdit_11": "", "lineEdit_12": "", "lineEdit_13": "",
+                                 "lineEdit_14": "", "lineEdit_15": "", "lineEdit_16": "", "lineEdit_17": ""}
     _INTEGER_FIELDS = ("lineEdit_11", "lineEdit_12", "lineEdit_13", "lineEdit_14",
                        "lineEdit_15", "lineEdit_16", "lineEdit_17")  # Для замены пустых значений нулями при отправке в бд
 
@@ -140,10 +143,10 @@ class OptionsPageCreateMachine(Constructor, Tools):
             return
         name = machine_item.text()
         machine = self.db_items.get_item(name, where={"machine_name": name})
-        self.disconnect_fields_signals()
         if not machine:
             self.reload()
             return
+        self.disconnect_fields_signals()
         self.clear_property_fields()
         self.insert_all_cnc_from_db()
         cm_box_values = {}
@@ -171,8 +174,6 @@ class OptionsPageCreateMachine(Constructor, Tools):
                 dialog.close()
                 return
             self.db_items.set_item(machine_name, {"machine_name": machine_name}, insert=True)
-            self.disconnect_fields_signals()
-            self.clear_property_fields()
             self.reload()
             dialog.close()
         dialog = self.get_prompt_dialog("Введите название станка", ok_callback=add)
@@ -184,8 +185,6 @@ class OptionsPageCreateMachine(Constructor, Tools):
             item: QListWidgetItem = self.ui.add_machine_list_0.currentItem()
             item_name = item.text()
             self.db_items.set_item(item_name, delete=True, where={"machine_name": item_name}, ready=True)
-            self.disconnect_fields_signals()
-            self.clear_property_fields()
             dialog.close()
             self.reload()
         dialog = self.get_confirm_dialog("Удалить станок?", "Внимание! Информация о свойствах станка будетм утеряна",
@@ -234,17 +233,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
                                where={"machine_name": selected_machine_name}, update=True, ready=self.validator.is_valid)
 
     def clear_property_fields(self) -> None:
-        """
-        Установить в стандартное значение все поля ХАРАКТЕРИСТИКИ
-        """
-        def insert_empty_cnc_item() -> None:
-            self.ui.choice_cnc.addItem(self._COMBO_BOX_DEFAULT_VALUES["choice_cnc"])
-
-        self.ui.choice_cnc.clear()
-        insert_empty_cnc_item()
-        self.update_fields()
-        self.ui.choice_cnc.setCurrentIndex(0)
-        [getattr(self.ui, field_name).setText("") for field_name in self._UI__TO_SQL_COLUMN_LINK__LINE_EDIT]
+        super().reset_fields_to_default()
         self.cnc_names = {}
 
 
