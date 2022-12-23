@@ -127,14 +127,16 @@ class MyAbstractDialog(QDialog):
     """
     def __init__(self, parent=None, buttons: Optional[Sequence[QPushButton]] = None, init_callback=None, close_callback=None):
         super().__init__(parent)
+        self._left = None
+        self._right = None
         if buttons is not None:
             button: QDialogButtonBox = buttons[0]
+            buttons = list(buttons)
+            left_orientation = buttons
+            left_orientation.reverse()
+            self._left = cycle(left_orientation)
+            self._right = cycle(buttons)
             self.__set_active(button)
-        buttons = list(buttons)
-        left_orientation = buttons
-        left_orientation.reverse()
-        self._left = cycle(left_orientation)
-        self._right = cycle(buttons)
         self._close_callback = close_callback
         self._open_callback = init_callback
 
@@ -147,10 +149,12 @@ class MyAbstractDialog(QDialog):
     def keyPressEvent(self, event):
         if event == Qt.Key_Left:
             button = self.__get_button(self._left)
-            self.__set_active(button)
+            if button:
+                self.__set_active(button)
         if event == Qt.Key_Right:
             button = self.__get_button(self._right)
-            self.__set_active(button)
+            if button:
+                self.__set_active(button)
 
     def closeEvent(self, event) -> None:
         self._close_callback() if self._close_callback else None
@@ -170,7 +174,6 @@ class MyAbstractDialog(QDialog):
 
 class Constructor:
     DEFAULT_PATH = os.path.abspath(os.sep)
-    INTEGER_FIELDS_LINE_EDIT = ...  # Для замены пустых значений нулями при отправке в бд
 
     def __init__(self, instance, ui: Ui):
         self.instance = instance
@@ -715,7 +718,7 @@ class ORMHelper:
         return data_db
 
     @classmethod
-    def get_items(cls, model=None, primary_field=None, db_only=False) -> list[dict]:  # todo: придумать пагинатор
+    def get_items(cls, model=None, primary_field=None, db_only=False) -> Iterator[dict]:  # todo: придумать пагинатор
         """
         1) Получаем запись из таблицы в виде словаря
         2) Получаем данные из очереди в виде словаря
@@ -736,7 +739,6 @@ class ORMHelper:
             return [item.__dict__ for item in items_db]
         db_items = []
         queue_items = {}  # index: node_value
-        output = []
         if items_db:
             nodes_implements_db = ORMItemContainer()  # Ноды, значения которых совпали с записями в БД
             node_names_to_remove = []
@@ -770,14 +772,14 @@ class ORMHelper:
             # 2) остальные ноды из очереди (сортировка по index)
             # 3) значения из базы
             sorted_nodes = dict(sorted(queue_items.items(), reverse=True))
-            output.extend(sorted_nodes.values())
-            output.extend(db_items)
-            return output
+            for item in sorted_nodes.values():
+                yield item
+            for item in db_items:
+                yield item
         for node in cls.items:  # O(k)
             if node.model.__name__ == model.__name__:
                 val = node.value
-                output.append(val) if val else None
-        return output
+                yield val if val else None
 
     @classmethod
     def get_node_dml_type(cls, node_name: str, model=None) -> Optional[str]:

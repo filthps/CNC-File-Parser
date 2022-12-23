@@ -52,12 +52,18 @@ class OptionsPageCreateMachine(Constructor, Tools):
                 if self.db_items.is_node_from_cache(name):
                     self.validator.set_not_complete_edit_attributes(item)
 
+        def auto_select_machine_item(index=0):
+            machine_item: QListWidgetItem = self.ui.add_machine_list_0.takeItem(index)
+            self.ui.add_machine_list_0.addItem(machine_item)
+            self.ui.add_machine_list_0.setItemSelected(machine_item, True)
+            self.ui.add_machine_list_0.setCurrentItem(machine_item)
+            self.select_machine(machine_item)
         self.disconnect_fields_signals()
         self.clear_property_fields()
         self.ui.add_machine_list_0.clear()
         self.insert_all_cnc_from_db()
         insert_machines_from_db()
-        self.auto_select_machine_item()
+        auto_select_machine_item()
         self.connect_fields_signals()
 
     def connect_main_signals(self):
@@ -102,17 +108,6 @@ class OptionsPageCreateMachine(Constructor, Tools):
             self.ui.lineEdit_17.textChanged.disconnect()
         except RuntimeError:
             print("ИНФО. Отключаемые сигналы не были подключены")
-
-    def auto_select_machine_item(self, index=0) -> None:
-        """
-        Выделить станок в списке автоматически, после инициализации
-        :param index: Индекс QListWidgetItem в QListWidget
-        """
-        machine_item: QListWidgetItem = self.ui.add_machine_list_0.takeItem(index)
-        self.ui.add_machine_list_0.addItem(machine_item)
-        self.ui.add_machine_list_0.setItemSelected(machine_item, True)
-        self.ui.add_machine_list_0.setCurrentItem(machine_item)
-        self.select_machine(machine_item)
 
     def insert_all_cnc_from_db(self) -> None:
         """

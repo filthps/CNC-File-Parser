@@ -1,29 +1,110 @@
 import uuid
-from typing import Optional
-from PySide2.QtWidgets import QMainWindow, QListWidgetItem
+from typing import Optional, Union
+from PySide2.QtWidgets import QMainWindow, QListWidget, QListWidgetItem, QHBoxLayout, QVBoxLayout, QLabel, \
+    QGroupBox, QLineEdit, QRadioButton, QDialogButtonBox, QSpacerItem
 from PySide2.QtCore import Slot
-from gui.tools import Tools, Constructor, ORMHelper
-from database.models import Condition
+from gui.tools import Tools, Constructor, ORMHelper, MyAbstractDialog
+from database.models import Condition, HeadVarible
 from gui.ui import Ui_main_window as Ui
 from gui.validation import Validator
 
 
+class AddConditionDialog(MyAbstractDialog):
+    """
+    Диалоговое окно для добавления 'условия' с вариантами выбора: 1) Поиск по вводимой строке; 2) Поиск по значению
+    переменной.
+    """
+    def __init__(self, db: ORMHelper, parent=None, callback=None):
+        self.accept_button, self.cancel_button = QDialogButtonBox.Ok, QDialogButtonBox.Cancel
+        super().__init__(parent=parent, close_callback=callback, buttons=(self.accept_button, self.cancel_button,))
+        self.head_varible_area: Optional[QListWidget] = None
+        self.string_input: Optional[QLineEdit] = None
+        self.set_string_button: Optional[QRadioButton] = None
+        self.set_varible_button: Optional[QRadioButton] = None
+        self.db = db
+        self.get_add_condition_dialog()
+        self.show()
+
+    def get_add_condition_dialog(self):
+        def init_ui():
+            self.setWindowTitle("Добавить условие")
+            main_horizontal_layout = QHBoxLayout()
+            horizontal_box_layout = QHBoxLayout()
+            box = QGroupBox()
+            box.setTitle("Что следует проверять")
+            radio_button_search_string = QRadioButton("Искать следующую строку:")
+            condition_string_input = QLineEdit()
+            condition_string_input.setDisabled(True)
+            vertical_layout_search_string = QVBoxLayout()
+            vertical_layout_search_string.addWidget(radio_button_search_string)
+            vertical_layout_search_string.addWidget(condition_string_input)
+            vertical_layout_search_string.addSpacerItem(QSpacerItem(0, 200))
+            vertical_layout_set_head_varible = QVBoxLayout()
+            radio_button_set_headvar = QRadioButton("Искать значение переменной:")
+            head_varible_area = QListWidget()
+            head_varible_area.setDisabled(True)
+            vertical_layout_set_head_varible.addWidget(radio_button_set_headvar)
+            vertical_layout_set_head_varible.addWidget(head_varible_area)
+            horizontal_box_layout.addLayout(vertical_layout_search_string)
+            horizontal_box_layout.addLayout(vertical_layout_set_head_varible)
+            box.setLayout(horizontal_box_layout)
+            main_horizontal_layout.addWidget(box)
+            self.setLayout(main_horizontal_layout)
+            self.head_varible_area = head_varible_area
+            self.string_input = condition_string_input
+            self.set_string_button = radio_button_search_string
+            self.set_varible_button = radio_button_set_headvar
+            button_box = QDialogButtonBox
+            self.setStandardButtons(self.cancel_button | self.accept_button)
+        init_ui()
+        self.connect_signals()
+
+    def connect_signals(self):
+        def load_data():
+            self._lock_dialog()
+            for data in self.db.get_items(HeadVarible, "name"):
+                name = data["name"]
+                self.head_varible_area.addItem(QListWidgetItem(name))
+            self._unlock_dialog()
+
+        def clear():
+            self.string_input.clear()
+            self.head_varible_area.clear()
+
+        def toggle_diasable_state(current_enabled: Union[QLineEdit, QListWidget]):
+            self.head_varible_area.setDisabled(True)
+            self.string_input.setDisabled(True)
+            current_enabled.setEnabled(True)
+        self.set_varible_button.toggled.connect(clear)
+        self.set_string_button.toggled.connect(clear)
+        self.set_varible_button.toggled.connect(lambda: toggle_diasable_state(self.head_varible_area))
+        self.set_string_button.toggled.connect(lambda: toggle_diasable_state(self.string_input))
+        self.set_varible_button.toggled.connect(lambda: load_data() if self.set_varible_button.isChecked() else None)
+
+    def _lock_dialog(self):
+        self.setDisabled(True)
+
+    def _unlock_dialog(self):
+        self.setEnabled(True)
+
 class ConditionsPage(Constructor, Tools):
     _UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON = {
-        "radioButton_24": {"findfull": True, "isntfind": False, "findpart": False,
+        "radioButton_24": {"findfull": True, "isntfindfull": False, "findpart": False, "isntfindpart": False,
                            "larger": False, "less": False, "equal": False},
-        "radioButton_25": {"isntfind": True, "findfull": False, "findpart": False,
+        "radioButton_25": {"isntfindfull": True, "findfullfull": False, "findpart": False, "isntfindpart": False,
                            "larger": False, "less": False, "equal": False},
-        "radioButton_38": {"findpart": True, "isntfind": False, "findfull": False,
+        "radioButton_38": {"findpart": True, "isntfindfull": False, "findfull": False, "isntfindpart": False,
                            "larger": False, "less": False, "equal": False},
-        "radioButton_35": {"findpart": False, "isntfind": False, "findfull": False,
+        "radioButton_35": {"findpart": False, "isntfindfull": False, "findfull": False, "isntfindpart": False,
                            "larger": False, "less": True, "equal": False},
-        "radioButton_36": {"findpart": False, "isntfind": False, "findfull": False,
+        "radioButton_36": {"findpart": False, "isntfindfull": False, "findfull": False, "isntfindpart": False,
                            "larger": False, "less": False, "equal": True},
-        "radioButton_37": {"findpart": False, "isntfind": False, "findfull": False,
+        "radioButton_37": {"findpart": False, "isntfindfull": False, "findfull": False, "isntfindpart": False,
                            "larger": True, "less": False, "equal": False},
-        "radioButton_29": {"parentconditiontrue": True, "parentconditionfalse": False},
-        "radioButton_30": {"parentconditiontrue": False, "parentconditionfalse": True},
+        "radioButton_47": {"isntfindpart": True, "findpart": False, "isntfindfull": False, "findfull": False,
+                           "larger": True, "less": False, "equal": False},
+        "radioButton_29": {"parentconditionbooleanvalue": True},
+        "radioButton_30": {"parentconditionbooleanvalue": False},
     }
     _UI__TO_SQL_COLUMN_LINK__LINE_EDIT = {"lineEdit_28": "conditionvalue"}
     _UI__TO_SQL_COLUMN_LINK__COMBO_BOX = {"comboBox": "parent"}
@@ -39,6 +120,7 @@ class ConditionsPage(Constructor, Tools):
         self.db_items: ORMHelper = app_instance.db_items_queue
         self.validator: Optional[ConditionsPageValidator] = None
         self.condition_items_id = {}
+        self.add_condition_dialog: Optional[AddConditionDialog] = None
 
         def set_db_manager_model():
             self.db_items.set_model(Condition, "cnd")
@@ -54,21 +136,36 @@ class ConditionsPage(Constructor, Tools):
             def create_condition_name(data: dict) -> str:
                 map_ = {"conditiontrue": "Истинно если", "conditionfalse": "Ложно если", "findfull": "совпадает",
                         "findpart": "содержит", "isntfindfull": "не совпадает", "isntfindpart": "не совпадает",
-                        "equal": "равно", "less": "меньше", "larger": "больше", "parent": "...",
+                        "equal": "равно", "less": "меньше", "larger": "больше", "parent": "родитель " + data["parent"],
                         "conditionstring": data["conditionstring"], "conditionvalue": data["conditionvalue"]}
                 return "".join(tuple(map(lambda n: str(map_[n]), data.keys())))
             items = self.db_items.get_items()
             for item in items:
                 name = create_condition_name(item)
+                self.condition_items_id.update({item["cnd"]: name})
+                self.ui.conditions_list.addItem(QListWidgetItem(name))
 
+        def auto_select_condition_item(index=0):
+            item = self.ui.conditions_list.takeItem(index)
+            self.ui.conditions_list.addItem(item)
+            self.ui.conditions_list.setItemSelected(item, True)
+            self.ui.conditions_list.setCurrentItem(item)
         self.disconnect_parent_condition_combo_box()
         self.disconnect_field_signals()
-        super().reset_fields_to_default()
+        self.reset_fields()
         add_conditions()
+        auto_select_condition_item()
         self.connect_field_signals()
 
     def connect_main_signals(self):
-        self.ui.add_button_3.clicked.connect(self.add_condition)
+        def open_create_condition_window():
+            def close_create_condition_window():
+                self._unlock_ui()
+                self.add_condition_dialog = None
+            self._lock_ui()
+            self.add_condition_dialog = AddConditionDialog(self.db_items, parent=self.app,
+                                                           callback=close_create_condition_window)
+        self.ui.add_button_3.clicked.connect(open_create_condition_window)
         self.ui.remove_button_3.clicked.connect(self.remove_condition)
         self.ui.conditions_list.currentItemChanged.connect(lambda current, prev: self.change_condition(current))
         self.ui.commandLinkButton_9.clicked.connect(self.save)
@@ -100,17 +197,7 @@ class ConditionsPage(Constructor, Tools):
     def disconnect_parent_condition_combo_box(self):
         self.ui.comboBox.textActivated.disconnect()
 
-    @Slot
-    def add_condition(self):
-        def add_condition(val):
-            new_item_id = uuid.uuid4()
-            self.db_items.set_item(new_item_id, {"cnd": new_item_id, "conditionstring": val}, insert=True)
-            self.condition_items_id.update({val: new_item_id})
-            self.reload()
-        add_item_dialog = self.get_prompt_dialog("Целевая строка:", cancel_callback=add_condition)
-        add_item_dialog.show()
-
-    @Slot
+    @Slot()
     def remove_condition(self):
         def remove():
             current_item: QListWidgetItem = self.ui.conditions_list.currentItem()

@@ -4,6 +4,7 @@ from ui import Ui_main_window as Ui
 from options.cnc_page import AddCNC
 from options.machines_page import OptionsPageCreateMachine
 from options.add_operation_page import AddOperationMainPage
+from options.conditions_page import ConditionsPage
 from options.create_insert import CreateInsert
 
 
@@ -14,8 +15,8 @@ class Navigation:
     ROOT_TAB_WIDGET = {  # QTabWidget с навигацией по настройкам: Главная|Настройки|Конвертация|Справка
         0: None, 1: None, 2: None, 3: None
     }
-    CONVERTER_OPTIONS_TAB_WIDGET = {  # QTabWidget с навигацией по настройкам: Стойки|Станки|Операции|Привязать
-        0: AddCNC, 1: OptionsPageCreateMachine, 2: None, 3: None, 4: AddOperationMainPage
+    CONVERTER_OPTIONS_TAB_WIDGET = {  # QTabWidget с навигацией по настройкам: Стойки|Станки|Условия|Переменные шапки|задачи
+        0: AddCNC, 1: OptionsPageCreateMachine, 2: ConditionsPage, 3: None, 4: AddOperationMainPage
     }
     TASK_OPTIONS_TAB_WIDGET = {  # Включение/выключение|Поменять последовательность|Добавить
 
