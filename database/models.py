@@ -95,8 +95,8 @@ class Operation(db.Model, ModelController):
 class Condition(db.Model, ModelController):
     __tablename__ = "cond"
     cnd = Column(String, primary_key=True, default=get_uuid)
-    conditiontrue = Column(Boolean, default=True, nullable=False)
-    conditionfalse = Column(Boolean, default=False, nullable=False)
+    useheadvarible = Column(Boolean, nullable=False, default=False)
+    conditionbooleanvalue = Column(Boolean, default=True, nullable=False)
     parent = Column(String, db.ForeignKey("cond.cnd"), nullable=True, default=None)
     conditionstring = Column(String(100), nullable=False, default="")
     conditionvalue = Column(String(100), nullable=False, default="")
@@ -104,8 +104,7 @@ class Condition(db.Model, ModelController):
     isntfindpart = Column(Boolean, default=False, nullable=False)
     findfull = Column(Boolean, default=False, nullable=False)
     findpart = Column(Boolean, default=False, nullable=False)
-    parentconditiontrue = Column(Boolean, default=False, nullable=False)
-    parentconditionfalse = Column(Boolean, default=False, nullable=False)
+    parentconditionbooleanvalue = Column(Boolean, default=True, nullable=False)
     equal = Column(Boolean, default=False, nullable=False)
     less = Column(Boolean, default=False, nullable=False)
     larger = Column(Boolean, default=False, nullable=False)
@@ -113,7 +112,6 @@ class Condition(db.Model, ModelController):
         CheckConstraint("conditionstring!=''", name="cond_targetstr_empty"),
         CheckConstraint("conditionstring!=conditionvalue", name="cond_equal_strings"),
         CheckConstraint("conditionvalue!=''", name="cond_value_empty"),
-        CheckConstraint("conditiontrue!=conditionfalse", name="cond_value_unique"),
     )
 
 
@@ -200,6 +198,7 @@ class HeadVarDelegation(db.Model, ModelController):
     varid = Column(String, db.ForeignKey("headvar.varid"), nullable=False)
     insertid = Column(Integer, db.ForeignKey("insert.insid"), nullable=True, default=None)
     renameid = Column(Integer, db.ForeignKey("renam.renameid"), nullable=True, default=None)
+    conditionid = Column(String, db.ForeignKey("cond.cnd"), nullable=True, default=None)
     strindex = Column(Integer, default=0, nullable=False)
 
 

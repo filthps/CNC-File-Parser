@@ -122,16 +122,15 @@ def init_condition_table_triggers():
                 SELECT 1
                 FROM cond
                 WHERE (parent=NEW.parent OR NEW.parent IS NULL AND parent IS NULL)
-                AND conditiontrue=NEW.conditiontrue
-                AND conditionfalse=NEW.conditionfalse
+                AND conditionbooleanvalue=NEW.conditionbooleanvalue
+                AND (useheadvarible=NEW.useheadvarible OR NEW.useheadvarible IS NULL AND useheadvarible IS NULL)
                 AND conditionstring=NEW.conditionstring
                 AND conditionvalue=NEW.conditionvalue
                 AND isntfindfull=NEW.isntfindfull
                 AND isntfindpart=NEW.isntfindpart
                 AND findfull=NEW.findfull
                 AND findpart=NEW.findpart
-                AND parentconditiontrue=NEW.parentconditiontrue
-                AND parentconditionfalse=NEW.parentconditionfalse
+                AND parentconditionbooleanvalue=NEW.parentconditionbooleanvalue
                 AND equal=NEW.equal
                 AND less=NEW.less
                 AND larger=NEW.larger
@@ -182,28 +181,51 @@ def init_condition_table_triggers():
     """)
 
     db.engine.execute("""
-    CREATE OR REPLACE FUNCTION check_parent_condition() RETURNS trigger
-    AS $body$
-    DECLARE
-        counter smallint := 0;
-    BEGIN
-        IF NEW.parent IS NOT NULL
-        THEN
-            SELECT counter + (CASE WHEN NEW.parentconditiontrue THEN 1 ELSE 0 END) INTO counter;
-            SELECT counter + (CASE WHEN NEW.parentconditionfalse THEN 1 ELSE 0 END) INTO counter;
-            IF counter != 1 THEN 
-                RAISE EXCEPTION 'Недействительные опции для родительского условия';
-                END IF;
-        END IF;
-    END; $body$
-    LANGUAGE PLPGSQL
+        CREATE OR REPLACE FUNCTION check_parent_condition() RETURNS trigger
+        AS $body$
+        DECLARE
+            counter smallint := 0;
+        BEGIN
+            IF NEW.parent IS NOT NULL
+            THEN
+                SELECT counter + (CASE WHEN NEW.parentconditiontrue THEN 1 ELSE 0 END) INTO counter;
+                SELECT counter + (CASE WHEN NEW.parentconditionfalse THEN 1 ELSE 0 END) INTO counter;
+                IF counter != 1 THEN 
+                    RAISE EXCEPTION 'Недействительные опции для родительского условия';
+                    END IF;
+            END IF;
+            RETURN NEW;
+        END; $body$
+        LANGUAGE PLPGSQL
     """)
 
     db.engine.execute("""
-    CREATE TRIGGER check_parent_condition_if
-    BEFORE INSERT OR UPDATE
-    ON cond FOR EACH ROW
-    EXECUTE PROCEDURE check_parent_condition();
+        CREATE TRIGGER check_parent_condition_if
+        BEFORE INSERT OR UPDATE
+        ON cond FOR EACH ROW
+        EXECUTE PROCEDURE check_parent_condition();
+    """)
+
+    db.engine.execute("""
+        CREATE FUNCTION check_exists_headvar() RETURNS trigger
+        AS $body$
+        BEGIN
+            IF NEW.useheadvarible THEN
+                IF NOT EXISTS(SELECT TRUE
+                FROM varsec
+                WHERE conditionid=NEW.cnd) THEN RAISE EXCEPTION 'Значение столбца useheadvarible - TRUE, не был найден внешний ключ в таблице делегации переменных шапки - varsec';
+                END IF;
+            END IF;
+            RETURN NEW;
+        END; $body$
+        LANGUAGE PLPGSQL
+    """)
+
+    db.engine.execute("""
+        CREATE TRIGGER exists_headvar_checker
+        BEFORE INSERT OR UPDATE
+        ON cond FOR EACH ROW
+        EXECUTE PROCEDURE check_exists_headvar()
     """)
 
 
@@ -654,6 +676,7 @@ def init_headvardelegation_table_triggers():
                 WHERE varid=NEW.varid
                 AND (insertid=NEW.insertid OR NEW.insertid IS NULL AND insertid IS NULL)
                 AND (renameid=NEW.renameid OR NEW.renameid IS NULL AND renameid IS NULL)
+                AND (conditionid=NEW.conditionid OR NEW.conditionid IS NULL AND conditionid IS NULL)
             ) THEN 
                 RAISE EXCEPTION 'Данный экземпляр сущности уже существует';
             ELSE
@@ -678,6 +701,7 @@ def init_headvardelegation_table_triggers():
         BEGIN
             SELECT counter + (CASE WHEN NEW.insertid IS NOT NULL THEN 1 ELSE 0 END) INTO counter;
             SELECT counter + (CASE WHEN NEW.renameid IS NOT NULL THEN 1 ELSE 0 END) INTO counter;
+            SELECT counter + (CASE WHEN NEW.conditionid IS NOT NULL THEN 1 ELSE 0 END) INTO counter;
             IF counter != 1 THEN
                 RAISE EXCEPTION 'Недействительные опции для FK*, - не выбрано ни одной, или выбрано несколько';
             ELSE
