@@ -6,7 +6,7 @@ from PySide2.QtWidgets import QFileDialog
 from gui.validation import Validator
 from database.models import Cnc, Machine
 from gui.ui import Ui_main_window as Ui
-from gui.tools import Constructor, Tools, ORMHelper
+from gui.tools import Constructor, Tools, UiLoaderThreadFactory, ORMHelper
 
 
 class OptionsPageCreateMachine(Constructor, Tools):
@@ -43,6 +43,8 @@ class OptionsPageCreateMachine(Constructor, Tools):
 
     def reload(self):
         """ Очистить поля и обновить данные из базы данных """
+
+        @UiLoaderThreadFactory()
         def insert_machines_from_db():
             machines = self.db_items.get_items()
             for data in machines:
@@ -109,6 +111,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
         except RuntimeError:
             print("ИНФО. Отключаемые сигналы не были подключены")
 
+    @UiLoaderThreadFactory()
     def insert_all_cnc_from_db(self) -> None:
         """
         Запрос из БД и установка возможных значений в combo box - 'стойки',

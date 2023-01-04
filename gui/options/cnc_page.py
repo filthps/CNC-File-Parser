@@ -1,7 +1,7 @@
 from PySide2.QtCore import Slot
 from PySide2.QtWidgets import QListWidgetItem, QLineEdit, QTextEdit
 from database.models import Cnc
-from gui.tools import Constructor, Tools, ORMHelper
+from gui.tools import Constructor, Tools, ORMHelper, UiLoaderThreadFactory
 from gui.ui import Ui_main_window
 from gui.validation import Validator
 
@@ -27,6 +27,7 @@ class AddCNC(Constructor, Tools):
         self.connect_main_signals()
 
     def reload(self):
+        @UiLoaderThreadFactory()
         def insert_all_cnc():
             cnc_items = self.db_items.get_items()
             for item in cnc_items:
@@ -100,7 +101,6 @@ class AddCNC(Constructor, Tools):
         dialog = self.get_confirm_dialog("Удалить стойку?", ok_callback=ok)
         dialog.show()
 
-    @Slot()
     def select_cnc(self, item: QListWidgetItem):
         if not item:
             return
