@@ -1,11 +1,12 @@
 import os
 import sys
 import threading
-from typing import Union, Iterator, Iterable, Optional, Sequence, Callable
+from typing import Union, Iterator, Iterable, Optional, Sequence, Callable, Mapping, Generator
 from itertools import count, cycle
 from pymemcache.client.base import Client
 from pymemcache import serde
 from PySide2.QtCore import Qt
+from PySide2.QtGui import QPixmap, QPainter, QPalette
 from PySide2.QtWidgets import QTabWidget, QStackedWidget, QPushButton, QDialogButtonBox,\
     QDialog, QLabel, QVBoxLayout, QLineEdit, \
     QComboBox, QRadioButton
@@ -118,6 +119,56 @@ class Tools:
 
         icon = QIcon(path)
         [b.setIcon(icon) for b in gen()]
+
+
+class UiLoaderThreadFactory:
+    """ Класс, экземпляр которого содержит поток для работы с базой данных,
+      Если время превышает константное значение, то UI блокируется и ставит progressbar
+      """
+    LOCK_UI_SECONDS = 1
+    thread: Optional[threading.Thread] = None
+    timer: Optional[threading.Timer] = None
+    local_app_context = None
+
+    @classmethod
+    def start_timer(cls):
+        cls.timer = threading.Timer(float(cls.LOCK_UI_SECONDS), cls._operation_has_been_too_long)
+
+    @classmethod
+    def stop_timer_and_remove_progressbar(cls):
+        cls.timer.cancel() if cls.timer else None
+        cls.timer = None
+        cls.set_ui_in_default_state()
+
+    @classmethod
+    def _operation_has_been_too_long(cls):
+        cls.set_ui_in_progress_state()
+
+    @classmethod
+    def set_ui_in_progress_state(cls):
+
+        painter = QPainter()
+        painter.begin()
+
+    @classmethod
+    def set_ui_in_default_state(cls):
+        pass
+
+    @classmethod
+    def __call__(cls, func: Callable):
+        def wrapper(*args, **kwargs):
+            def find_context_varible():
+                """ Попытка определить куда применили декоратор.
+                 Если его применили к одному из методов классов, производных от QmainWindow,
+                 то будет работать установка прогресс-бара, при задержке работы потока."""
+                context_varible = args[0] if args else None
+                return context_varible if hasattr(context_varible, "reload") else None
+            cls.local_app_context = find_context_varible()
+            cls.thread = threading.Thread(target=func, args=args, kwargs=kwargs)
+            cls.start_timer() if cls.local_app_context else None
+            cls.thread.start()
+            cls.stop_timer_and_remove_progressbar()
+        return wrapper
 
 
 class MyAbstractDialog(QDialog):
@@ -644,6 +695,7 @@ class ORMHelper:
         return timer
 
     @classmethod
+    @UiLoaderThreadFactory()
     def set_item(cls, key, value: Optional[dict] = None, insert=False, update=False,
                  delete=False, ready=False, callback=None, where=None, model=None):
         cls._is_valid_node_name(key)
@@ -726,6 +778,8 @@ class ORMHelper:
         primary_field - поле, по которому происходит фильтрация
         Если primary_field со значением node.name найден в БД, то нода удаляется
         """
+        import time
+        time.sleep(1)  # todo: Тестируем зарержку
         if model:
             if not primary_field:
                 raise ValueError("Если указана отличная от стандартной модель - то нужно указать и поле, "
@@ -736,7 +790,9 @@ class ORMHelper:
         cls._is_valid_model_instance(model, primary_field)
         items_db = model.query.all()
         if db_only:
-            return [item.__dict__ for item in items_db]
+            for item in items_db:
+                yield item.__dict__
+            return
         db_items = []
         queue_items = {}  # index: node_value
         if items_db:
@@ -776,10 +832,10 @@ class ORMHelper:
                 yield item
             for item in db_items:
                 yield item
+            return
         for node in cls.items:  # O(k)
             if node.model.__name__ == model.__name__:
-                val = node.value
-                yield val if val else None
+                yield node.value
 
     @classmethod
     def get_node_dml_type(cls, node_name: str, model=None) -> Optional[str]:
