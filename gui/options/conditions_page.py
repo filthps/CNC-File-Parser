@@ -2,8 +2,8 @@ import uuid
 from typing import Optional, Union
 from PySide2.QtWidgets import QMainWindow, QListWidget, QListWidgetItem, QHBoxLayout, QVBoxLayout, QLabel, \
     QGroupBox, QLineEdit, QRadioButton, QDialogButtonBox, QSpacerItem
-from PySide2.QtCore import Slot
-from gui.tools import Tools, Constructor, ORMHelper, MyAbstractDialog
+from PySide2.QtCore import Slot, Qt
+from gui.tools import Tools, Constructor, ORMHelper, MyAbstractDialog, UiLoaderThreadFactory
 from database.models import Condition, HeadVarible
 from gui.ui import Ui_main_window as Ui
 from gui.validation import Validator
@@ -15,8 +15,8 @@ class AddConditionDialog(MyAbstractDialog):
     переменной.
     """
     def __init__(self, db: ORMHelper, parent=None, callback=None):
-        self.accept_button, self.cancel_button = QDialogButtonBox.Ok, QDialogButtonBox.Cancel
-        super().__init__(parent=parent, close_callback=callback, buttons=(self.accept_button, self.cancel_button,))
+        self.accept_button = QDialogButtonBox.Apply
+        super().__init__(parent=parent, close_callback=callback, buttons=(self.accept_button,))
         self.head_varible_area: Optional[QListWidget] = None
         self.string_input: Optional[QLineEdit] = None
         self.set_string_button: Optional[QRadioButton] = None
@@ -28,7 +28,7 @@ class AddConditionDialog(MyAbstractDialog):
     def get_add_condition_dialog(self):
         def init_ui():
             self.setWindowTitle("Добавить условие")
-            main_horizontal_layout = QHBoxLayout()
+            main_horizontal_layout = QVBoxLayout()
             horizontal_box_layout = QHBoxLayout()
             box = QGroupBox()
             box.setTitle("Что следует проверять")
@@ -54,38 +54,59 @@ class AddConditionDialog(MyAbstractDialog):
             self.string_input = condition_string_input
             self.set_string_button = radio_button_search_string
             self.set_varible_button = radio_button_set_headvar
-            button_box = QDialogButtonBox
-            self.setStandardButtons(self.cancel_button | self.accept_button)
+            buttons_layout = QHBoxLayout()
+            buttons_box = QDialogButtonBox(self.accept_button, orientation=Qt.Orientation.Horizontal)
+            buttons_layout.addSpacerItem(QSpacerItem(300, 0))
+            buttons_layout.addWidget(buttons_box)
+            buttons_layout.addSpacerItem(QSpacerItem(300, 0))
+            main_horizontal_layout.addLayout(buttons_layout)
         init_ui()
         self.connect_signals()
 
     def connect_signals(self):
-        def load_data():
-            self._lock_dialog()
-            for data in self.db.get_items(HeadVarible, "name"):
-                name = data["name"]
-                self.head_varible_area.addItem(QListWidgetItem(name))
-            self._unlock_dialog()
-
-        def clear():
-            self.string_input.clear()
-            self.head_varible_area.clear()
-
         def toggle_diasable_state(current_enabled: Union[QLineEdit, QListWidget]):
             self.head_varible_area.setDisabled(True)
             self.string_input.setDisabled(True)
             current_enabled.setEnabled(True)
-        self.set_varible_button.toggled.connect(clear)
-        self.set_string_button.toggled.connect(clear)
+        self.set_varible_button.toggled.connect(self.clear_form)
+        self.set_string_button.toggled.connect(self.clear_form)
         self.set_varible_button.toggled.connect(lambda: toggle_diasable_state(self.head_varible_area))
         self.set_string_button.toggled.connect(lambda: toggle_diasable_state(self.string_input))
-        self.set_varible_button.toggled.connect(lambda: load_data() if self.set_varible_button.isChecked() else None)
+        self.set_varible_button.toggled.connect(lambda: self.load_data() if self.set_varible_button.isChecked() else None)
+        self.accept_button.clicked.connect(self.add_new_condition_item)
+
+    def clear_form(self):
+        self.string_input.clear()
+        self.head_varible_area.clear()
+
+    @UiLoaderThreadFactory()
+    def load_data(self):
+        self._lock_dialog()
+        for data in self.db.get_items(HeadVarible, "name"):
+            name = data["name"]
+            self.head_varible_area.addItem(QListWidgetItem(name))
+        self._unlock_dialog()
+
+    def add_new_condition_item(self):
+        if self.set_string_button.isChecked():
+            condition_string = self.string_input.text()
+            if not condition_string:
+                return
+            id_ = uuid.uuid4()
+            self.db.set_item(id_, {"cnd": id_, "conditionstring": condition_string}, insert=True, ready=False)
+        if self.set_varible_button.isChecked():
+            selected_var = self.head_varible_area.currentItem().text()
+            if not selected_var:
+                return
+
+        self.close()
 
     def _lock_dialog(self):
         self.setDisabled(True)
 
     def _unlock_dialog(self):
         self.setEnabled(True)
+
 
 class ConditionsPage(Constructor, Tools):
     _UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON = {
