@@ -5,7 +5,6 @@ from options.cnc_page import AddCNC
 from options.machines_page import OptionsPageCreateMachine
 from options.add_operation_page import AddOperationMainPage
 from options.conditions_page import ConditionsPage
-from options.create_insert import CreateInsert
 
 
 class Navigation:
@@ -44,8 +43,6 @@ class Navigation:
                 """ На все виджеты, где есть навигация, повесить сигналы синхронизации с БД! """
                 def update_db(nav_place: dict, page_index: int) -> None:
                     cls.app.actions.re_init(nav_place[page_index])
-                ui.to_converter.clicked.connect(update_db)
-                ui.to_options.clicked.connect(update_db)
                 ui.root_tab_widget.currentChanged.connect(lambda i: update_db(cls.ROOT_TAB_WIDGET, i))
                 ui.converter_options.currentChanged.connect(lambda i: update_db(cls.CONVERTER_OPTIONS_TAB_WIDGET, i))
                 ui.tabWidget_2.currentChanged.connect(lambda i: update_db(cls.TASK_OPTIONS_TAB_WIDGET, i))
@@ -122,7 +119,7 @@ class Actions:
         1) Очистить формы
         2) Запросить из базы данных свежие данные
         3) Вставить данные в формы"""
-        if getattr(page, "reload", None) is not None:
+        if hasattr(page, "reload"):
             cls.current_page_instance = page(cls.app, cls.ui)
         else:
             raise AttributeError(f"Класс {page.__name__} не обладает методом reload")
