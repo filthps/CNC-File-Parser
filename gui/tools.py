@@ -5,11 +5,11 @@ from typing import Union, Iterator, Iterable, Optional, Sequence, Callable, Mapp
 from itertools import count, cycle
 from pymemcache.client.base import Client
 from pymemcache import serde
-from PySide2.QtCore import Qt
-from PySide2.QtGui import QPixmap, QPainter, QPalette
-from PySide2.QtWidgets import QTabWidget, QStackedWidget, QPushButton, QDialogButtonBox,\
+from PySide2.QtCore import Qt, QPoint, QSize
+from PySide2.QtGui import QPixmap, QPainter, QPalette, QFont
+from PySide2.QtWidgets import QMainWindow, QTabWidget, QStackedWidget, QPushButton, QDialogButtonBox,\
     QDialog, QLabel, QVBoxLayout, QLineEdit, \
-    QComboBox, QRadioButton
+    QComboBox, QRadioButton, QSplashScreen
 from PySide2.QtGui import QIcon
 from sqlalchemy.orm import Query
 from gui.ui import Ui_main_window as Ui
@@ -121,53 +121,95 @@ class Tools:
         [b.setIcon(icon) for b in gen()]
 
 
+class CustomThread(threading.Thread):
+    def __init__(self, *a, callback=None, callback_kwargs=None, **k):
+        super().__init__(*a, **k)
+        self.kw = k
+        self.callback = callback
+        self.callback_kwargs = callback_kwargs
+
+    def run(self) -> None:
+        if self.callback:
+            callback_thread = self.__class__(target=super().run(), args=self.kw["args"], kwargs=self.kw["kwargs"])
+            callback_thread.start()
+            callback_thread.join()
+            kwargs = self.callback_kwargs if self.callback_kwargs else {}
+            self.callback(**kwargs) if self.callback else None
+            return
+        super().run()
+
+
 class UiLoaderThreadFactory:
     """ Класс, экземпляр которого содержит поток для работы с базой данных,
-      Если время превышает константное значение, то UI блокируется и ставит progressbar
+      Если время превышает константное значение, то UI блокируется и ставит progressbar.
+      Используется как декоратор
       """
-    LOCK_UI_SECONDS = 1
-    thread: Optional[threading.Thread] = None
-    timer: Optional[threading.Timer] = None
-    local_app_context = None
+    LOCK_UI_SECONDS = 0.1
+    _main_application: Optional[QMainWindow] = None
+    _thread: Optional[threading.Thread] = None
+    _timer: Optional[threading.Timer] = None
+
+    def __init__(self, lock_ui="no_lock", banner_text="Загрузка..."):
+        """
+        :param lock_ui: Степень блокировки интерфейса:
+        no_lock - не показывать банер вообще (всё что происходит в потоке отдельном от ui, происходит незаметно на стороне ui)
+        lock_on_timer - показ банера, блокирующего ui, если поток работает слишком долго, см константа LOCK_UI_SECONDS.
+        lock_immediately - показ банера сразу
+        :param banner_text: Текст баннера
+        """
+        if not isinstance(lock_ui, str):
+            raise TypeError
+        if lock_ui not in ("no_lock", "lock_on_timer", "lock_immediately",):
+            raise ValueError
+        if not type(banner_text) is str:
+            raise TypeError
+        self._lock_ui_level = lock_ui
+        self._banner_text = banner_text
 
     @classmethod
-    def start_timer(cls):
-        cls.timer = threading.Timer(float(cls.LOCK_UI_SECONDS), cls._operation_has_been_too_long)
+    def set_application(cls, instance):
+        if not isinstance(instance, (QMainWindow, QTabWidget,)):
+            raise TypeError
+        cls._main_application = instance
+
+    def _start_timer(self, banner_item):
+        self._timer = threading.Timer(float(self.LOCK_UI_SECONDS), self._show_banner, args=(banner_item,),
+                                      kwargs={"text": self._banner_text})
+        self._timer.start()
 
     @classmethod
-    def stop_timer_and_remove_progressbar(cls):
-        cls.timer.cancel() if cls.timer else None
-        cls.timer = None
-        cls.set_ui_in_default_state()
+    def _stop_timer_and_remove_banner(cls, banner: QSplashScreen = None, timer=None, dialog: QMainWindow = None):
+        timer.cancel() if cls._timer else None
+        banner.clearMessage()
+        banner.close()
+        banner.finish(dialog)
+        dialog.update()
 
     @classmethod
-    def _operation_has_been_too_long(cls):
-        cls.set_ui_in_progress_state()
+    def _show_banner(cls, splash_item: QSplashScreen, text="Работа с базой данных"):
+        splash_item.show()
+        splash_item.showMessage(text) if text else None
 
-    @classmethod
-    def set_ui_in_progress_state(cls):
-
-        painter = QPainter()
-        painter.begin()
-
-    @classmethod
-    def set_ui_in_default_state(cls):
-        pass
-
-    @classmethod
-    def __call__(cls, func: Callable):
+    def __call__(self, func: Callable):
         def wrapper(*args, **kwargs):
-            def find_context_varible():
-                """ Попытка определить куда применили декоратор.
-                 Если его применили к одному из методов классов, производных от QmainWindow,
-                 то будет работать установка прогресс-бара, при задержке работы потока."""
-                context_varible = args[0] if args else None
-                return context_varible if hasattr(context_varible, "reload") else None
-            cls.local_app_context = find_context_varible()
-            cls.thread = threading.Thread(target=func, args=args, kwargs=kwargs)
-            cls.start_timer() if cls.local_app_context else None
-            cls.thread.start()
-            cls.stop_timer_and_remove_progressbar()
+            def init_splash_item():
+                pixmap = QPixmap("static/img/gear.png")
+                pixmap.scaled(QSize(20, 20), Qt.KeepAspectRatio)
+                banner = QSplashScreen(pixmap)
+                return banner
+            if not self._main_application:
+                raise AttributeError("Перед использованием необходимо использовать метод 'set_application', "
+                                     "указав в нем экземпляр QMainWindow")
+            splash_item = init_splash_item()
+            if self._lock_ui_level == "lock_on_timer":
+                self._start_timer(splash_item)
+            if self._lock_ui_level == "lock_immediately":
+                self._show_banner(splash_item, text=self._banner_text)
+            self._thread = CustomThread(target=func, args=args, kwargs=kwargs,
+                                        callback_kwargs={"banner": splash_item, "timer": self._timer,
+                                                         "dialog": self._main_application},
+                                        callback=self._stop_timer_and_remove_banner)
+            self._thread.start()
         return wrapper
 
 
@@ -695,7 +737,6 @@ class ORMHelper:
         return timer
 
     @classmethod
-    @UiLoaderThreadFactory()
     def set_item(cls, key, value: Optional[dict] = None, insert=False, update=False,
                  delete=False, ready=False, callback=None, where=None, model=None):
         cls._is_valid_node_name(key)
