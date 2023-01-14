@@ -472,7 +472,7 @@ class ORMItem(LinkedListItem):
     def __len__(self):
         return len(self.value)
 
-    def __format_kwargs(self) -> dict:
+    def format_kwargs(self) -> dict:
         result = {}
         result.update(self._value)
         if self.__update or self.__delete:
@@ -483,7 +483,7 @@ class ORMItem(LinkedListItem):
         return result
 
     def __repr__(self):
-        return f"{self.__class__.__name__}({self.__format_kwargs()})"
+        return f"{self.__class__.__name__}({self.format_kwargs()})"
 
     def __str__(self):
         return str(self.value)
@@ -549,7 +549,6 @@ class ORMItemContainer(LinkedList):
     см логику в методе enqueue.
 
     """
-    append = None
     __delitem__ = None
     LinkedListItem = ORMItem
 
@@ -560,23 +559,61 @@ class ORMItemContainer(LinkedList):
             for inner in items:
                 self.enqueue(**inner)
 
-    def enqueue(self, **kwargs):
-        """ Установка ноды в конец очереди.
-        Если нода с name - item_name найдена, то произойдёт update словарю value,
-        А также нода переносится в конец очереди """
+    def enqueue(self, **attrs):
+        """ Установка ноды в конец очереди с хитрой логикой проверки на совпадение. """
+        new_item = self._initialize_node_before_add(**attrs)
+        if new_item:
+            if self:
+                last_element = self._tail
+                self._set_prev(new_item, last_element)
+                self._set_next(last_element, new_item)
+                self._tail = new_item
+            else:
+                self._head = self._tail = new_item
+
+    def replace_node(self, __model=None, **attrs):  # O(n) + O(n) = O(2n) = O(n)
+        """
+        Заменить ноду, сохранив её позицию в очереди.
+        Если исходной ноды не найдено, вернуть None и ничего не делать,
+        если найдена - заменить ноду и вернуть новую ноду
+        """
+        exists_node = self.search_node_by_inner_attrs(model_name=__model, **attrs)  # O(n)
+        if not exists_node or not len(self):
+            return
+        new_item = self._initialize_node_before_add(**attrs)  # O(n)
+        if len(self) == 1:
+            self._head = self._tail = new_item
+            return
+        next_node = exists_node.next
+        previous_node = exists_node.prev
+        if exists_node.index == len(self) - 1:
+            self._tail = new_item
+        if exists_node.index == 0:
+            self._head = new_item
+        previous_node.next = new_item
+        next_node.prev = new_item
+        return new_item
+
+    def _initialize_node_before_add(self, **kwargs) -> Optional[ORMItem]:  # O(l * k) + O(n) + O(1) = O(n)
+        """
+        Создать ноду для дальнейшего добавления в текущий экземпляр контейнера. Зашита хитрая логига.
+        Затрагивает другие элементы в текущем экземпляре коллекции: удалит совпадающую по значению ноду!!
+        """
         model_name = None
         model = kwargs.get("__model", None)
         if model:
             model_name = model.__name__
-            self._model_name = model_name
-        exists_item = self.search_node_by_inner_attrs(model_name=model_name, **kwargs)
-        potential_new_item = self.LinkedListItem(**kwargs)
+            self._model_name = model_name  # O(l * k)
+        exists_item = self.search_node_by_inner_attrs(model_name=model_name, **kwargs)  # O(n)
+        potential_new_item = self.LinkedListItem(**kwargs)  # O(1)
         new_item = None
 
-        def create_merged_values_node(old_node: ORMItem, new_node: ORMItem, dml_type: str, where=None) -> ORMItem:
+        def create_merged_values_node(old_node: ORMItem, new_node: ORMItem, dml_type: str, where=None) -> Optional[ORMItem]:
             """
             Соединение значений старой и создаваемой ноды
             """
+            if not new_node.value:
+                return
             temp_value = old_node.value
             temp_value.update({"__callback": new_node.callback or old_node.callback})
             temp_value.update({"__ready": new_node.ready or old_node.ready})
@@ -609,14 +646,7 @@ class ORMItemContainer(LinkedList):
             self._remove_from_queue(exists_item)
         else:
             new_item = potential_new_item
-        if new_item:
-            if self:
-                last_element = self._tail
-                self._set_prev(new_item, last_element)
-                self._set_next(last_element, new_item)
-                self._tail = new_item
-            else:
-                self._head = self._tail = new_item
+        return new_item
 
     def dequeue(self) -> Optional[ORMItem]:
         """ Извлечение ноды с начала очереди """
@@ -638,18 +668,27 @@ class ORMItemContainer(LinkedList):
         if node:
             self._remove_from_queue(node)
 
-    def search_node_by_inner_attrs(self, model_name: Optional[str] = None, **attrs) -> Optional[ORMItem]:
+    def get_nodes_by_model_name(self, model_name: str) -> ["ORMItemContainer"]:
+        if not isinstance(model_name, str):
+            raise TypeError
+        items = self.__class__()
+        for node in self:  # O(n) * O(1) * O(i) = От O(n * i) до O(n**2)
+            if node.model.__name__ == model_name:  # O(1)
+                items.enqueue(node.format_kwargs())  # O(i)
+        return items
+
+    def search_node_by_inner_attrs(self, model_name: Optional[str] = None, **attrs) -> Optional[ORMItem]:  # O(n) * (O(j) + O(x * l * k)) = O(n) * O(k) = O(k)
         """
         Поиск ноды по именам-значениям полей (Если модель и хотя бы одна пара поле: значение)
         совпала, то нода найдена
         """
-        def check_node_inner(n: ORMItem) -> Optional[ORMItem]:
-            if not n.model.__name__ == model_name:
+        def check_node_inner(n: ORMItem) -> Optional[ORMItem]:  # O(j) + (O(x) * O(i) * O(l * k))
+            if not n.model.__name__ == model_name:  # O(j) j - размер словаря в атрибуте value
                 return
             fields = n.value.keys()
-            for field_name, field_value in attrs.items():  # O(k) * O(i) * O(1)
+            for field_name, field_value in attrs.items():  # O(x) * O(i) * O(l * k)
                 if field_name in fields:  # O(i)
-                    if field_value == n.value[field_name]:  # O(1) * O(1) * O(1)
+                    if field_value == n.value[field_name]:  # O(1) * O(1) * O(l * k) l, k - длина строк
                         return n
         if not attrs:
             return
@@ -660,12 +699,12 @@ class ORMItemContainer(LinkedList):
                 raise TypeError
         nodes = iter(self)
         node = None
-        while not node:  # O(n) * O(k) * O(i)
+        while not node:  # O(n)
             try:
                 node = next(nodes)
             except StopIteration:
                 return
-            match_node_item = check_node_inner(node)  # O(k) * O(i)
+            match_node_item = check_node_inner(node)  # O(j) + (O(x) * O(i) * O(l * k))
             if match_node_item:
                 return match_node_item
 
@@ -821,29 +860,25 @@ class ORMHelper:
         return data_db
 
     @classmethod
-    def get_items(cls, model=None, primary_field=None, db_only=False) -> Iterator[dict]:  # todo: придумать пагинатор
+    def get_items(cls, model=None, db_only=False, queue_only=False, *attrs) -> Iterator[dict]:  # todo: придумать пагинатор
         """
-        1) Получаем запись из таблицы в виде словаря
-        2) Получаем данные из очереди в виде словаря
+        1) Получаем запись из таблицы в виде словаря (Model.query.all())
+        2) Получаем данные из кеша, все элементы, у которых данная модель
         3) db_data.update(quque_data)
-        primary_field - поле, по которому происходит фильтрация
-        Если primary_field со значением node.name найден в БД, то нода удаляется
         """
         import time
         time.sleep(1)  # todo: Тестируем зарержку
-        if model:
-            if not primary_field:
-                raise ValueError("Если указана отличная от стандартной модель - то нужно указать и поле, "
-                                 "по которому будет происходить выборка")
-        else:
-            primary_field = primary_field or cls._primary_field
+        cls.__is_valid_node_attrs(attrs)
+        if not model:
+            if not cls._model_obj:
+                raise AttributeError("Не установлено и не передано значение для объекта-модели")
             model = cls._model_obj
-        cls._is_valid_model_instance(model, primary_field)
+        cls._is_valid_model_instance(model)
         items_db = model.query.all()
         if db_only:
-            for item in items_db:
-                yield item.__dict__
-            return
+            return map(lambda t: t.__dict__, items_db)
+        if queue_only:
+            return map(lambda n: n.value, cls.items.get_nodes_by_model_name(model.__name__))
         db_items = []
         queue_items = {}  # index: node_value
         if items_db:
@@ -851,13 +886,12 @@ class ORMHelper:
             node_names_to_remove = []
             for db_item in items_db:  # O(n)
                 db_data: dict = db_item.__dict__
-                if primary_field not in db_data:  # O(i)
-                    raise KeyError("Несогласованность данных при получении из кеша и бд")
-                primary_field_value = db_data.get(primary_field, None)  # O(1)
-                node: ORMItem = cls.items.search_node_by_name(primary_field_value, model_name=model.__name__)  # O(k)
+                primary_field_value = db_data[model.pk_field_name]  # O(1)
+                node: ORMItem = cls.items.search_node_by_inner_attrs(model_name=model.__name__,
+                                                                     **{model.pk_field_name: primary_field_value})  # O(k)
                 if node:
                     new_node_attrs = cls._create_node_attrs_dict_from_other_node(node)  # O(1)
-                    nodes_implements_db.enqueue(node.name, **new_node_attrs)  # O(k)
+                    nodes_implements_db.enqueue(**new_node_attrs)  # O(k)
                     if node.type == "__insert":
                         node_names_to_remove.append(node.name)
                     elif node.type == "__update":
