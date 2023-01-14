@@ -36,7 +36,12 @@ class OptionsPageCreateMachine(Constructor, Tools):
 
         def set_db_manager_model():
             self.db_items.set_model(Machine, "machine_name")
+
+        def init_thread_factory():
+            UiLoaderThreadFactory.set_application(main_app_instance)
+
         set_db_manager_model()
+        init_thread_factory()
         init_validator()
         self.reload()
         self.connect_main_signals()
@@ -44,7 +49,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
     def reload(self):
         """ Очистить поля и обновить данные из базы данных """
 
-        @UiLoaderThreadFactory()
+        @UiLoaderThreadFactory(lock_ui="no_lock")
         def insert_machines_from_db():
             machines = self.db_items.get_items()
             for data in machines:
@@ -111,7 +116,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
         except RuntimeError:
             print("ИНФО. Отключаемые сигналы не были подключены")
 
-    @UiLoaderThreadFactory()
+    @UiLoaderThreadFactory(lock_ui="no_lock")
     def insert_all_cnc_from_db(self) -> None:
         """
         Запрос из БД и установка возможных значений в combo box - 'стойки',
@@ -164,7 +169,9 @@ class OptionsPageCreateMachine(Constructor, Tools):
                                             callback=callback)
             dialog_.show()
 
+        @UiLoaderThreadFactory(lock_ui="no_lock")
         def add(machine_name):
+            print(dialog)
             if not machine_name:
                 return
             if self.db_items.get_item(machine_name, where={"machine_name": machine_name}):
@@ -179,6 +186,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
 
     @Slot()
     def remove_machine(self):
+        @UiLoaderThreadFactory(lock_ui="lock_on_timer")
         def ok():
             item: QListWidgetItem = self.ui.add_machine_list_0.currentItem()
             item_name = item.text()

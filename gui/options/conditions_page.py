@@ -4,7 +4,7 @@ from PySide2.QtWidgets import QMainWindow, QListWidget, QListWidgetItem, QHBoxLa
     QGroupBox, QLineEdit, QRadioButton, QDialogButtonBox, QSpacerItem
 from PySide2.QtCore import Slot, Qt
 from gui.tools import Tools, Constructor, ORMHelper, MyAbstractDialog, UiLoaderThreadFactory
-from database.models import Condition, HeadVarible
+from database.models import Condition, HeadVarible, HeadVarDelegation
 from gui.ui import Ui_main_window as Ui
 from gui.validation import Validator
 
@@ -14,9 +14,10 @@ class AddConditionDialog(MyAbstractDialog):
     Диалоговое окно для добавления 'условия' с вариантами выбора: 1) Поиск по вводимой строке; 2) Поиск по значению
     переменной.
     """
-    def __init__(self, db: ORMHelper, parent=None, callback=None):
+    def __init__(self, db: ORMHelper, app=None, callback=None):
         self.accept_button = QDialogButtonBox.Apply
-        super().__init__(parent=parent, close_callback=callback, buttons=(self.accept_button,))
+        super().__init__(parent=app.app, close_callback=callback, buttons=(self.accept_button,))
+        self.conditions_page: Optional["ConditionsPage"] = app
         self.head_varible_area: Optional[QListWidget] = None
         self.string_input: Optional[QLineEdit] = None
         self.set_string_button: Optional[QRadioButton] = None
@@ -87,6 +88,7 @@ class AddConditionDialog(MyAbstractDialog):
             self.head_varible_area.addItem(QListWidgetItem(name))
         self._unlock_dialog()
 
+    @UiLoaderThreadFactory()
     def add_new_condition_item(self):
         if self.set_string_button.isChecked():
             condition_string = self.string_input.text()
@@ -98,7 +100,16 @@ class AddConditionDialog(MyAbstractDialog):
             selected_var = self.head_varible_area.currentItem().text()
             if not selected_var:
                 return
+            id_ = uuid.uuid4()
+            var_instance = self.db.get_item(selected_var, model=HeadVarible, where={"name": selected_var})
+            if not var_instance:
+                self._unlock_dialog()
+                self.close()
+                self.conditions_page.reload()
+                return
 
+            self.db.set_item(id_, {"cnd": id_, "useheadvarible": True}, insert=True)
+            self.db.set_item( insert=True)
         self.close()
 
     def _lock_dialog(self):
@@ -148,8 +159,13 @@ class ConditionsPage(Constructor, Tools):
 
         def init_validator():
             self.validator = ConditionsPageValidator(ui)
+
+        def init_thread_factory():
+            UiLoaderThreadFactory.set_application(app_instance)
+
         set_db_manager_model()
         init_validator()
+        init_thread_factory()
         self.connect_main_signals()
 
     def reload(self):
@@ -184,7 +200,7 @@ class ConditionsPage(Constructor, Tools):
                 self._unlock_ui()
                 self.add_condition_dialog = None
             self._lock_ui()
-            self.add_condition_dialog = AddConditionDialog(self.db_items, parent=self.app,
+            self.add_condition_dialog = AddConditionDialog(self.db_items, app=self,
                                                            callback=close_create_condition_window)
         self.ui.add_button_3.clicked.connect(open_create_condition_window)
         self.ui.remove_button_3.clicked.connect(self.remove_condition)

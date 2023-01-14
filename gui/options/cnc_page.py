@@ -21,13 +21,18 @@ class AddCNC(Constructor, Tools):
 
         def init_validator():
             self.validator = CncPageValidator(self.ui)
+
+        def init_thread_factory():
+            UiLoaderThreadFactory.set_application(app)
+
         set_db_manager_model()
+        init_thread_factory()
         init_validator()
         self.reload()
         self.connect_main_signals()
 
     def reload(self):
-        @UiLoaderThreadFactory()
+        @UiLoaderThreadFactory(lock_ui="no_lock")
         def insert_all_cnc():
             cnc_items = self.db_items.get_items()
             for item in cnc_items:
