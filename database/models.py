@@ -15,16 +15,26 @@ db = FlaskSQLAlchemy(app)
 
 
 class ModelController:
-    """ Класс призван предотвратить использование  """
     def __new__(cls):
-        class_ = super().__new__(cls)
-        for special_word in RESERVED_WORDS:
-            if hasattr(class_, special_word):
-                raise AttributeError(
-                    f"Не удалось инциализировать класс-модель {cls.__name__}. "
-                    f"Атрибут {special_word} использовать нельзя, тк он зарезервирован."
-                )
-        return class_
+        def check_class_attributes():
+            """ Предотвратить использование заерезервированных в классе ORMHelper слов. """
+            for special_word in RESERVED_WORDS:
+                if hasattr(cls, special_word):
+                    raise AttributeError(
+                        f"Не удалось инциализировать класс-модель {cls.__name__}. "
+                        f"Атрибут {special_word} использовать нельзя, тк он зарезервирован."
+                    )
+
+        def find_primary_key_in_column_objects():
+            """ Обойти все атрибуты класса, которые являются экземпляром класса Column,
+            найти у них атрибут primary_key и сохранить его атрибутом класса у нашей модели."""
+            for attribute in cls.__dict__:
+                if type(attribute) is Column:
+                    if hasattr(attribute, "primary_key"):
+                        cls.pk_field_name = attribute.__name__
+        check_class_attributes()
+        find_primary_key_in_column_objects()
+        return cls
 
 
 def get_uuid():
@@ -49,6 +59,7 @@ class TaskDelegation(db.Model, ModelController):
 
 class Machine(db.Model, ModelController):
     __tablename__ = "machine"
+    __insert = Column(Integer)
     machineid = Column(Integer, primary_key=True, autoincrement=True)
     cncid = Column(Integer, db.ForeignKey("cnc", ondelete="SET NULL", onupdate="SET NULL"), nullable=True)
     machine_name = Column(String(100), unique=True, nullable=False)

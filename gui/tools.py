@@ -395,9 +395,8 @@ class Constructor:
 
 class ORMItem(LinkedListItem):
     """ Иммутабельный класс ноды для ORMItemContainer.
-
     """
-    def __init__(self, __node_name, **kw):
+    def __init__(self, **kw):
         super().__init__()
         self._is_valid_dml_type(kw)
         self.__model = kw.pop("__model", None)
@@ -410,19 +409,12 @@ class ORMItem(LinkedListItem):
             if "__where" not in kw:
                 raise KeyError("Если тип DML-SQL операции - delete или update, то будь добр установи ключ "
                                "__where со значением для поиска записи в таблице.")
-        if not isinstance(__node_name, str):
-            raise ValueError
-        self._name = __node_name  # Имя для удобного поиска со стороны UI. Это может быть название станка, стойки итп
         self.__is_ready = kw.pop("__ready", False)
         self._where = kw.pop("__where", None)
         self._value = {}  # Содержимое - пары ключ-значение: поле таблицы бд: значение
         if not self.__delete:
             if len(kw):
                 self._value.update(kw)
-
-    @property
-    def name(self):
-        return self._name
 
     @property
     def value(self):
@@ -470,14 +462,17 @@ class ORMItem(LinkedListItem):
             self._is_valid_model_instance(other.__model)
         except TypeError:
             return False
-        if self.name == other.name:
+        if self.value == other.value:
             return self.__model.__name__ == other.__model.__name__
         return False
 
     def __ne__(self, other: "ORMItem"):
         return not self.__eq__(other)
 
-    def __format_kwargs(self):
+    def __len__(self):
+        return len(self.value)
+
+    def __format_kwargs(self) -> dict:
         result = {}
         result.update(self._value)
         if self.__update or self.__delete:
@@ -485,16 +480,13 @@ class ORMItem(LinkedListItem):
         result.update({"__model": self.__model, "__insert": self.__insert,
                        "__update": self.__update, "__ready": self.ready,
                        "__delete": self.__delete, "__callback": self._callback})
-        kwargs = ""
-        for k, v in result.items():
-            kwargs += f"{k}={v}, "
         return result
 
     def __repr__(self):
-        return f"{self.__class__.__name__}({{'{self._name}': {self.__format_kwargs()}}})"
+        return f"{self.__class__.__name__}({self.__format_kwargs()})"
 
     def __str__(self):
-        return str({self.name: self.__format_kwargs()})
+        return str(self.value)
 
     def make_query(self) -> Optional[Query]:
         query = None
@@ -525,7 +517,7 @@ class ORMItem(LinkedListItem):
 
 class EmptyOrmItem:
     """
-    Пустой класс для возврата пустой "ноды".
+    Пустой класс для возврата пустой "ноды". Заглушка
     """
     def __init__(self):
         pass
@@ -536,6 +528,18 @@ class EmptyOrmItem:
     def __delitem__(self, key):
         pass
 
+    def __eq__(self, other):
+        return False
+
+    def __len__(self):
+        return 0
+
+    def __bool__(self):
+        return False
+
+    def __str__(self):
+        return "None"
+
 
 class ORMItemContainer(LinkedList):
     """
@@ -543,20 +547,20 @@ class ORMItemContainer(LinkedList):
     Управляется через адаптер ORMHelper.
     Класс-контейнер умеет только ставить в очередь ((enqueue) зашита особая логика) и снимать с очереди (dequeue)
     см логику в методе enqueue.
+
     """
     append = None
     __delitem__ = None
     LinkedListItem = ORMItem
 
-    def __init__(self, items: Optional[Iterable[dict[str, dict]]] = None):
+    def __init__(self, items: Optional[Iterable[dict]] = None):
         super().__init__()
         self._model_name = None  # Внимание! Содержит модель от элемента, который добавлялся крайний раз!!!
         if items is not None:
-            for item in items:
-                for block_name, inner in item.items():
-                    self.enqueue(block_name, **inner)
+            for inner in items:
+                self.enqueue(**inner)
 
-    def enqueue(self, item_name, **kwargs):
+    def enqueue(self, **kwargs):
         """ Установка ноды в конец очереди.
         Если нода с name - item_name найдена, то произойдёт update словарю value,
         А также нода переносится в конец очереди """
@@ -565,8 +569,8 @@ class ORMItemContainer(LinkedList):
         if model:
             model_name = model.__name__
             self._model_name = model_name
-        exists_item = self.search_node_by_name(item_name, model_name=model_name)
-        potential_new_item = self.LinkedListItem(item_name, **kwargs)
+        exists_item = self.search_node_by_inner_attrs(model_name=model_name, **kwargs)
+        potential_new_item = self.LinkedListItem(**kwargs)
         new_item = None
 
         def create_merged_values_node(old_node: ORMItem, new_node: ORMItem, dml_type: str, where=None) -> ORMItem:
@@ -580,7 +584,7 @@ class ORMItemContainer(LinkedList):
             temp_value.update({dml_type: True, "__model": potential_new_item.model})
             if where:
                 temp_value.update({"__where": where})
-            return self.LinkedListItem(item_name, **temp_value)
+            return self.LinkedListItem(**temp_value)
         if exists_item == potential_new_item:
             new_item_is_update = kwargs.get("__update", False)
             new_item_is_delete = kwargs.get("__delete", False)
@@ -622,19 +626,48 @@ class ORMItemContainer(LinkedList):
         self._remove_from_queue(node)
         return node
 
-    def remove_from_queue(self, node_name: str, model_name: str = None) -> None:
+    def remove_from_queue(self, model_name: str = None, **node_params) -> None:
         """
         Экстренное изъятие ноды из очереди
-        :param node_name: Имя сущности, сохраняющейся в БД, - идентификатор ноды
         :param model_name: Имя модели, к которой сущность привязана
+        Остальные именованные аргументы - это содержимое свойста value ноды
         """
         if model_name is None:
             model_name = self._model_name
-        if type(node_name) is not str or type(model_name) is not str:
-            raise TypeError
-        node = self.search_node_by_name(node_name, model_name)
+        node = self.search_node_by_inner_attrs(model_name=model_name, **node_params)
         if node:
             self._remove_from_queue(node)
+
+    def search_node_by_inner_attrs(self, model_name: Optional[str] = None, **attrs) -> Optional[ORMItem]:
+        """
+        Поиск ноды по именам-значениям полей (Если модель и хотя бы одна пара поле: значение)
+        совпала, то нода найдена
+        """
+        def check_node_inner(n: ORMItem) -> Optional[ORMItem]:
+            if not n.model.__name__ == model_name:
+                return
+            fields = n.value.keys()
+            for field_name, field_value in attrs.items():  # O(k) * O(i) * O(1)
+                if field_name in fields:  # O(i)
+                    if field_value == n.value[field_name]:  # O(1) * O(1) * O(1)
+                        return n
+        if not attrs:
+            return
+        if model_name is None:
+            model_name = self._model_name
+        else:
+            if type(model_name) is not str:
+                raise TypeError
+        nodes = iter(self)
+        node = None
+        while not node:  # O(n) * O(k) * O(i)
+            try:
+                node = next(nodes)
+            except StopIteration:
+                return
+            match_node_item = check_node_inner(node)  # O(k) * O(i)
+            if match_node_item:
+                return match_node_item
 
     def __repr__(self):
         return f"{self.__class__}({tuple(str(i) for i in self)})"
@@ -642,30 +675,11 @@ class ORMItemContainer(LinkedList):
     def __str__(self):
         return str(tuple(str(i) for i in self))
 
-    def __getitem__(self, item: str) -> Union[ORMItem, EmptyOrmItem]:
-        if not isinstance(item, str):
-            raise KeyError
-        node = self.search_node_by_name(item, model_name=self._model_name)
+    def __getitem__(self, item: dict) -> Union[ORMItem, EmptyOrmItem]:
+        if not isinstance(item, dict):
+            raise TypeError("Должен быть словарь!")
+        node = self.search_node_by_inner_attrs(model_name=self._model_name, **item)
         return node if node else EmptyOrmItem()
-
-    def search_node_by_name(self, name: str, model_name: Optional[str] = None) -> Optional[ORMItem]:
-        if model_name is None:
-            model_name = self._model_name
-        else:
-            if type(model_name) is not str:
-                raise TypeError
-        for node in self:
-            if node.name == name:
-                if model_name is not None:
-                    if model_name == node.model.__name__:
-                        return node
-                else:
-                    return node
-
-    def search_node_by_model(self, model_name: str) -> Optional[ORMItem]:
-        for node in self:
-            if node.model.__name__ == model_name:
-                return node
 
     def _remove_from_queue(self, node: ORMItem) -> None:
         prev_node = node.prev
@@ -739,7 +753,7 @@ class ORMHelper:
     @classmethod
     def set_item(cls, key, value: Optional[dict] = None, insert=False, update=False,
                  delete=False, ready=False, callback=None, where=None, model=None):
-        cls._is_valid_node_name(key)
+        cls.__is_valid_node_attrs(key)
         if cls._model_obj is None:
             raise AttributeError("Не установлена модель БД для сохранения записей.")
         if not insert and not update and not delete:
@@ -764,48 +778,44 @@ class ORMHelper:
         cls._timer = cls.init_timer()
 
     @classmethod
-    def get_item(cls, item_name, primary_field=None, where=None, model=None, only_db=False, only_queue=False) -> dict:
+    def get_item(cls, model=None, only_db=False, only_queue=False, **attributes) -> dict:
         """
         1) Получаем запись из таблицы в виде словаря
         2) Получаем данные из очереди в виде словаря
         3) db_data.update(quque_data)
         Если primary_field со значением node.name найден в БД, то нода удаляется
         """
-        def create_where_clause(wh, p_field):
-            updated_where = {p_field: item_name}
-            if where:
-                if not isinstance(where, dict):
-                    raise TypeError
-                updated_where.update(where)
-            return updated_where
-        cls._is_valid_node_name(item_name)
-        if model:
-            if not primary_field:
-                raise ValueError("Если указана отличная от стандартной модель - то нужно указать и поле, "
-                                 "по которому будет происходить выборка")
-        else:
-            primary_field = primary_field or cls._primary_field
+        cls.__is_valid_node_attrs(attributes)
+        if not model:
+            if not cls._model_obj:
+                raise AttributeError("Не установлено и не передано значение для объекта-модели")
             model = cls._model_obj
-        cls._is_valid_model_instance(model, primary_field)
+        cls._is_valid_model_instance(model)
         if only_queue:
-            node = cls.items.search_node_by_name(item_name, model_name=model.__name__)
+            node = cls.items.search_node_by_inner_attrs(**attributes, model_name=model.__name__)
             if node is None:
                 return {}
             data_node = node.value
             return data_node
-        where = create_where_clause(where, primary_field)
-        query = model.query.filter_by(**where).first()
+        query = model.query.filter_by(**attributes).first()
         data_db = {} if not query else query.__dict__
         if only_db:
             return data_db
-        node = cls.items.search_node_by_name(item_name, model_name=model.__name__)
+        node = cls.items.search_node_by_inner_attrs(**attributes, model_name=model.__name__)
         if node is None:
             return data_db
         if node.type == "__delete":
             return {}
         if node.type == "__insert":
             if data_db:
-                cls.remove_items((item_name,))
+                updated_node_data = data_db
+                updated_node_data.update(node.value)
+                updated_node_data.update({"__model": model,
+                                          "__where": {model.pk_field_name: data_db[model.pk_field_name]},
+                                          "__update": True
+                                          })
+                #cls.remove_items((attributes,)) если будет работать, то удали эту строку!!!
+                cls.items.enqueue(**updated_node_data)
                 return data_db
         data_db.update(node.value)
         return data_db
@@ -888,12 +898,14 @@ class ORMHelper:
         return node.type
 
     @classmethod
-    def remove_items(cls, node_names: Iterable[str], model=None):
+    def remove_items(cls, nodes: Iterable[dict], model=None):
         """
         Удалить ноду из очереди на сохранение
         """
         model = model or cls._model_obj
-        [cls.items.remove_from_queue(name, model.__name__) for name in node_names]
+        if not model:
+            raise AttributeError("Не установлено и не передано значение для объекта-модели")
+        [cls.items.remove_from_queue(**attrs, model_name=model.__name__) for attrs in nodes]
         cls.__set_cache(cls.items)
 
     @classmethod
@@ -957,16 +969,14 @@ class ORMHelper:
         cls._primary_field = primary_field
 
     @classmethod
-    def _is_valid_node_name(cls, name):
-        if type(name) is not str:
-            raise ValueError
+    def __is_valid_node_attrs(cls, attributes: dict):
+        if type(attributes) is not dict:
+            raise TypeError
 
     @staticmethod
-    def _is_valid_model_instance(item, special_field):
+    def _is_valid_model_instance(item):
         if item is None or not hasattr(item, "__tablename__"):
             raise TypeError("Значение атрибута model - неподходящего типа")
-        if not hasattr(item, special_field):
-            raise AttributeError
 
     @staticmethod
     def _is_valid_session(obj):  # todo: Пока не знаю как проверить
@@ -984,3 +994,11 @@ class ORMHelper:
         new_node_attributes.update({node.type: True})
         new_node_attributes.update(**node.value)
         return new_node_attributes
+
+
+if __name__ == "__main__":
+    from database.models import Machine
+
+    cnt = ORMItemContainer()
+    cnt.enqueue(__insert=True, __model=Machine, __where={1: "ddf"}, machine_name="test")
+    print(cnt[{"machine_name": "test", "id": 3}])
