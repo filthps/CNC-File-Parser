@@ -5,13 +5,14 @@ from typing import Union, Iterator, Iterable, Optional, Sequence, Callable, Mapp
 from itertools import count, cycle
 from pymemcache.client.base import Client
 from pymemcache import serde
+from flask_sqlalchemy.model import Model
+from sqlalchemy.orm import Query
 from PySide2.QtCore import Qt, QPoint, QSize
 from PySide2.QtGui import QPixmap, QPainter, QPalette, QFont
 from PySide2.QtWidgets import QMainWindow, QTabWidget, QStackedWidget, QPushButton, QDialogButtonBox,\
     QDialog, QLabel, QVBoxLayout, QLineEdit, \
     QComboBox, QRadioButton, QSplashScreen
 from PySide2.QtGui import QIcon
-from sqlalchemy.orm import Query
 from gui.ui import Ui_main_window as Ui
 from datatype import LinkedList, LinkedListItem
 
@@ -458,12 +459,10 @@ class ORMItem(LinkedListItem):
     def __eq__(self, other: "ORMItem"):
         if not isinstance(other, self.__class__):
             return False
-        try:
-            self._is_valid_model_instance(other.__model)
-        except TypeError:
+        if not self.__model.__name__ == other.__model.__name__:
             return False
-        if self.value == other.value:
-            return self.__model.__name__ == other.__model.__name__
+        if self._compare_node_value(self.value, other.value):
+            return True
         return False
 
     def __ne__(self, other: "ORMItem"):
@@ -513,6 +512,21 @@ class ORMItem(LinkedListItem):
     def _is_valid_model_instance(item):
         if not hasattr(item, "__tablename__"):
             raise TypeError("Значение атрибута model - неподходящего типа")
+
+    @staticmethod
+    def _compare_node_value(value_1: dict, value_2: dict) -> Optional[bool]:
+        """ Хитрая логика проверки совпадения содержимого атрибута value.
+         Если совпала хотя бы 1 пара, то словари считаются идентичными """
+        node_value_is_unique = False
+        if not isinstance(value_1, dict) or not isinstance(value_2, dict):
+            raise TypeError
+        for field_name, field_value in value_1.items():  # O(x) * O(i) * O(l * k)
+            if field_name in value_2:  # O(i)
+                node_value_is_unique = False
+                if field_value == value_2[field_name]:  # O(1) * O(1) * O(l * k) l, k - длина строк
+                    match_status = True
+            else:
+                match_status = False
 
 
 class EmptyOrmItem:
@@ -571,16 +585,19 @@ class ORMItemContainer(LinkedList):
             else:
                 self._head = self._tail = new_item
 
-    def replace_node(self, __model=None, **attrs):  # O(n) + O(n) = O(2n) = O(n)
+    def replace_node(self, old_node_attrs: dict, new_node_attrs: dict, model_name=None):  # O(n) + O(n) = O(2n) = O(n)
         """
         Заменить ноду, сохранив её позицию в очереди.
         Если исходной ноды не найдено, вернуть None и ничего не делать,
         если найдена - заменить ноду и вернуть новую ноду
         """
-        exists_node = self.search_node_by_inner_attrs(model_name=__model, **attrs)  # O(n)
+        if not model_name:
+            model_name = self._model_name
+        self._is_valid_model_name(model_name)
+        exists_node = self.search_node_by_inner_attrs(model_name=model_name, **old_node_attrs)  # O(n)
         if not exists_node or not len(self):
             return
-        new_item = self._initialize_node_before_add(**attrs)  # O(n)
+        new_item = self._initialize_node_before_add(**new_node_attrs)  # O(n)
         if len(self) == 1:
             self._head = self._tail = new_item
             return
@@ -603,7 +620,7 @@ class ORMItemContainer(LinkedList):
         model = kwargs.get("__model", None)
         if model:
             model_name = model.__name__
-            self._model_name = model_name  # O(l * k)
+            self._model_name = model_name
         exists_item = self.search_node_by_inner_attrs(model_name=model_name, **kwargs)  # O(n)
         potential_new_item = self.LinkedListItem(**kwargs)  # O(1)
         new_item = None
@@ -664,17 +681,17 @@ class ORMItemContainer(LinkedList):
         """
         if model_name is None:
             model_name = self._model_name
+        self._is_valid_model_name(model_name)
         node = self.search_node_by_inner_attrs(model_name=model_name, **node_params)
         if node:
             self._remove_from_queue(node)
 
     def get_nodes_by_model_name(self, model_name: str) -> ["ORMItemContainer"]:
-        if not isinstance(model_name, str):
-            raise TypeError
+        self._is_valid_model_name(model_name)
         items = self.__class__()
-        for node in self:  # O(n) * O(1) * O(i) = От O(n * i) до O(n**2)
-            if node.model.__name__ == model_name:  # O(1)
-                items.enqueue(node.format_kwargs())  # O(i)
+        for node in self:  # O(n) * O(u * k) * O(i-->n) = От Ω(n) - θ(n * i) до O(n**2)
+            if node.model.__name__ == model_name:  # O(u * k)
+                items.enqueue(node.format_kwargs())  # O(i) i-->n
         return items
 
     def search_node_by_inner_attrs(self, model_name: Optional[str] = None, **attrs) -> Optional[ORMItem]:  # O(n) * (O(j) + O(x * l * k)) = O(n) * O(k) = O(k)
@@ -685,18 +702,13 @@ class ORMItemContainer(LinkedList):
         def check_node_inner(n: ORMItem) -> Optional[ORMItem]:  # O(j) + (O(x) * O(i) * O(l * k))
             if not n.model.__name__ == model_name:  # O(j) j - размер словаря в атрибуте value
                 return
-            fields = n.value.keys()
-            for field_name, field_value in attrs.items():  # O(x) * O(i) * O(l * k)
-                if field_name in fields:  # O(i)
-                    if field_value == n.value[field_name]:  # O(1) * O(1) * O(l * k) l, k - длина строк
-                        return n
+            result = self.items._compare_node_value(attrs, n.value)
+            return n if result else None
         if not attrs:
             return
         if model_name is None:
             model_name = self._model_name
-        else:
-            if type(model_name) is not str:
-                raise TypeError
+        self._is_valid_model_name(model_name)
         nodes = iter(self)
         node = None
         while not node:  # O(n)
@@ -734,6 +746,10 @@ class ORMItemContainer(LinkedList):
         else:
             next_node.prev = prev_node
 
+    @staticmethod
+    def _is_valid_model_name(name):
+        if not isinstance(name, str):
+            raise TypeError
 
 class ORMHelper:
     """
@@ -817,7 +833,7 @@ class ORMHelper:
         cls._timer = cls.init_timer()
 
     @classmethod
-    def get_item(cls, model=None, only_db=False, only_queue=False, **attributes) -> dict:
+    def get_item(cls, model: Optional[Model] = None, only_db=False, only_queue=False, **attributes) -> dict:
         """
         1) Получаем запись из таблицы в виде словаря
         2) Получаем данные из очереди в виде словаря
@@ -826,8 +842,6 @@ class ORMHelper:
         """
         cls.__is_valid_node_attrs(attributes)
         if not model:
-            if not cls._model_obj:
-                raise AttributeError("Не установлено и не передано значение для объекта-модели")
             model = cls._model_obj
         cls._is_valid_model_instance(model)
         if only_queue:
@@ -845,22 +859,19 @@ class ORMHelper:
             return data_db
         if node.type == "__delete":
             return {}
+        updated_node_data = data_db
+        updated_node_data.update(node.value)
         if node.type == "__insert":
             if data_db:
-                updated_node_data = data_db
-                updated_node_data.update(node.value)
                 updated_node_data.update({"__model": model,
                                           "__where": {model.pk_field_name: data_db[model.pk_field_name]},
                                           "__update": True
                                           })
-                #cls.remove_items((attributes,)) если будет работать, то удали эту строку!!!
-                cls.items.enqueue(**updated_node_data)
-                return data_db
-        data_db.update(node.value)
-        return data_db
+                cls.items.replace_node(data_db, updated_node_data, model_name=)
+        return updated_node_data
 
     @classmethod
-    def get_items(cls, model=None, db_only=False, queue_only=False, *attrs) -> Iterator[dict]:  # todo: придумать пагинатор
+    def get_items(cls, model: Optional[Model] = None, db_only=False, queue_only=False, **attrs) -> Iterator[dict]:  # todo: придумать пагинатор
         """
         1) Получаем запись из таблицы в виде словаря (Model.query.all())
         2) Получаем данные из кеша, все элементы, у которых данная модель
@@ -874,34 +885,36 @@ class ORMHelper:
                 raise AttributeError("Не установлено и не передано значение для объекта-модели")
             model = cls._model_obj
         cls._is_valid_model_instance(model)
-        items_db = model.query.all()
+        if not attrs:
+            items_db = model.query.all()
+        else:
+            items_db = model.query.filter_by(attrs).first()
         if db_only:
             return map(lambda t: t.__dict__, items_db)
         if queue_only:
-            return map(lambda n: n.value, cls.items.get_nodes_by_model_name(model.__name__))
+            if not attrs:
+                return map(lambda n: n.value, cls.items.get_nodes_by_model_name(model.__name__))
+            return map(lambda x: x.__dict__, cls.items.search_node_by_inner_attrs(model_name=model.__name__, **attrs))
         db_items = []
         queue_items = {}  # index: node_value
         if items_db:
             nodes_implements_db = ORMItemContainer()  # Ноды, значения которых совпали с записями в БД
-            node_names_to_remove = []
             for db_item in items_db:  # O(n)
                 db_data: dict = db_item.__dict__
-                primary_field_value = db_data[model.pk_field_name]  # O(1)
-                node: ORMItem = cls.items.search_node_by_inner_attrs(model_name=model.__name__,
-                                                                     **{model.pk_field_name: primary_field_value})  # O(k)
+                attrs.update(db_data)
+                node: ORMItem = cls.items.search_node_by_inner_attrs(model_name=model.__name__, **attrs)  # O(k)
                 if node:
-                    new_node_attrs = cls._create_node_attrs_dict_from_other_node(node)  # O(1)
+                    new_node_attrs = cls._create_node_attrs_dict_from_node(node)  # O(1)
                     nodes_implements_db.enqueue(**new_node_attrs)  # O(k)
                     if node.type == "__insert":
-                        node_names_to_remove.append(node.name)
+                        new_node_attrs.update({"__update": True})
+                        cls.items.replace_node(node.value, new_node_attrs)
                     elif node.type == "__update":
                         db_data.update(node.value)
                     if not node.type == "__delete":
-                        queue_items.update({node.index: db_data})
+                        queue_items.update({node.index: node.value})
                 else:
                     db_items.append(db_data)
-            if node_names_to_remove:
-                cls.remove_items(node_names_to_remove, model=model)
             for node in cls.items:  # O(k)
                 if node not in nodes_implements_db:  # O(l)
                     if node.model.__name__ == model.__name__:
@@ -955,7 +968,7 @@ class ORMHelper:
         :return: None
         """
         def enqueue(node):
-            new_node_attributes = cls._create_node_attrs_dict_from_other_node(node)
+            new_node_attributes = cls._create_node_attrs_dict_from_node(node)
             enqueue_items.enqueue(node.name, **new_node_attributes)
         orm_element = True
         is_nodes_in_session = False
@@ -1002,8 +1015,8 @@ class ORMHelper:
         cls._model_obj = obj
         cls._primary_field = primary_field
 
-    @classmethod
-    def __is_valid_node_attrs(cls, attributes: dict):
+    @staticmethod
+    def __is_valid_node_attrs(attributes: dict):
         if type(attributes) is not dict:
             raise TypeError
 
@@ -1022,7 +1035,7 @@ class ORMHelper:
         cls._items = container
 
     @staticmethod
-    def _create_node_attrs_dict_from_other_node(node: ORMItem) -> dict:
+    def _create_node_attrs_dict_from_node(node: ORMItem) -> dict:
         new_node_attributes = {"__insert": False, "__update": False, "__delete": False, "__model": node.model,
                                "__where": node.where, "__callback": node.callback}
         new_node_attributes.update({node.type: True})
