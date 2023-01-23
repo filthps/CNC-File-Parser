@@ -174,11 +174,11 @@ class OptionsPageCreateMachine(Constructor, Tools):
             print(dialog)
             if not machine_name:
                 return
-            if self.db_items.get_item(machine_name, where={"machine_name": machine_name}):
+            if self.db_items.get_item(machine_name=machine_name):
                 error(machine_name)
                 dialog.close()
                 return
-            self.db_items.set_item(machine_name, {"machine_name": machine_name}, insert=True)
+            self.db_items.set_item(machine_name=machine_name, insert=True)
             self.reload()
             dialog.close()
         dialog = self.get_prompt_dialog("Введите название станка", ok_callback=add)
@@ -190,7 +190,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
         def ok():
             item: QListWidgetItem = self.ui.add_machine_list_0.currentItem()
             item_name = item.text()
-            self.db_items.set_item(item_name, delete=True, where={"machine_name": item_name}, ready=True)
+            self.db_items.set_item(delete=True, where={"machine_name": item_name}, ready=True)
             dialog.close()
             self.reload()
         dialog = self.get_confirm_dialog("Удалить станок?", "Внимание! Информация о свойствах станка будетм утеряна",
@@ -208,7 +208,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
         exists_node_type = self.db_items.get_node_dml_type(machine_name, model=Machine)
         sql_column_name = self._UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]
         self.validator.refresh()
-        self.db_items.set_item(machine_name, {
+        self.db_items.set_item(**{
             sql_column_name: self.check_output_values(field_name, value)
         }, ready=self.validator.is_valid, where={"machine_name": machine_name},
                                **{("update" if exists_node_type == "update" else "insert"): True})
@@ -235,7 +235,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
             self.reload()
             return
         self.validator.select_cnc()
-        self.db_items.set_item(selected_machine_name, {"cncid": cnc_db_instance["cncid"]},
+        self.db_items.set_item(cncid=cnc_db_instance["cncid"], machine_name=selected_machine_name,
                                where={"machine_name": selected_machine_name}, update=True, ready=self.validator.is_valid)
 
     def clear_property_fields(self) -> None:
