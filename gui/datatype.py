@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from weakref import ref
 from typing import Optional, Iterable, Union, Any, Iterator
 
 
@@ -41,7 +42,7 @@ class LinkedListItem:
     @prev.setter
     def prev(self, item: Optional["LinkedListItem"]):
         self.__is_valid_item(item)
-        self.__prev = item
+        self.__prev = ref(item)
         if not item:
             return
         if not self._index:
