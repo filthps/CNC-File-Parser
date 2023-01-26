@@ -207,7 +207,7 @@ def init_condition_table_triggers():
     """)
 
     db.engine.execute("""
-        CREATE FUNCTION check_exists_headvar() RETURNS trigger
+        CREATE OR REPLACE FUNCTION check_exists_headvar() RETURNS trigger
         AS $body$
         BEGIN
             IF NEW.useheadvarible THEN
@@ -225,7 +225,7 @@ def init_condition_table_triggers():
         CREATE TRIGGER exists_headvar_checker
         BEFORE INSERT OR UPDATE
         ON cond FOR EACH ROW
-        EXECUTE PROCEDURE check_exists_headvar()
+        EXECUTE PROCEDURE check_exists_headvar();
     """)
 
 

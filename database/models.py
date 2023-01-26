@@ -19,7 +19,7 @@ class ModelController:
         def check_class_attributes():
             """ Предотвратить использование заерезервированных в классе ORMHelper слов. """
             for special_word in RESERVED_WORDS:
-                if hasattr(cls, special_word):
+                if hasattr(cls, f"_{cls.__name__}{special_word}"):
                     raise AttributeError(
                         f"Не удалось инциализировать класс-модель {cls.__name__}. "
                         f"Атрибут {special_word} использовать нельзя, тк он зарезервирован."
@@ -223,7 +223,7 @@ class Rename(db.Model, ModelController):
     nametext = Column(String(20), nullable=True, default=None)
     removeextension = Column(Boolean, default=False, nullable=False)
     setextension = Column(String(10), nullable=True, default=None)
-    #varibles = relationship("HeadVarDelegation")
+    #  varibles = relationship("HeadVarDelegation")
 
 
 class Numeration(db.Model, ModelController):
@@ -255,5 +255,7 @@ class Replace(db.Model, ModelController):
 
 
 if __name__ == "__main__":
+    TaskDelegation(), Machine(), Operation(), Condition(), Cnc(), HeadVarible(), Insert(),
+    Comment(), Uncomment(), Remove(), HeadVarDelegation(), Rename(), Numeration(), Replace()
     db.drop_all()
     db.create_all()
