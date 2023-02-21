@@ -1,7 +1,8 @@
 from PySide2.QtCore import Slot
 from PySide2.QtWidgets import QListWidgetItem, QLineEdit, QTextEdit
 from database.models import Cnc
-from gui.tools import Constructor, Tools, ORMHelper, UiLoaderThreadFactory
+from orm import orm
+from gui.tools import Constructor, Tools, UiLoaderThreadFactory
 from gui.ui import Ui_main_window
 from gui.validation import Validator
 
@@ -13,11 +14,11 @@ class AddCNC(Constructor, Tools):
         super().__init__(app, ui)
         self.instance = app
         self.ui = ui
-        self.db_items: ORMHelper = app.db_items_queue
+        self.db_items: orm.ORMHelper = app.db_items_queue
         self.validator = None
 
         def set_db_manager_model():
-            self.db_items.set_model(Cnc, "name")
+            self.db_items.set_model(Cnc)
 
         def init_validator():
             self.validator = CncPageValidator(self.ui)
@@ -80,7 +81,7 @@ class AddCNC(Constructor, Tools):
             item = QListWidgetItem()
             item.setText(name)
             self.ui.cnc_list.addItem(item)
-            self.db_items.set_item(name, {'name': name}, insert=True)
+            self.db_items.set_item(name=name, insert=True)
             self.clean_fields()
             self.auto_select_cnc_item()
             self.connect_text_field_signals()
@@ -98,7 +99,7 @@ class AddCNC(Constructor, Tools):
                 dialog.close()
                 return
             cnc_name = current_item.text()
-            self.db_items.set_item(cnc_name, delete=True, ready=True, where={"name": cnc_name})
+            self.db_items.set_item(delete=True, name=cnc_name)
             self.reload()
             dialog.close()
         if not self.get_current_cnc_item():

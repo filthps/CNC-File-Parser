@@ -1,12 +1,14 @@
 import re
+import random
 from typing import Optional
 from PySide2.QtCore import Slot
 from PySide2.QtWidgets import QListWidgetItem, QLineEdit
 from PySide2.QtWidgets import QFileDialog
 from gui.validation import Validator
 from database.models import Cnc, Machine
+from orm import orm
 from gui.ui import Ui_main_window as Ui
-from gui.tools import Constructor, Tools, UiLoaderThreadFactory, ORMHelper
+from gui.tools import Constructor, Tools, UiLoaderThreadFactory
 
 
 class OptionsPageCreateMachine(Constructor, Tools):
@@ -25,7 +27,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
 
     def __init__(self, main_app_instance, ui: Ui):
         self.validator = None
-        self.db_items: ORMHelper = main_app_instance.db_items_queue
+        self.db_items: orm.ORMHelper = main_app_instance.db_items_queue
         self.main_app = main_app_instance
         self.ui = ui
         self.cnc_names = {}  # Хранить словарь названий стоек, чтобы избежать лишних запросов в БД (cncid: name)
@@ -35,7 +37,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
             self.validator = AddMachinePageValidation(self.ui)
 
         def set_db_manager_model():
-            self.db_items.set_model(Machine, "machine_name")
+            self.db_items.set_model(Machine)
 
         def init_thread_factory():
             UiLoaderThreadFactory.set_application(main_app_instance)
@@ -56,7 +58,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
                 name = data.pop('machine_name')
                 item = QListWidgetItem(name)
                 self.ui.add_machine_list_0.addItem(item)
-                if self.db_items.is_node_from_cache(name):
+                if self.db_items.is_node_from_cache(machine_name=name):
                     self.validator.set_not_complete_edit_attributes(item)
 
         def auto_select_machine_item(index=0):
@@ -122,7 +124,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
         Запрос из БД и установка возможных значений в combo box - 'стойки',
         наполнение словаря self.cnc_names
         """
-        cnc_items = self.db_items.get_items(model=Cnc, primary_field="name", db_only=True)
+        cnc_items = self.db_items.get_items(model=Cnc, db_only=True)
         for data in cnc_items:
             cnc_name = data["name"]
             self.cnc_names.update({data["cncid"]: cnc_name})
@@ -145,7 +147,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
         if not machine_item:
             return
         name = machine_item.text()
-        machine = self.db_items.get_item(name, where={"machine_name": name})
+        machine = self.db_items.get_item(machine_name=name)
         if not machine:
             self.reload()
             return
@@ -225,18 +227,18 @@ class OptionsPageCreateMachine(Constructor, Tools):
             del self.db_items.items[selected_machine_name]["cncid"]
             self.validator.refresh()
             return
-        cnc_db_instance = self.db_items.get_item(item, model=Cnc, where={"name": item}, primary_field="name")
+        cnc_db_instance = self.db_items.get_item(model=Cnc, name=item)
         if not cnc_db_instance:
             self.reload()
             return
-        machine_instance = self.db_items.get_item(selected_machine_name,
-                                                  where={"machine_name": selected_machine_name})
+        machine_instance = self.db_items.get_item(machine_name=selected_machine_name)
         if not machine_instance:
             self.reload()
             return
         self.validator.select_cnc()
-        self.db_items.set_item(cncid=cnc_db_instance["cncid"], machine_name=selected_machine_name,
-                               where={"machine_name": selected_machine_name}, update=True, ready=self.validator.is_valid)
+        self.db_items.set_item(cncid=cnc_db_instance["cncid"],
+                               machine_name=selected_machine_name,
+                               update=True, ready=self.validator.is_valid)
 
     def clear_property_fields(self) -> None:
         super().reset_fields_to_default()
@@ -263,6 +265,10 @@ class AddMachinePageValidation(Validator):
         self.ui: Ui = ui
         self.current_machine: Optional[QListWidgetItem] = None
 
+    @property
+    def is_valid(self) -> bool:
+        return self.refresh()
+
     def set_machine(self, current):
         self.current_machine = current
         self.refresh()
@@ -271,7 +277,7 @@ class AddMachinePageValidation(Validator):
         if self.current_machine:
             self.refresh()
 
-    def refresh(self):
+    def refresh(self) -> bool:
         def mark_machine_list_widget_item():
             """ Выделить красным фотном станок или снять выделение """
             if not valid:
@@ -281,3 +287,4 @@ class AddMachinePageValidation(Validator):
         valid = super().refresh()
         if self.current_machine:
             mark_machine_list_widget_item()
+        return valid

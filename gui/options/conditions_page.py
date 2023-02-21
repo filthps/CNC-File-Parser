@@ -3,8 +3,9 @@ from typing import Optional, Union
 from PySide2.QtWidgets import QMainWindow, QListWidget, QListWidgetItem, QHBoxLayout, QVBoxLayout, QLabel, \
     QGroupBox, QLineEdit, QRadioButton, QDialogButtonBox, QSpacerItem
 from PySide2.QtCore import Slot, Qt
-from gui.tools import Tools, Constructor, ORMHelper, MyAbstractDialog, UiLoaderThreadFactory
+from gui.tools import Tools, Constructor, MyAbstractDialog, UiLoaderThreadFactory
 from database.models import Condition, HeadVarible, HeadVarDelegation
+from orm import orm
 from gui.ui import Ui_main_window as Ui
 from gui.validation import Validator
 
@@ -14,7 +15,7 @@ class AddConditionDialog(MyAbstractDialog):
     Диалоговое окно для добавления 'условия' с вариантами выбора: 1) Поиск по вводимой строке; 2) Поиск по значению
     переменной.
     """
-    def __init__(self, db: ORMHelper, app=None, callback=None):
+    def __init__(self, db: orm.ORMHelper, app=None, callback=None):
         self.accept_button = QDialogButtonBox.Apply
         super().__init__(parent=app.app, close_callback=callback, buttons=(self.accept_button,))
         self.conditions_page: Optional["ConditionsPage"] = app

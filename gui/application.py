@@ -7,7 +7,8 @@ from sqlalchemy_utils import database_exists
 from database.models import db
 from gui.ui import Ui_main_window as Ui
 from gui.signals import Navigation, Actions
-from tools import Tools, ORMHelper
+from tools import Tools
+from orm import orm
 from database.models import DATABASE_PATH
 
 
@@ -28,7 +29,7 @@ class Main(QMainWindow, Tools):
             self.db_session = self.database.session
 
         def init_db_manager():
-            self.db_items_queue = ORMHelper.set_up(self.db_session)
+            self.db_items_queue = orm.ORMHelper.set_up(self.db_session)
 
         def init_ui():
             def init_buttons():
