@@ -42,9 +42,9 @@ class LinkedListItem:
     @prev.setter
     def prev(self, item: Optional["LinkedListItem"]):
         self.__is_valid_item(item)
-        self.__prev = ref(item)
         if not item:
             return
+        self.__prev = ref(item)
         if not self._index:
             item._index = 0
             self._index = 1
