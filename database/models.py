@@ -1,3 +1,6 @@
+"""
+Назначить каждому классу модели атрибут __db_queue_primary_field_name__, который необходим для класса tools.ORMHelper
+"""
 from uuid import uuid4
 from sqlalchemy import String, Integer, Column, Boolean, CheckConstraint
 from sqlalchemy.orm import relationship
@@ -15,9 +18,11 @@ db = FlaskSQLAlchemy(app)
 
 
 class ModelController:
+    __remove_pk__ = False
+
     def __new__(cls):
         def check_class_attributes():
-            """ Предотвратить использование заерезервированных в классе ORMHelper слов. """
+            """ Предотвратить использование заерезервированных в классе ORMHelper слов """
             for special_word in RESERVED_WORDS:
                 if hasattr(cls, f"_{cls.__name__}{special_word}"):
                     raise AttributeError(
@@ -25,15 +30,26 @@ class ModelController:
                         f"Атрибут {special_word} использовать нельзя, тк он зарезервирован."
                     )
 
-        def find_primary_key_in_column_objects():
-            """ Обойти все атрибуты класса, которые являются экземпляром класса Column,
-            найти у них атрибут primary_key и сохранить его атрибутом класса у нашей модели."""
-            for attribute in cls.__dict__:
-                if type(attribute) is Column:
-                    if hasattr(attribute, "primary_key"):
-                        cls.pk_field_name = attribute.__name__
+        def check_db_helper_queue_main_field():
+            """
+            Проверить наличие атрибута __db_queue_primary_field_name__,
+            который нужем в модуле tools, также, чтобы имя поля, хранящееся в его значении,
+            присутствовало в данной модели
+            """
+            if "__db_queue_primary_field_name__" not in dir(cls):
+                raise AttributeError("Добавьте атрибут __db_queue_primary_field_name__, "
+                                     "содержащий имя поля, которое наиболее удобно в качестве первичного ключа для"
+                                     "элеметнов очереди ORMItem, смотри модуль tools")
+            primary_field_name = getattr(cls, "__db_queue_primary_field_name__")
+            primary_field = getattr(cls, primary_field_name)
+            if str(primary_field.property.columns[0].type) == "INTEGER" and \
+                    primary_field.property.columns[0].autoincrement:
+                # В случае, когда поле первичного ключа в таблице имеет значение int и автоинкремент,
+                # то это поле будет удалено из значения ноды:
+                # pk - целочисленный автоинкремент, то нет смысла пытаться это отправлять в бд
+                cls.__remove_pk__ = True
         check_class_attributes()
-        find_primary_key_in_column_objects()
+        check_db_helper_queue_main_field()
         return cls
 
 
@@ -50,8 +66,16 @@ OPERATION_TYPES = (
 )
 
 
+class CustomModel(db.Model, ModelController):
+    """
+    Кстомный класс модели SQLAlchemy для использования в классе ORMHelper модуля tools!
+    """
+    abstract_field = Column(Integer, primary_key=True)
+
+
 class TaskDelegation(db.Model, ModelController):
     __tablename__ = "taskdelegate"
+    __db_queue_primary_field_name__ = "id"
     id = Column(String, primary_key=True, default=get_uuid)
     machineid = Column(db.ForeignKey("machine.machineid"), nullable=False)
     operationid = Column(db.ForeignKey("operation.opid"), nullable=False)
@@ -59,7 +83,7 @@ class TaskDelegation(db.Model, ModelController):
 
 class Machine(db.Model, ModelController):
     __tablename__ = "machine"
-    __insert = Column(Integer)
+    __db_queue_primary_field_name__ = "machine_name"
     machineid = Column(Integer, primary_key=True, autoincrement=True)
     cncid = Column(Integer, db.ForeignKey("cnc", ondelete="SET NULL", onupdate="SET NULL"), nullable=True)
     machine_name = Column(String(100), unique=True, nullable=False)
@@ -89,6 +113,7 @@ class Machine(db.Model, ModelController):
 
 class Operation(db.Model, ModelController):
     __tablename__ = "operation"
+    __db_queue_primary_field_name__ = "operation_description"
     opid = Column(String, primary_key=True, default=get_uuid)
     conditionid = Column(String, db.ForeignKey("cond.cnd"), nullable=True, default=None)
     insertid = Column(Integer, db.ForeignKey("insert.insid"), nullable=True, default=None)
@@ -105,6 +130,7 @@ class Operation(db.Model, ModelController):
 
 class Condition(db.Model, ModelController):
     __tablename__ = "cond"
+    __db_queue_primary_field_name__ = "cnd"
     cnd = Column(String, primary_key=True, default=get_uuid)
     useheadvarible = Column(Boolean, nullable=False, default=False)
     conditionbooleanvalue = Column(Boolean, default=True, nullable=False)
@@ -128,6 +154,7 @@ class Condition(db.Model, ModelController):
 
 class Cnc(db.Model, ModelController):
     __tablename__ = "cnc"
+    __db_queue_primary_field_name__ = "name"
     cncid = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(20), unique=True, nullable=False)
     comment_symbol = Column(String(1), nullable=False)
@@ -140,6 +167,7 @@ class Cnc(db.Model, ModelController):
 
 class HeadVarible(db.Model, ModelController):
     __tablename__ = "headvar"
+    __db_queue_primary_field_name__ = "name"
     varid = Column(String, default=get_uuid, primary_key=True)
     name = Column(String, unique=True, nullable=False)
     separator = Column(String(7), nullable=False)
@@ -159,6 +187,7 @@ class HeadVarible(db.Model, ModelController):
 
 class Insert(db.Model, ModelController):
     __tablename__ = "insert"
+    __db_queue_primary_field_name__ = "id"
     insid = Column(Integer, primary_key=True, autoincrement=True)
     after = Column(Boolean, default=False, nullable=False)
     before = Column(Boolean, default=False, nullable=False)
@@ -174,6 +203,7 @@ class Insert(db.Model, ModelController):
 
 class Comment(db.Model, ModelController):
     __tablename__ = "comment"
+    __db_queue_primary_field_name__ = "id"
     commentid = Column(Integer, primary_key=True, autoincrement=True)
     findstr = Column(String(100), nullable=False)
     iffullmatch = Column(Boolean, default=False, nullable=False)
@@ -182,6 +212,7 @@ class Comment(db.Model, ModelController):
 
 class Uncomment(db.Model, ModelController):
     __tablename__ = "uncomment"
+    __db_queue_primary_field_name__ = "id"
     id = Column(Integer, primary_key=True, autoincrement=True)
     findstr = Column(String(100), nullable=False)
     iffullmatch = Column(Boolean, default=False, nullable=False)
@@ -193,6 +224,7 @@ class Uncomment(db.Model, ModelController):
 
 class Remove(db.Model, ModelController):
     __tablename__ = "remove"
+    __db_queue_primary_field_name__ = "id"
     removeid = Column(Integer, primary_key=True, autoincrement=True)
     iffullmatch = Column(Boolean, default=False, nullable=False)
     ifcontains = Column(Boolean, default=False, nullable=False)
@@ -205,6 +237,7 @@ class Remove(db.Model, ModelController):
 
 class HeadVarDelegation(db.Model, ModelController):
     __tablename__ = "varsec"
+    __db_queue_primary_field_name__ = "id"
     secid = Column(String, default=get_uuid, primary_key=True)
     varid = Column(String, db.ForeignKey("headvar.varid"), nullable=False)
     insertid = Column(Integer, db.ForeignKey("insert.insid"), nullable=True, default=None)
@@ -215,6 +248,7 @@ class HeadVarDelegation(db.Model, ModelController):
 
 class Rename(db.Model, ModelController):
     __tablename__ = "renam"
+    __db_queue_primary_field_name__ = "id"
     renameid = Column(Integer, primary_key=True, autoincrement=True)
     uppercase = Column(Boolean, default=False, nullable=False)
     lowercase = Column(Boolean, default=False, nullable=False)
@@ -228,6 +262,7 @@ class Rename(db.Model, ModelController):
 
 class Numeration(db.Model, ModelController):
     __tablename__ = "num"
+    __db_queue_primary_field_name__ = "id"
     numerationid = Column(Integer, autoincrement=True, primary_key=True)
     startat = Column(Integer, nullable=False, default=1)
     endat = Column(Integer, nullable=True, default=None)
@@ -241,6 +276,7 @@ class Numeration(db.Model, ModelController):
 
 class Replace(db.Model, ModelController):
     __tablename__ = "repl"
+    __db_queue_primary_field_name__ = "id"
     replaceid = Column(Integer, primary_key=True, autoincrement=True)
     findstr = Column(String(100), nullable=False)
     ifcontains = Column(Boolean, default=False, nullable=False)
@@ -255,7 +291,22 @@ class Replace(db.Model, ModelController):
 
 
 if __name__ == "__main__":
-    TaskDelegation(), Machine(), Operation(), Condition(), Cnc(), HeadVarible(), Insert(),
-    Comment(), Uncomment(), Remove(), HeadVarDelegation(), Rename(), Numeration(), Replace()
-    db.drop_all()
-    db.create_all()
+    def check_bad_attribute_name():
+        TaskDelegation()
+        Machine()
+        Operation()
+        Condition()
+        Cnc()
+        HeadVarible()
+        Insert()
+        Comment()
+        Uncomment()
+        Remove()
+        HeadVarDelegation()
+        Rename()
+        Numeration()
+        Replace()
+    #check_bad_attribute_name()
+    #db.drop_all()
+    #db.create_all()
+    Machine()
