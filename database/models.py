@@ -20,7 +20,7 @@ db = FlaskSQLAlchemy(app)
 class ModelController:
     __remove_pk__ = False
 
-    def __new__(cls):
+    def __new__(cls, **k):
         def check_class_attributes():
             """ Предотвратить использование заерезервированных в классе ORMHelper слов """
             for special_word in RESERVED_WORDS:
@@ -50,7 +50,7 @@ class ModelController:
                 cls.__remove_pk__ = True
         check_class_attributes()
         check_db_helper_queue_main_field()
-        return cls
+        return super().__new__(cls)
 
 
 def get_uuid():
@@ -68,9 +68,11 @@ OPERATION_TYPES = (
 
 class CustomModel(db.Model, ModelController):
     """
+    Для аннотации типов.
     Кстомный класс модели SQLAlchemy для использования в классе ORMHelper модуля tools!
     """
     abstract_field = Column(Integer, primary_key=True)
+    __call__ = None
 
 
 class TaskDelegation(db.Model, ModelController):
@@ -187,7 +189,7 @@ class HeadVarible(db.Model, ModelController):
 
 class Insert(db.Model, ModelController):
     __tablename__ = "insert"
-    __db_queue_primary_field_name__ = "id"
+    __db_queue_primary_field_name__ = "insid"
     insid = Column(Integer, primary_key=True, autoincrement=True)
     after = Column(Boolean, default=False, nullable=False)
     before = Column(Boolean, default=False, nullable=False)
@@ -203,7 +205,7 @@ class Insert(db.Model, ModelController):
 
 class Comment(db.Model, ModelController):
     __tablename__ = "comment"
-    __db_queue_primary_field_name__ = "id"
+    __db_queue_primary_field_name__ = "commentid"
     commentid = Column(Integer, primary_key=True, autoincrement=True)
     findstr = Column(String(100), nullable=False)
     iffullmatch = Column(Boolean, default=False, nullable=False)
@@ -224,7 +226,7 @@ class Uncomment(db.Model, ModelController):
 
 class Remove(db.Model, ModelController):
     __tablename__ = "remove"
-    __db_queue_primary_field_name__ = "id"
+    __db_queue_primary_field_name__ = "removeid"
     removeid = Column(Integer, primary_key=True, autoincrement=True)
     iffullmatch = Column(Boolean, default=False, nullable=False)
     ifcontains = Column(Boolean, default=False, nullable=False)
@@ -237,7 +239,7 @@ class Remove(db.Model, ModelController):
 
 class HeadVarDelegation(db.Model, ModelController):
     __tablename__ = "varsec"
-    __db_queue_primary_field_name__ = "id"
+    __db_queue_primary_field_name__ = "secid"
     secid = Column(String, default=get_uuid, primary_key=True)
     varid = Column(String, db.ForeignKey("headvar.varid"), nullable=False)
     insertid = Column(Integer, db.ForeignKey("insert.insid"), nullable=True, default=None)
@@ -248,7 +250,7 @@ class HeadVarDelegation(db.Model, ModelController):
 
 class Rename(db.Model, ModelController):
     __tablename__ = "renam"
-    __db_queue_primary_field_name__ = "id"
+    __db_queue_primary_field_name__ = "renameid"
     renameid = Column(Integer, primary_key=True, autoincrement=True)
     uppercase = Column(Boolean, default=False, nullable=False)
     lowercase = Column(Boolean, default=False, nullable=False)
@@ -262,7 +264,7 @@ class Rename(db.Model, ModelController):
 
 class Numeration(db.Model, ModelController):
     __tablename__ = "num"
-    __db_queue_primary_field_name__ = "id"
+    __db_queue_primary_field_name__ = "numerationid"
     numerationid = Column(Integer, autoincrement=True, primary_key=True)
     startat = Column(Integer, nullable=False, default=1)
     endat = Column(Integer, nullable=True, default=None)
@@ -276,7 +278,7 @@ class Numeration(db.Model, ModelController):
 
 class Replace(db.Model, ModelController):
     __tablename__ = "repl"
-    __db_queue_primary_field_name__ = "id"
+    __db_queue_primary_field_name__ = "replaceid"
     replaceid = Column(Integer, primary_key=True, autoincrement=True)
     findstr = Column(String(100), nullable=False)
     ifcontains = Column(Boolean, default=False, nullable=False)
@@ -306,7 +308,19 @@ if __name__ == "__main__":
         Rename()
         Numeration()
         Replace()
-    #check_bad_attribute_name()
-    #db.drop_all()
-    #db.create_all()
-    Machine()
+    check_bad_attribute_name()
+    db.drop_all()
+    db.create_all()
+
+    def create_cnc():
+        i = Cnc(comment_symbol=",", name="Fida")
+        db.session.add(i)
+        db.session.commit()
+    #create_cnc()
+
+    def create_machine():
+        m = Machine(machine_name="Heller", cncid=n.cncid,
+                    input_catalog="dfdf", output_catalog="sgdfgdfgb")
+        db.session.add(m)
+        db.session.commit()
+    #create_machine()
