@@ -1,3 +1,4 @@
+import weakref
 from abc import ABC, abstractmethod
 from weakref import ref
 from typing import Optional, Iterable, Union, Any, Iterator
@@ -17,7 +18,7 @@ class LinkedListItem:
 
     @next.setter
     def next(self, val: Optional["LinkedListItem"]):
-        self.__is_valid_item(val)
+        self._is_valid_item(val)
         self.__next = val
         if not val:
             return
@@ -41,7 +42,7 @@ class LinkedListItem:
 
     @prev.setter
     def prev(self, item: Optional["LinkedListItem"]):
-        self.__is_valid_item(item)
+        self._is_valid_item(item)
         if not item:
             return
         self.__prev = ref(item)
@@ -52,14 +53,14 @@ class LinkedListItem:
             item._index = self._index - 1
 
     @classmethod
-    def __is_valid_item(cls, item):
+    def _is_valid_item(cls, item):
         if item is None:
             return
         if not type(item) is cls:
             raise TypeError
 
     def __eq__(self, other: "LinkedListItem"):
-        self.__is_valid_item(other)
+        self._is_valid_item(other)
         return self.val == other.val
 
     def __repr__(self):
@@ -85,9 +86,7 @@ class LinkedListAbstraction(ABC):
         return False
 
     def __contains__(self, item):
-        try:
-            self._is_valid_node(item)
-        except TypeError:
+        if type(item) is not self.LinkedListItem:
             return False
         if not item:
             return False
@@ -102,14 +101,16 @@ class LinkedListAbstraction(ABC):
         if index >= len(self):
             raise IndexError
 
-    def _set_next(self, left_item: LinkedListItem, right_item: LinkedListItem):
-        self._is_valid_node(left_item)
-        self._is_valid_node(right_item)
+    @staticmethod
+    def _set_next(left_item: Union[LinkedListItem, weakref.ref], right_item: Union[LinkedListItem, weakref.ref]):
+        left_item = left_item() if hasattr(left_item, "__call__") else left_item  # Check item is WeakRef
+        right_item = right_item() if hasattr(right_item, "__call__") else right_item  # Check item is WeakRef
         left_item.next = right_item
 
-    def _set_prev(self, right_item: LinkedListItem, left_item: LinkedListItem):
-        self._is_valid_node(right_item)
-        self._is_valid_node(left_item)
+    @staticmethod
+    def _set_prev(right_item: Union[LinkedListItem, weakref.ref], left_item: Union[LinkedListItem, weakref.ref]):
+        left_item = left_item() if hasattr(left_item, "__call__") else left_item  # Check item is WeakRef
+        right_item = right_item() if hasattr(right_item, "__call__") else right_item  # Check item is WeakRef
         right_item.prev = left_item
 
     @staticmethod
@@ -118,12 +119,6 @@ class LinkedListAbstraction(ABC):
         for _ in range(index):
             element = element.next
         return element
-
-    def _is_valid_node(self, obj: Optional[LinkedListItem]):
-        if obj is None:
-            return
-        if not isinstance(obj, self.LinkedListItem):
-            raise TypeError
 
     @staticmethod
     def _gen(start_item: Optional[LinkedListItem] = None) -> Iterator:
