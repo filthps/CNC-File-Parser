@@ -123,6 +123,10 @@ class ORMItem(LinkedListItem, ORMAttributes):
                 where = self.get_primary_key_and_value()
             del value[primary_key]
             query = self.model.query.filter_by(**where).first()
+            if query is None:
+                if self.__delete:
+                    return
+                query = self.model(**self.value)
         if self.__update:
             if primary_key in value:
                 del value[primary_key]
@@ -219,13 +223,7 @@ class ORMItemContainer(LinkedList):
             if nodes_to_move_in_end_queue:
                 self + nodes_to_move_in_end_queue  # O(i)
         self.__remove_from_queue(exists_item) if exists_item else None
-        if self:
-            last_element = self._tail
-            self._set_prev(new_item, last_element)
-            self._set_next(last_element, new_item)
-            self._tail = new_item
-        else:
-            self._head = self._tail = new_item
+        super().append(self.LinkedListItem(**attrs))
         check_foreign_key_nodes()
 
     def dequeue(self) -> Optional[ORMItem]:
@@ -235,29 +233,6 @@ class ORMItemContainer(LinkedList):
             return
         self.__remove_from_queue(node)
         return node
-
-    def replace(self, old_node: ORMItem, new_node: ORMItem) -> Optional[ORMItem]:  # O(n) + O(n) = O(2n) = O(n)
-        """
-        Заменить ноду, сохранив её позицию в очереди.
-        Если исходной ноды не найдено, вернуть None и ничего не делать,
-        если найдена - заменить ноду и вернуть новую ноду
-        """
-        if type(old_node) is not ORMItem or not isinstance(new_node, ORMItem):
-            raise TypeError
-        if not len(self):
-            return
-        if len(self) == 1:
-            self._head = self._tail = new_node
-            return
-        next_node = old_node.next
-        previous_node = old_node.prev()
-        if old_node.index == len(self) - 1:
-            self._tail = new_node
-        if old_node.index == 0:
-            self._head = new_node
-        previous_node.next = new_node
-        next_node.prev = new_node
-        return new_node
 
     def remove(self, model, pk_field_name, pk_field_value):
         node = self.get_node(model, **{pk_field_name: pk_field_value})
@@ -372,21 +347,9 @@ class ORMItemContainer(LinkedList):
         return exists_item, new_item
 
     def __remove_from_queue(self, node: ORMItem) -> None:
-        if type(node) is not ORMItem:
+        if type(node) is not self.LinkedListItem:
             raise TypeError
-        prev_node = node.prev
-        prev_node = prev_node() if prev_node is not None else prev_node  # Вызываем потому что слабая ссылка
-        next_node = node.next
-        node.next = None
-        node.prev = None
-        if prev_node is None:
-            self._head = next_node
-        else:
-            prev_node.next = next_node
-        if next_node is None:
-            self._tail = prev_node
-        else:
-            next_node.prev = prev_node
+        del self[node.index]
 
 
 class ORMHelper(ORMAttributes):
@@ -533,17 +496,19 @@ class ORMHelper(ORMAttributes):
         db_items = []
         queue_items = {}  # index: node_value
         nodes_implements_db = ORMItemContainer()  # Ноды, которые пересекаются с бд
+        pk_name = getattr(model(), "__db_queue_primary_field_name__")
         for db_item in items_db:  # O(n)
             db_data: dict = db_item.__dict__
-            nodes: ORMItemContainer = cls.items.search_nodes(model, **attrs)
-            for node in nodes:
-                if node:
-                    nodes_implements_db.enqueue(**node.get_attributes())
-                    if not node.type == "_delete":
-                        db_data.update(node.value)
-                        queue_items.update({node.index: db_data})
-                else:
-                    db_items.append(db_data)
+            if pk_name not in db_data:
+                raise Exception("Несогласованность данных в кэше и базе данных. ""Возможно, кэш сильно устарел.")
+            node: ORMItem = cls.items.get_node(model, **{pk_name: db_data[pk_name]})
+            if node:
+                nodes_implements_db.enqueue(**node.get_attributes())
+                if not node.type == "_delete":
+                    db_data.update(node.value)
+                    queue_items.update({node.index: db_data})
+            else:
+                db_items.append(db_data)
         for node in cls.items:  # O(k)
             if node not in nodes_implements_db:  # O(l)
                 if node.model.__name__ == model.__name__:
