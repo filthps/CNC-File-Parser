@@ -117,21 +117,17 @@ class Tools:
 
 
 class CustomThread(threading.Thread):
-    def __init__(self, *a, callback=None, callback_kwargs=None, **k):
-        super().__init__(*a, **k)
-        self.kw = k
-        self.callback = callback
-        self.callback_kwargs = callback_kwargs
+    def __init__(self, target, *args, **kwargs):
+        self.factory: UiLoaderThreadFactory = kwargs.pop("factory_instance")
+        super().__init__(target=target, args=args, kwargs=kwargs)
 
     def run(self) -> None:
-        if self.callback:
-            callback_thread = self.__class__(target=super().run(), args=self.kw["args"], kwargs=self.kw["kwargs"])
-            callback_thread.start()
-            callback_thread.join()
-            kwargs = self.callback_kwargs if self.callback_kwargs else {}
-            self.callback(**kwargs) if self.callback else None
-            return
+        if self.factory.lock_ui_level == "lock_on_timer":
+            self.factory.start_timer()
+        if self.factory.lock_ui_level == "lock_immediately":
+            self.factory.show_banner()
         super().run()
+        self.factory.stop_timer_and_remove_banner()
 
 
 class UiLoaderThreadFactory:
@@ -142,7 +138,6 @@ class UiLoaderThreadFactory:
     LOCK_UI_SECONDS = 0.1
     _main_application: Optional[QMainWindow] = None
     _thread: Optional[threading.Thread] = None
-    _timer: Optional[threading.Timer] = None
 
     def __init__(self, lock_ui="no_lock", banner_text="Загрузка..."):
         """
@@ -158,8 +153,10 @@ class UiLoaderThreadFactory:
             raise ValueError
         if not type(banner_text) is str:
             raise TypeError
-        self._lock_ui_level = lock_ui
+        self.lock_ui_level = lock_ui
         self._banner_text = banner_text
+        self._timer: Optional[threading.Timer] = None
+        self._banner_item: Optional[QSplashScreen] = None
 
     @classmethod
     def set_application(cls, instance):
@@ -167,23 +164,23 @@ class UiLoaderThreadFactory:
             raise TypeError
         cls._main_application = instance
 
-    def _start_timer(self, banner_item):
-        self._timer = threading.Timer(float(self.LOCK_UI_SECONDS), self._show_banner, args=(banner_item,),
-                                      kwargs={"text": self._banner_text})
-        self._timer.start()
+    def start_timer(self):
+        timer = threading.Timer(float(self.LOCK_UI_SECONDS), self.show_banner, args=(self._banner_item,),
+                                kwargs={"text": self._banner_text})
+        timer.start()
+        self._timer = timer
 
-    @classmethod
-    def _stop_timer_and_remove_banner(cls, banner: QSplashScreen = None, timer=None, dialog: QMainWindow = None):
-        timer.cancel() if cls._timer else None
-        banner.clearMessage()
-        banner.close()
-        banner.finish(dialog)
-        dialog.update()
+    def stop_timer_and_remove_banner(self):
+        self._timer.cancel() if self._timer else None
+        if self._banner_item:
+            self._banner_item.clearMessage()
+            self._banner_item.close()
+            self._banner_item.finish(self._main_application)
+            self._main_application.update()
 
-    @classmethod
-    def _show_banner(cls, splash_item: QSplashScreen, text="Работа с базой данных"):
-        splash_item.show()
-        splash_item.showMessage(text) if text else None
+    def show_banner(self):
+        self._banner_item.show()
+        self._banner_item.showMessage(self._banner_text) if self._banner_text else None
 
     def __call__(self, func: Callable):
         def wrapper(*args, **kwargs):
@@ -195,15 +192,8 @@ class UiLoaderThreadFactory:
             if not self._main_application:
                 raise AttributeError("Перед использованием необходимо использовать метод 'set_application', "
                                      "указав в нем экземпляр QMainWindow")
-            splash_item = init_splash_item()
-            if self._lock_ui_level == "lock_on_timer":
-                self._start_timer(splash_item)
-            if self._lock_ui_level == "lock_immediately":
-                self._show_banner(splash_item, text=self._banner_text)
-            self._thread = CustomThread(target=func, args=args, kwargs=kwargs,
-                                        callback_kwargs={"banner": splash_item, "timer": self._timer,
-                                                         "dialog": self._main_application},
-                                        callback=self._stop_timer_and_remove_banner)
+            self.banner_item = init_splash_item()
+            self._thread = CustomThread(func, *args, factory_instance=self, **kwargs)
             self._thread.start()
         return wrapper
 
