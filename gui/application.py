@@ -1,35 +1,24 @@
 import sys
-import psycopg2
 from PySide2.QtWidgets import QMainWindow, QApplication
 from PySide2.QtCore import Qt, QRect
 from PySide2.QtGui import QPixmap, QBrush
-from sqlalchemy_utils import database_exists
-from database.models import db
 from gui.ui import Ui_main_window as Ui
 from gui.signals import Navigation, Actions
 from tools import Tools
-from orm import orm
-from database.models import DATABASE_PATH
+from gui import orm
 
 
 class Main(QMainWindow, Tools):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.db_session = None
-        self.database = None
         self.db_items_queue = None
         self.navigation = None
         self.actions = None
         self.ui = None
 
-        def init_database():
-            if not database_exists(DATABASE_PATH):
-                raise psycopg2.DatabaseError("База данных не найдена!")
-            self.database = db
-            self.db_session = self.database.session
-
         def init_db_manager():
-            self.db_items_queue = orm.ORMHelper.set_up(self.db_session)
+            self.db_items_queue = orm.ORMHelper.initialization()
 
         def init_ui():
             def init_buttons():
@@ -63,8 +52,6 @@ class Main(QMainWindow, Tools):
 
         def init_actions():
             self.actions = Actions.set_up(self, self.ui)
-
-        init_database()
         init_db_manager()
         init_ui()
         init_styles()

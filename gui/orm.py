@@ -1,12 +1,18 @@
 import sys
+import copy
 import threading
 import traceback
 from typing import Union, Iterator, Iterable, Optional, Callable
 from pymemcache.client.base import Client
+from pymemcache.exceptions import MemcacheError
 from pymemcache_dill_serde import DillSerde
-from sqlalchemy.orm import Query
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import update, insert, delete, create_engine, text
+from sqlalchemy.sql.dml import Insert, Update, Delete
+from sqlalchemy.orm import Query, sessionmaker as session_factory
+from sqlalchemy.exc import IntegrityError, DisconnectionError
 from gui.datatype import LinkedList, LinkedListItem
-from database.models import CustomModel
+from database.models import CustomModel, DATABASE_PATH
 
 
 class ORMAttributes:
@@ -42,12 +48,12 @@ class ORMItem(LinkedListItem, ORMAttributes):
         self.__is_ready = kw.pop("_ready", True if self.__delete else False)
         self.__where = kw.pop("_where", None)
         self.__value = {}  # Содержимое - пары ключ-значение: поле таблицы бд: значение
-        self.__transaction_counter = 0  # Инкрементируется при вызове self.make_query()
+        self.__transaction_counter = kw.pop('_count_retries', 0)  # Инкрементируется при вызове self.make_query()
         # Подразумевая тем самым, что это попытка сделать транзакцию в базу
         if not kw:
             raise ValueError("Нет полей, нода пуста")
         self.__value.update(kw)
-        self.foreign_key_fields = tuple(self.__model.__table__.foreign_keys)
+        self._foreign_key_fields = tuple(self.__model.__table__.foreign_keys)
         _ = self.get_primary_key_and_value()  # test
 
     @property
@@ -57,6 +63,14 @@ class ORMItem(LinkedListItem, ORMAttributes):
     @property
     def model(self):
         return self.__model
+
+    @property
+    def retries(self):
+        return self.__transaction_counter
+
+    @property
+    def foreign_key_fields(self):
+        return self._foreign_key_fields
 
     def get_primary_key_and_value(self, as_tuple=False, only_key=False, only_value=False) -> Union[dict, tuple, int, str]:
         key = getattr(self.__model(), "__db_queue_primary_field_name__")
@@ -101,14 +115,12 @@ class ORMItem(LinkedListItem, ORMAttributes):
                 result.update({"_where": self.where})
         result.update({"_model": self.__model, "_insert": False,
                        "_update": False, "_ready": self.__is_ready,
-                       "_delete": False, "_callback": self.__callback})
+                       "_delete": False, "_callback": self.__callback, "_count_retries": self.retries})
         result.update({self.type: True})
         return result
 
     def make_query(self) -> Optional[Query]:
-        if self.__transaction_counter > 1:
-            return
-        if self.__transaction_counter == 1:
+        if self.__transaction_counter % 2:
             self.__insert, self.__update = self.__update, self.__insert
         query = None
         value: dict = self.value
@@ -116,7 +128,7 @@ class ORMItem(LinkedListItem, ORMAttributes):
         if self.__insert:
             if self.__model().__remove_pk__:
                 del value[primary_key]
-            query = self.model(**value)
+            query = self.model(value)
         if self.__update or self.__delete:
             where = self.__where
             if not where:
@@ -195,7 +207,7 @@ class ORMItemContainer(LinkedList):
     Очередь на основе связанного списка.
     Управляется через адаптер ORMHelper.
     Класс-контейнер умеет только ставить в очередь ((enqueue) зашита особая логика) и снимать с очереди (dequeue)
-    см логику в методе _initialize_node.
+    см логику в методе _replication.
     """
     LinkedListItem = ORMItem
 
@@ -207,24 +219,27 @@ class ORMItemContainer(LinkedList):
 
     def enqueue(self, **attrs):
         """ Установка ноды в конец очереди с хитрой логикой проверки на совпадение. """
-        exists_item, new_item = self._initialize_node(**attrs)
+        exists_item, new_item = self._replication(**attrs)
 
-        def check_foreign_key_nodes():  # O(n) * (O(k) + O(i) + O(i)) -> O(n) * O(j) -> O(n)
+        def check_foreign_key_nodes() -> ORMItemContainer:  # O(n) * (O(k) + O(i) + O(i)) -> O(n) * O(j) -> O(n)
             """
             Найти ноды, которые зависят от ноды, которая в настоящий момент добавляется:
-            если добавляемая ноды
-            Если такие ноды найдутся, то они будут удалены и добавлены в очередь снова.
+            Если такие ноды найдутся, то они будут удалены и добавлены в очередь снова
+            (перемена мест)
             """
             nodes_to_move_in_end_queue = self.__class__()
             new_item_primary_key_name = new_item.get_primary_key_and_value(only_key=True)
             for node in self:  # O(n)
                 if new_item_primary_key_name in node.foreign_key_fields:  # O(k)
                     nodes_to_move_in_end_queue.enqueue(**node.get_attributes())  # O(i)
+            new_container = self
             if nodes_to_move_in_end_queue:
-                self + nodes_to_move_in_end_queue  # O(i)
+                new_container = self + nodes_to_move_in_end_queue  # O(i)
+            return new_container
         self.__remove_from_queue(exists_item) if exists_item else None
-        super().append(self.LinkedListItem(**attrs))
-        check_foreign_key_nodes()
+        super().append(**new_item.get_attributes())
+        new_nodes = check_foreign_key_nodes()
+        self._replace_inner(new_nodes._head, new_nodes._tail)
 
     def dequeue(self) -> Optional[ORMItem]:
         """ Извлечение ноды с начала очереди """
@@ -239,6 +254,21 @@ class ORMItemContainer(LinkedList):
         if node:
             self.__remove_from_queue(node)
             return node
+
+    def get_related_nodes(self, node: ORMItem) -> "ORMItemContainer":
+        """ Получить все связанные (внешним ключом) с передаваемой нодой ноды.
+        O(i) * O(1) + O(n) = O(n)"""
+        container = self.__class__()
+        foreign_key_values = []
+        for fk_field in node.foreign_key_fields:  # O(i)
+            foreign_key_values.append(node.value[fk_field]) if fk_field in node.value else None  # O(1)
+        for node_item in self:  # O(n) * O(j) * O(m) * O(n) * O(1) = O(n)
+            if not node_item == node:  # O(g) * O(j) = O (j)
+                pk_field, pk_value = node_item.get_primary_key_and_value()
+                if pk_field in foreign_key_values:  # O(l)
+                    if pk_value == node.value[pk_field]:  # O(l) * O(m) * O(1) = O(l * m) = O(m)
+                        container.append(**node_item.get_attributes())  # O(1)
+        return container
 
     def search_nodes(self, model: CustomModel, negative_selection=False, **_filter) -> "ORMItemContainer":
         """
@@ -257,18 +287,18 @@ class ORMItemContainer(LinkedList):
                 return items
             if node.model.__name__ == model.__name__:  # O(u * k)
                 if not _filter and not negative_selection:
-                    items.enqueue(**node.get_attributes())
+                    items.append(**node.get_attributes())
                 for field_name, value in _filter.items():
                     if field_name in node.value:
                         if node.value[field_name] == value:
-                            items.enqueue(**node.get_attributes())  # O(i) i->n
+                            items.append(**node.get_attributes())
                         else:
                             items.remove(node.model, *node.get_primary_key_and_value(as_tuple=True))
         return items
 
     def get_node(self, model: CustomModel, **primary_key_data) -> Optional[ORMItem]:
         """
-        Данный метод используется при инициализации - _initialize_node
+        Данный метод используется при инициализации - _replication
         :arg model: объект модели
         :arg primary_key_data: словарь вида - {имя_первичного_ключа: значение}
         """
@@ -301,12 +331,27 @@ class ORMItemContainer(LinkedList):
     def __add__(self, other: "ORMItemContainer"):
         if not type(other) is self.__class__:
             raise TypeError
-        [self.enqueue(**n.get_attributes()) for n in other]
-        return self
+        result_instance = self.__class__()
+        [result_instance.append(**n.get_attributes()) for n in self]  # O(n)
+        [result_instance.enqueue(**n.get_attributes()) for n in other]  # O(n**2) todo n**2!
+        return result_instance
 
-    def _initialize_node(self, **new_node_complete_data: dict) -> tuple[Optional[ORMItem], ORMItem]:  # O(l * k) + O(n) + O(1) = O(n)
+    def __iadd__(self, other):
+        if not isinstance(other, type(self)):
+            raise TypeError
+        result = self + other
+        return result
+
+    def __sub__(self, other: "ORMItemContainer"):
+        if not isinstance(other, self.__class__):
+            raise TypeError
+        result_instance = copy.copy(self)
+        [result_instance.__remove_from_queue(n) for n in other]
+        return result_instance
+
+    def _replication(self, **new_node_complete_data: dict) -> tuple[Optional[ORMItem], ORMItem]:  # O(l * k) + O(n) + O(1) = O(n)
         """
-        Создавать ноды для добавления можно только здесь!
+        Создавать ноды для добавления можно только здесь! Логика для постаовки в очередь здесь.
         """
         potential_new_item = self.LinkedListItem(**new_node_complete_data)  # O(1)
         new_item = None
@@ -352,6 +397,96 @@ class ORMItemContainer(LinkedList):
         del self[node.index]
 
 
+class SQLAlchemyQueryManager:
+    def __init__(self, connection_path: str, nodes: "ORMItemContainer"):
+        if not isinstance(nodes, ORMItemContainer):
+            raise TypeError
+        if type(connection_path) is not str:
+            raise TypeError
+        self.path = connection_path
+        self.node_items = nodes
+        self.remaining_nodes = ORMItemContainer()
+        self._sorted: list[ORMItemContainer] = []  # [[save_point_group {pk: val,}], [save_point_group]...]
+        self._query_objects: dict[Union[Insert, Update, Delete]] = {}  # {node_index: obj}
+
+    def manage_queries(self):
+        if self._query_objects:
+            return self._query_objects
+        for node_grop in self._sort_nodes():
+            for node in node_grop:
+                self._query_objects.update({node.index: node.make_query()})
+                print(node.get_primary_key_and_value(only_value=True), node.type)
+        return self._query_objects
+
+    def open_connection_and_push(self):
+        sorted_data = self._sort_nodes()
+        if not sorted_data:
+            return
+        if not self._query_objects:
+            return
+        engine = create_engine(self.path)
+        engine.execution_options(isolation_level="SERIALIZABLE")
+        factory_instance = session_factory()
+        factory_instance.close_all()
+        factory_instance.configure(bind=engine)
+        session = factory_instance()
+        while sorted_data:
+            node_group = sorted_data.pop(-1)
+            if not node_group:
+                break
+            multiple_items_in_transaction = True if len(node_group) > 1 else False
+            has_error = False
+            point = None
+            if multiple_items_in_transaction:
+                point = session.begin_nested()
+            for node in node_group:
+                dml = self._query_objects.get(node.index)
+                if not node.type == "_delete":
+                    try:
+                        session.add(dml)
+                    except IntegrityError:
+                        self.remaining_nodes += node_group  # todo: O(n**2)!
+                        has_error = True
+                else:
+                    try:
+                        session.delete(dml)
+                    except IntegrityError:
+                        self.remaining_nodes += node_group  # todo: O(n**2)!
+                        has_error = True
+            if has_error:
+                if point:
+                    point.rollback()
+            else:
+                if not multiple_items_in_transaction:
+                    point = session
+                point.commit()
+        self._sorted = []
+        self._query_objects = {}
+
+    def _sort_nodes(self) -> list[ORMItemContainer]:
+        """ Сортировать ноды по признаку внешних ключей, определить точки сохранения для транзакций """
+        def make_sort_container(node_: ORMItem, linked_nodes: ORMItemContainer):
+            """
+            Рекурсивно искать ноды с внешними ключами
+            O(m) * (O(n) + O(j)) = O(n) * O(m) = O(n)
+            """
+            related_nodes = self.node_items.get_related_nodes(node_)  # O(n)
+            if not related_nodes:
+                linked_nodes.add_to_head(**node_.get_attributes())
+                return linked_nodes
+            return [make_sort_container(n, linked_nodes) for n in related_nodes]  # O(m)
+        if self._sorted:
+            return self._sorted
+        node = self.node_items.dequeue()
+        while node:  # todo: n**2
+            if node.ready:
+                self._sorted.append(make_sort_container(node, ORMItemContainer()))  # O(n) + O(1) = O(n)
+            else:
+                self.remaining_nodes.append(**node.get_attributes())
+            node = self.node_items.dequeue()
+        return self._sorted
+
+
 class ORMHelper(ORMAttributes):
     """
     Адаптер для ORMItemContainer
@@ -371,31 +506,26 @@ class ORMHelper(ORMAttributes):
         в случае неудачи нода переносится в конец очереди
         LinkToObj.remove_items - принудительное изъятие ноды из очереди.
     """
-    MEMCACHED_CONFIG = "127.0.0.1:11211"
-    _store: Optional[Client] = None
+    MEMCACHED_PATH = "127.0.0.1:11211"
+    MEMCACHED_RETRY_CONNECTION_SECONDS = 4 * 1000
+    DATABASE_RETRY_CONNECTION_SECONDS = 4 * 1000
+    DATABASE_PATH = DATABASE_PATH
+    _memcache_connection: Optional[Client] = None
+    _database_connection = None
     RELEASE_INTERVAL_SECONDS = 5.0
     CACHE_LIFETIME_HOURS = 6 * 60 * 60
     _timer: Optional[threading.Timer] = None
     _items: ORMItemContainer = ORMItemContainer()  # Temp
-    _session = None
     _model_obj: Optional[CustomModel] = None  # Текущий класс модели, присваиваемый автоматически всем экземплярам при добавлении в очередь
+    _was_initialized = False
 
     @classmethod
-    def set_up(cls, session):
+    def initialization(cls):
         if cls.CACHE_LIFETIME_HOURS <= cls.RELEASE_INTERVAL_SECONDS:
             raise Exception("Срок жизни кеша, который хранит очередь сохраняемых объектов не может быть меньше, "
                             "чем интервал отправки объектов в базу данных.")
-
-        def connect_to_storage():
-            store = Client(cls.MEMCACHED_CONFIG, serde=DillSerde)
-            return store
-
-        def drop_cache():
-            cls._store.flush_all()
-        cls._is_valid_session(session)
-        cls._session = session
-        cls._store = connect_to_storage()
-        #drop_cache()
+        cls._was_initialized = True
+        #cls.drop_cache()
         return cls
 
     @classmethod
@@ -408,10 +538,44 @@ class ORMHelper(ORMAttributes):
 
     @classmethod
     @property
+    def cache(cls):
+        if cls._memcache_connection is None:
+            try:
+                cls._memcache_connection = Client(cls.MEMCACHED_PATH, serde=DillSerde)
+            except MemcacheError:
+                print("Нет соединения с сервисом кеширования!")
+                retry_connect = threading.Timer(cls.MEMCACHED_RETRY_CONNECTION_SECONDS, cls.cache)
+                retry_connect.start()
+                retry_connect.join()
+            else:
+                print("Подключение к серверу memcached")
+        return cls._memcache_connection
+
+    @classmethod
+    def drop_cache(cls):
+        cls.cache.flush_all()
+
+    @classmethod
+    @property
+    def database(cls):
+        if cls._database_connection is None:
+            try:
+                cls._database_connection = SQLAlchemy(cls.DATABASE_PATH)
+            except DisconnectionError:
+                print("Ошибка соединения с базой данных!")
+                try_retry = threading.Timer(cls.DATABASE_RETRY_CONNECTION_SECONDS, cls.database)
+                try_retry.start()
+                try_retry.join()
+            else:
+                print("Подключение к базе данных")
+        return cls._database_connection
+
+    @classmethod
+    @property
     def items(cls) -> ORMItemContainer:
         if cls._items:
             return cls._items
-        items = cls._store.get("ORMItems")
+        items = cls.cache.get("ORMItems")
         if not items:
             items = ORMItemContainer()
         cls._items = items
@@ -479,8 +643,6 @@ class ORMHelper(ORMAttributes):
         2) Получаем данные из кеша, все элементы, у которых данная модель
         3) db_data.update(quque_data)
         """
-        #import time
-        #time.sleep(1)  # todo: Тестируем зарержку
         model = _model or cls._model_obj
         cls.is_valid_model_instance(model)
         if not attrs:
@@ -612,37 +774,43 @@ class ORMHelper(ORMAttributes):
         путём итерации по ним, и попыткой сохранить в базу данных.
         :return: None
         """
-        def enqueue(node):
-            enqueue_items.enqueue(**node.get_attributes())
-        is_nodes_in_session = False
-        enqueue_items = ORMItemContainer()
-        cls._items = cls.items
-        while True:
-            orm_element = cls._items.dequeue()
-            if orm_element is None:
-                break
-            if orm_element.ready:
-                query = orm_element.make_query()
-                if query:
-                    if orm_element.type == "_delete":
-                        cls._session.delete(query)
-                    else:
-                        cls._session.add(query)
-                    is_nodes_in_session = True
-            else:
-                enqueue(orm_element)
-        if is_nodes_in_session:
-            cls._session.commit()
-        cls.__set_cache(enqueue_items or None)
-        if len(enqueue_items):
-            cls.init_timer()
+        database_adapter = SQLAlchemyQueryManager(cls.DATABASE_PATH, cls.items)
+        database_adapter.manage_queries()
+        database_adapter.open_connection_and_push()
+        cls.__set_cache(database_adapter.remaining_nodes or None)
+        cls._timer = cls.init_timer() if database_adapter.remaining_nodes else None
+        print("remaining_nodes", database_adapter.remaining_nodes)
         sys.exit()
 
-    @staticmethod
-    def _is_valid_session(obj):  # todo: Пока не знаю как проверить
-        return
+    @classmethod
+    def __getattribute__(cls, item):
+        if not cls._was_initialized and not item == "initialization":
+            raise AttributeError("В первую очередь заупскается метод 'initialization'")
+        if not item == "set_model":
+            if cls._model_obj is None:
+                raise AttributeError("Сначала нужно установить модель Flask-SQLAlchemy, используя метод set_model")
+        super().__getattribute__(item)
 
     @classmethod
     def __set_cache(cls, container: Optional[ORMItemContainer]):
-        cls._store.set("ORMItems", container, cls.CACHE_LIFETIME_HOURS)
         cls._items = container
+        cls.cache.set("ORMItems", container, cls.CACHE_LIFETIME_HOURS)
+
+
+if __name__ == "__main__":
+    from database.models import Machine
+
+    i = ORMItemContainer()
+    i.enqueue(name="test", _model=Machine, _insert=True, machine_name="1")
+    i.enqueue(name="test_122", _model=Machine, _insert=True, machine_name="2")
+    i.enqueue(name="test_123", _model=Machine, _insert=True, machine_name="3")
+    print(len(i))
+    i.dequeue()
+    print(len(i))
+    i.dequeue()
+    print(len(i))
+    i.dequeue()
+    print(len(i))
+    print(i)
+
+
