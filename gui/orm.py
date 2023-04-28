@@ -128,7 +128,7 @@ class ORMItem(LinkedListItem, ORMAttributes):
         if self.__insert:
             if self.__model().__remove_pk__:
                 del value[primary_key]
-            query = self.model(value)
+            query = self.model(**value)
         if self.__update or self.__delete:
             where = self.__where
             if not where:
@@ -398,27 +398,33 @@ class ORMItemContainer(LinkedList):
 
 
 class SQLAlchemyQueryManager:
+    MAX_RETRIES = 4
+    
     def __init__(self, connection_path: str, nodes: "ORMItemContainer"):
         if not isinstance(nodes, ORMItemContainer):
             raise TypeError
         if type(connection_path) is not str:
             raise TypeError
         self.path = connection_path
-        self.node_items = nodes
-        self.remaining_nodes = ORMItemContainer()
+        self._node_items = nodes
+        self.remaining_nodes = ORMItemContainer()  # Отложенные для следующей попытки
         self._sorted: list[ORMItemContainer] = []  # [[save_point_group {pk: val,}], [save_point_group]...]
         self._query_objects: dict[Union[Insert, Update, Delete]] = {}  # {node_index: obj}
-
-    def manage_queries(self):
+        
+    def start(self):
+        self._sort_nodes()  # Упорядочить, разбить по savepoint
+        self._manage_queries()  # Обратиться к node.make_query, - собрать объекты sql-иньекций
+        self._open_connection_and_push()
+        
+    def _manage_queries(self):
         if self._query_objects:
             return self._query_objects
         for node_grop in self._sort_nodes():
             for node in node_grop:
                 self._query_objects.update({node.index: node.make_query()})
-                print(node.get_primary_key_and_value(only_value=True), node.type)
         return self._query_objects
 
-    def open_connection_and_push(self):
+    def _open_connection_and_push(self):
         sorted_data = self._sort_nodes()
         if not sorted_data:
             return
@@ -459,7 +465,10 @@ class SQLAlchemyQueryManager:
             else:
                 if not multiple_items_in_transaction:
                     point = session
-                point.commit()
+                try:
+                    point.commit()
+                except IntegrityError:
+                    self.remaining_nodes += node_group
         self._sorted = []
         self._query_objects = {}
 
@@ -470,20 +479,21 @@ class SQLAlchemyQueryManager:
             Рекурсивно искать ноды с внешними ключами
             O(m) * (O(n) + O(j)) = O(n) * O(m) = O(n)
             """
-            related_nodes = self.node_items.get_related_nodes(node_)  # O(n)
+            related_nodes = self._node_items.get_related_nodes(node_)  # O(n)
             if not related_nodes:
                 linked_nodes.add_to_head(**node_.get_attributes())
                 return linked_nodes
             return [make_sort_container(n, linked_nodes) for n in related_nodes]  # O(m)
         if self._sorted:
             return self._sorted
-        node = self.node_items.dequeue()
+        node = self._node_items.dequeue()
         while node:  # todo: n**2
-            if node.ready:
-                self._sorted.append(make_sort_container(node, ORMItemContainer()))  # O(n) + O(1) = O(n)
-            else:
-                self.remaining_nodes.append(**node.get_attributes())
-            node = self.node_items.dequeue()
+            if node.retries < self.MAX_RETRIES:
+                if node.ready:
+                    self._sorted.append(make_sort_container(node, ORMItemContainer()))  # O(n) + O(1) = O(n)
+                else:
+                    self.remaining_nodes.append(**node.get_attributes())
+            node = self._node_items.dequeue()
         return self._sorted
 
 
@@ -775,8 +785,7 @@ class ORMHelper(ORMAttributes):
         :return: None
         """
         database_adapter = SQLAlchemyQueryManager(cls.DATABASE_PATH, cls.items)
-        database_adapter.manage_queries()
-        database_adapter.open_connection_and_push()
+        database_adapter.start()
         cls.__set_cache(database_adapter.remaining_nodes or None)
         cls._timer = cls.init_timer() if database_adapter.remaining_nodes else None
         print("remaining_nodes", database_adapter.remaining_nodes)
