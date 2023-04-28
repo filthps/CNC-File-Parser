@@ -3,6 +3,8 @@ import threading
 from typing import Union, Iterator, Optional, Sequence, Callable
 from itertools import count, cycle
 from PySide2.QtCore import Qt, QPoint, QSize
+from PySide2.QtCore import QObject, QThread, QRunnable, QThreadPool
+from PySide2.QtCore import Signal, Slot, SIGNAL
 from PySide2.QtGui import QPixmap, QPainter, QPalette, QFont
 from PySide2.QtWidgets import QMainWindow, QTabWidget, QStackedWidget, QPushButton, QDialogButtonBox,\
     QDialog, QLabel, QVBoxLayout, QLineEdit, \
@@ -114,88 +116,6 @@ class Tools:
 
         icon = QIcon(path)
         [b.setIcon(icon) for b in gen()]
-
-
-class CustomThread(threading.Thread):
-    def __init__(self, target, *args, **kwargs):
-        self.factory: UiLoaderThreadFactory = kwargs.pop("factory_instance")
-        super().__init__(target=target, args=args, kwargs=kwargs)
-
-    def run(self) -> None:
-        if self.factory.lock_ui_level == "lock_on_timer":
-            self.factory.start_timer()
-        if self.factory.lock_ui_level == "lock_immediately":
-            self.factory.show_banner()
-        super().run()
-        self.factory.stop_timer_and_remove_banner()
-
-
-class UiLoaderThreadFactory:
-    """ Класс, экземпляр которого содержит поток для работы с базой данных,
-      Если время превышает константное значение, то UI блокируется и ставит progressbar.
-      Используется как декоратор
-      """
-    LOCK_UI_SECONDS = 0.1
-    _main_application: Optional[QMainWindow] = None
-    _thread: Optional[threading.Thread] = None
-
-    def __init__(self, lock_ui="no_lock", banner_text="Загрузка..."):
-        """
-        :param lock_ui: Степень блокировки интерфейса:
-        no_lock - не показывать банер вообще (всё что происходит в потоке отдельном от ui, происходит незаметно на стороне ui)
-        lock_on_timer - показ банера, блокирующего ui, если поток работает слишком долго, см константа LOCK_UI_SECONDS.
-        lock_immediately - показ банера сразу
-        :param banner_text: Текст баннера
-        """
-        if not isinstance(lock_ui, str):
-            raise TypeError
-        if lock_ui not in ("no_lock", "lock_on_timer", "lock_immediately",):
-            raise ValueError
-        if not type(banner_text) is str:
-            raise TypeError
-        self.lock_ui_level = lock_ui
-        self._banner_text = banner_text
-        self._timer: Optional[threading.Timer] = None
-        self._banner_item: Optional[QSplashScreen] = None
-
-    @classmethod
-    def set_application(cls, instance):
-        if not isinstance(instance, (QMainWindow, QTabWidget,)):
-            raise TypeError
-        cls._main_application = instance
-
-    def start_timer(self):
-        timer = threading.Timer(float(self.LOCK_UI_SECONDS), self.show_banner, args=(self._banner_item,),
-                                kwargs={"text": self._banner_text})
-        timer.start()
-        self._timer = timer
-
-    def stop_timer_and_remove_banner(self):
-        self._timer.cancel() if self._timer else None
-        if self._banner_item:
-            self._banner_item.clearMessage()
-            self._banner_item.close()
-            self._banner_item.finish(self._main_application)
-            self._main_application.update()
-
-    def show_banner(self):
-        self._banner_item.show()
-        self._banner_item.showMessage(self._banner_text) if self._banner_text else None
-
-    def __call__(self, func: Callable):
-        def wrapper(*args, **kwargs):
-            def init_splash_item():
-                pixmap = QPixmap("static/img/gear.png")
-                pixmap.scaled(QSize(20, 20), Qt.KeepAspectRatio)
-                banner = QSplashScreen(pixmap)
-                return banner
-            if not self._main_application:
-                raise AttributeError("Перед использованием необходимо использовать метод 'set_application', "
-                                     "указав в нем экземпляр QMainWindow")
-            self.banner_item = init_splash_item()
-            self._thread = CustomThread(func, *args, factory_instance=self, **kwargs)
-            self._thread.start()
-        return wrapper
 
 
 class MyAbstractDialog(QDialog):
@@ -312,8 +232,9 @@ class Constructor:
 
         def set_signals():
             dialog.accepted.connect(get_value if ok_callback is not None else None)
+            dialog.accepted.connect(window.close)
             dialog.rejected.connect(cancel_callback)
-            dialog.rejected.connect(lambda: window.close())
+            dialog.rejected.connect(window.close)
         input_ = QLineEdit()
         ok_button, cancel_button = QDialogButtonBox.Ok, QDialogButtonBox.Cancel
         window = MyAbstractDialog(self.instance, buttons=(ok_button, cancel_button))

@@ -1,14 +1,14 @@
 import re
-import random
 from typing import Optional
 from PySide2.QtCore import Slot
-from PySide2.QtWidgets import QListWidgetItem, QLineEdit
+from PySide2.QtWidgets import QListWidgetItem, QLineEdit, QComboBox
 from PySide2.QtWidgets import QFileDialog
 from gui.validation import Validator
 from database.models import Cnc, Machine
-from orm import orm
+from gui import orm
 from gui.ui import Ui_main_window as Ui
-from gui.tools import Constructor, Tools, UiLoaderThreadFactory
+from gui.tools import Constructor, Tools
+from gui.threading import QThreadInstanceDecorator
 
 
 class OptionsPageCreateMachine(Constructor, Tools):
@@ -39,41 +39,42 @@ class OptionsPageCreateMachine(Constructor, Tools):
         def set_db_manager_model():
             self.db_items.set_model(Machine)
 
-        def init_thread_factory():
-            UiLoaderThreadFactory.set_application(main_app_instance)
-
         set_db_manager_model()
-        init_thread_factory()
         init_validator()
         self.reload()
         self.connect_main_signals()
 
-    def reload(self):
+    def reload(self, create_thread=True):
         """ Очистить поля и обновить данные из базы данных """
 
-        @UiLoaderThreadFactory(lock_ui="no_lock")
-        def insert_machines_from_db():
-            machines = self.db_items.get_items()
+        def callback(machines, cnc_items):
+            self.ui.add_machine_list_0.clear()
             for data in machines:
                 name = data.pop('machine_name')
                 item = QListWidgetItem(name)
                 self.ui.add_machine_list_0.addItem(item)
                 if self.db_items.is_node_from_cache(machine_name=name):
                     self.validator.set_not_complete_edit_attributes(item)
+            self.clear_property_fields()
+            self.insert_all_cnc_from_db(cnc_items)
+            self.select_machine_item()
+            self.connect_fields_signals()
 
-        def auto_select_machine_item(index=0):
-            machine_item: QListWidgetItem = self.ui.add_machine_list_0.takeItem(index)
-            self.ui.add_machine_list_0.addItem(machine_item)
-            self.ui.add_machine_list_0.setItemSelected(machine_item, True)
-            self.ui.add_machine_list_0.setCurrentItem(machine_item)
-            self.select_machine(machine_item)
-        self.disconnect_fields_signals()
-        self.clear_property_fields()
-        self.ui.add_machine_list_0.clear()
-        self.insert_all_cnc_from_db()
-        insert_machines_from_db()
-        auto_select_machine_item()
-        self.connect_fields_signals()
+        @QThreadInstanceDecorator(result_callback=callback, in_new_qthread=create_thread)
+        def load_items():
+            machines = self.db_items.get_items()
+            cnc_items = self.db_items.get_items(_model=Cnc, _db_only=True)
+            return machines, cnc_items
+        load_items()
+
+    def select_machine_item(self, index=0) -> Optional[QListWidgetItem]:
+        machine_item: QListWidgetItem = self.ui.add_machine_list_0.takeItem(index)
+        if machine_item is None:
+            return
+        self.ui.add_machine_list_0.addItem(machine_item)
+        self.ui.add_machine_list_0.setItemSelected(machine_item, True)
+        self.ui.add_machine_list_0.setCurrentItem(machine_item)
+        return machine_item
 
     def connect_main_signals(self):
         """
@@ -81,12 +82,12 @@ class OptionsPageCreateMachine(Constructor, Tools):
         """
         self.ui.add_button_0.clicked.connect(self.add_machine)
         self.ui.remove_button_0.clicked.connect(self.remove_machine)
-        self.ui.add_machine_list_0.currentItemChanged.connect(lambda current, prev: self.select_machine(current))
 
     def connect_fields_signals(self):
         """
         Поключение временных сигналов редактируемых полях
         """
+        self.ui.add_machine_list_0.currentItemChanged.connect(lambda current, prev: self.select_machine(current))
         self.ui.choice_cnc.textActivated.connect(lambda str_: self.change_cnc(str_))
         self.ui.add_machine_input.clicked.connect(lambda: self.choice_folder("lineEdit_10"))
         self.ui.add_machine_output.clicked.connect(lambda: self.choice_folder("lineEdit_21"))
@@ -105,6 +106,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
         не вызывали сигналы, которые,  в свою очередь, инициируют UPDATE в БД.
         """
         try:
+            self.ui.add_machine_list_0.currentItemChanged.disconnect()
             self.ui.choice_cnc.textActivated.disconnect()
             self.ui.add_machine_input.clicked.disconnect()
             self.ui.add_machine_output.clicked.disconnect()
@@ -118,13 +120,11 @@ class OptionsPageCreateMachine(Constructor, Tools):
         except RuntimeError:
             print("ИНФО. Отключаемые сигналы не были подключены")
 
-    @UiLoaderThreadFactory(lock_ui="no_lock")
-    def insert_all_cnc_from_db(self) -> None:
+    def insert_all_cnc_from_db(self, cnc_items) -> None:
         """
         Запрос из БД и установка возможных значений в combo box - 'стойки',
         наполнение словаря self.cnc_names
         """
-        cnc_items = self.db_items.get_items(model=Cnc, db_only=True)
         for data in cnc_items:
             cnc_name = data["name"]
             self.cnc_names.update({data["cncid"]: cnc_name})
@@ -132,117 +132,132 @@ class OptionsPageCreateMachine(Constructor, Tools):
 
     @Slot(str)
     def choice_folder(self, line_edit_widget: str):
-        def update_data(value):
+        selected_directory_name = QFileDialog.getExistingDirectory()
+        if selected_directory_name:
             field: QLineEdit = getattr(self.ui, line_edit_widget)
-            field.setText(value)
+            field.setText(selected_directory_name)
             self.update_data(line_edit_widget)
-        dialog = QFileDialog.getExistingDirectory()
-        if dialog:
-            update_data(dialog)
 
     @Slot(object)
-    def select_machine(self, machine_item: QListWidgetItem):
+    def select_machine(self, machine_: QListWidgetItem):
         """ Обновить данные при select в QListWidget -
         обновить все поля свойств станка (поля - Характеристики)"""
-        if not machine_item:
-            return
-        name = machine_item.text()
-        machine = self.db_items.get_item(machine_name=name)
-        if not machine:
-            self.reload()
-            return
-        self.disconnect_fields_signals()
-        self.clear_property_fields()
-        self.insert_all_cnc_from_db()
-        cm_box_values = {}
-        cnc_name = self.cnc_names.get(machine.pop("cncid", None))
-        cm_box_values.update({"name": cnc_name}) if cnc_name else None
-        self.update_fields(line_edit_values=machine, combo_box_values=cm_box_values)
-        self.connect_fields_signals()
-        self.validator.set_machine(machine_item)
+        def insert_machine_info_in_ui(machine_instance, cnc_items):
+            self.disconnect_fields_signals()
+            if not machine_instance:
+                self.reload()
+                return
+            self.clear_property_fields()
+            self.insert_all_cnc_from_db(cnc_items)
+            cm_box_values = {}
+            cnc_name = self.cnc_names.get(machine_instance.pop("cncid", None))
+            cm_box_values.update({"name": cnc_name}) if cnc_name else None
+            self.update_fields(line_edit_values=machine_instance, combo_box_values=cm_box_values)
+            self.validator.set_machine(machine_)
+            self.connect_fields_signals()
+
+        @QThreadInstanceDecorator(result_callback=insert_machine_info_in_ui)
+        def load_selected_machine():
+            machine = self.db_items.get_item(machine_name=machine_item_name)
+            cncs = self.db_items.get_items(_model=Cnc, _db_only=True)
+            return machine, cncs
+        machine_item_name = machine_.text()
+        load_selected_machine()
 
     @Slot()
     def add_machine(self):
         def error(machine_name: str):
             def callback():
                 dialog_.close()
-                self.reload()
+                self.reload(create_thread=False)
             dialog_ = self.get_alert_dialog("Ошибка", f"Станок {machine_name} уже добавлен",
                                             callback=callback)
             dialog_.show()
 
-        @UiLoaderThreadFactory(lock_ui="no_lock")
         def add(machine_name):
-            print(dialog)
+            @QThreadInstanceDecorator(result_callback=lambda: self.reload(create_thread=False))
+            def inner():
+                if self.db_items.get_item(machine_name=machine_name):
+                    error(machine_name)
+                    return
+                self.db_items.set_item(machine_name=machine_name, _insert=True)
             if not machine_name:
                 return
-            if self.db_items.get_item(machine_name=machine_name):
-                error(machine_name)
-                dialog.close()
-                return
-            self.db_items.set_item(machine_name=machine_name, insert=True)
-            self.reload()
-            dialog.close()
+            inner()
         dialog = self.get_prompt_dialog("Введите название станка", ok_callback=add)
         dialog.show()
 
     @Slot()
     def remove_machine(self):
-        @UiLoaderThreadFactory(lock_ui="lock_on_timer")
         def ok():
+            @QThreadInstanceDecorator(result_callback=lambda: self.reload(create_thread=False))
+            def process(name):
+                self.db_items.set_item(_delete=True, machine_name=name)
             item: QListWidgetItem = self.ui.add_machine_list_0.currentItem()
-            item_name = item.text()
-            self.db_items.set_item(delete=True, where={"machine_name": item_name}, ready=True)
             dialog.close()
-            self.reload()
+            process(item.text())
         dialog = self.get_confirm_dialog("Удалить станок?", "Внимание! Информация о свойствах станка будетм утеряна",
                                          ok_callback=ok)
         dialog.show()
 
     @Slot(str)
-    def update_data(self, field_name):
+    def update_data(self, field_n):
         """ Обновление записей в базе """
+        @QThreadInstanceDecorator()
+        def save_data(field_name: str, field_value: str, machine_n: str):
+            def check_machine_is_exists():
+                m = self.db_items.get_item(_model=Machine, machine_name=machine_n)
+                if not m:
+                    self.reload(create_thread=False)
+            check_machine_is_exists()
+            exists_node_type = self.db_items.get_node_dml_type(machine_n)
+            sql_column_name = self._UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]
+            self.db_items.set_item(**{sql_column_name: self.check_output_values(field_name, value)},
+                                   _ready=self.validator.refresh(), machine_name=machine_n,
+                                   **{("_update" if exists_node_type == "_update" else "_insert"): True})
         active_machine = self.ui.add_machine_list_0.currentItem()
         if active_machine is None:
             return
+        value = getattr(self.ui, field_n).text()
         machine_name = active_machine.text()
-        value = getattr(self.ui, field_name).text()
-        exists_node_type = self.db_items.get_node_dml_type(machine_name, model=Machine)
-        sql_column_name = self._UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]
-        self.validator.refresh()
-        self.db_items.set_item(**{
-            sql_column_name: self.check_output_values(field_name, value)
-        }, ready=self.validator.is_valid, where={"machine_name": machine_name},
-                               **{("update" if exists_node_type == "update" else "insert"): True})
+        save_data(field_n, value, machine_name)
 
     @Slot(str)
-    def change_cnc(self, item):
-        if not item:
+    def change_cnc(self, cnc_name):
+
+        @QThreadInstanceDecorator()
+        def check_exists_machine_and_cnc_and_update_data(current_machine_name: str, selected_cnc_name: str):
+            machine = self.db_items.get_item(machine_name=current_machine_name)
+            cnc = self.db_items.get_item(_model=Cnc, name=selected_cnc_name)
+            if not cnc or not machine:
+                self.reload(create_thread=False)
+            if selected_cnc_name == self._COMBO_BOX_DEFAULT_VALUES:
+                self.db_items.remove_field_from_node(selected_machine_name, "cncid")
+                return
+            self.db_items.set_item(cncid=cnc["cncid"],
+                                   machine_name=current_machine_name,
+                                   _update=True, _ready=self.validator.refresh())
+        if not cnc_name:
             return
         selected_machine = self.ui.add_machine_list_0.currentItem()
         if not selected_machine:
             return
         selected_machine_name = selected_machine.text()
-        if item == self._COMBO_BOX_DEFAULT_VALUES:
-            del self.db_items.items[selected_machine_name]["cncid"]
-            self.validator.refresh()
-            return
-        cnc_db_instance = self.db_items.get_item(model=Cnc, name=item)
-        if not cnc_db_instance:
-            self.reload()
-            return
-        machine_instance = self.db_items.get_item(machine_name=selected_machine_name)
-        if not machine_instance:
-            self.reload()
-            return
-        self.validator.select_cnc()
-        self.db_items.set_item(cncid=cnc_db_instance["cncid"],
-                               machine_name=selected_machine_name,
-                               update=True, ready=self.validator.is_valid)
+        check_exists_machine_and_cnc_and_update_data(selected_machine_name, cnc_name)
 
     def clear_property_fields(self) -> None:
         super().reset_fields_to_default()
         self.cnc_names = {}
+
+    def set_fields_state(self, disabled=False):
+        for field_name in self._UI__TO_SQL_COLUMN_LINK__COMBO_BOX:
+            item: QComboBox = getattr(self.ui, field_name)
+            item.setDisabled(disabled)
+        for field_name in self._UI__TO_SQL_COLUMN_LINK__LINE_EDIT:
+            item: QLineEdit = getattr(self.ui, field_name)
+            item.setDisabled(disabled)
+        self.ui.add_machine_input.setDisabled(disabled)
+        self.ui.add_machine_output.setDisabled(disabled)
 
 
 class AddMachinePageValidation(Validator):
