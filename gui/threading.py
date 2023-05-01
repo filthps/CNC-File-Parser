@@ -22,10 +22,11 @@ class Task(QRunnable):
 
     def run(self):
         result: Any = self.func(*self.args, **self.kwargs)
+        tuple_ = result
         if type(result) is not tuple:
             tuple_ = (result,)
         try:
-            tuple_ = dill.dumps(result)
+            tuple_ = dill.dumps(tuple_)
         except dill.PicklingError as err:
             print("Не удалось вернуть данные главному потоку!")
             tuple_ = (None,)
@@ -34,6 +35,8 @@ class Task(QRunnable):
 
 class QThreadInstanceDecorator:
     threadpool = QThreadPool()
+    threadpool.setMaxThreadCount(32)
+    threadpool.setExpiryTimeout(5000)
 
     def __init__(self, result_callback=None, in_new_qthread=True):
         self.task = None
@@ -46,7 +49,7 @@ class QThreadInstanceDecorator:
             if self.create_new_task:
                 self.task = Task(call_f, *a, **k)
                 if self.end_f is not None:
-                    def callback(serialized_data: Optional[tuple]):
+                    def callback(serialized_data):
                         deserialized = dill.loads(serialized_data)
                         if deserialized is None:
                             self.end_f()
@@ -56,5 +59,5 @@ class QThreadInstanceDecorator:
                 self.threadpool.globalInstance().start(self.task)
                 return
             result = call_f(*a, **k)
-            self.end_f(result)
+            self.end_f(*result)
         return outer
