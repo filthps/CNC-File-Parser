@@ -122,10 +122,9 @@ def init_condition_table_triggers():
                 SELECT 1
                 FROM cond
                 WHERE (parent=NEW.parent OR NEW.parent IS NULL AND parent IS NULL)
+                AND stringid=NEW.stringid OR NEW.stringid IS NULL AND stringid IS NULL
+                AND target=NEW.target
                 AND conditionbooleanvalue=NEW.conditionbooleanvalue
-                AND (useheadvarible=NEW.useheadvarible OR NEW.useheadvarible IS NULL AND useheadvarible IS NULL)
-                AND conditionstring=NEW.conditionstring
-                AND conditionvalue=NEW.conditionvalue
                 AND isntfindfull=NEW.isntfindfull
                 AND isntfindpart=NEW.isntfindpart
                 AND findfull=NEW.findfull
@@ -181,51 +180,25 @@ def init_condition_table_triggers():
     """)
 
     db.engine.execute("""
-        CREATE OR REPLACE FUNCTION check_parent_condition() RETURNS trigger
+        CREATE OR REPLACE FUNCTION check_basestring_or_headvarible() RETURNS trigger
         AS $body$
-        DECLARE
-            counter smallint := 0;
         BEGIN
-            IF NEW.parent IS NOT NULL
-            THEN
-                SELECT counter + (CASE WHEN NEW.parentconditiontrue THEN 1 ELSE 0 END) INTO counter;
-                SELECT counter + (CASE WHEN NEW.parentconditionfalse THEN 1 ELSE 0 END) INTO counter;
-                IF counter != 1 THEN 
-                    RAISE EXCEPTION 'Недействительные опции для родительского условия';
-                    END IF;
+            IF (SELECT TRUE
+            FROM varsec
+            WHERE conditionid=NEW.cnd) AND NEW.stringid IS NOT NULL THEN
+                RAISE EXCEPTION 'Условие работает либо по значению переменной шапки, либо по поисковой строке. Недопустимо и то и другое одновременно.';
+            ELSE
+                RETURN NEW;
             END IF;
-            RETURN NEW;
         END; $body$
         LANGUAGE PLPGSQL
     """)
 
     db.engine.execute("""
-        CREATE TRIGGER check_parent_condition_if
+        CREATE TRIGGER check_input
         BEFORE INSERT OR UPDATE
         ON cond FOR EACH ROW
-        EXECUTE PROCEDURE check_parent_condition();
-    """)
-
-    db.engine.execute("""
-        CREATE OR REPLACE FUNCTION check_exists_headvar() RETURNS trigger
-        AS $body$
-        BEGIN
-            IF NEW.useheadvarible THEN
-                IF NOT EXISTS(SELECT TRUE
-                FROM varsec
-                WHERE conditionid=NEW.cnd) THEN RAISE EXCEPTION 'Значение столбца useheadvarible - TRUE, не был найден внешний ключ в таблице делегации переменных шапки - varsec';
-                END IF;
-            END IF;
-            RETURN NEW;
-        END; $body$
-        LANGUAGE PLPGSQL
-    """)
-
-    db.engine.execute("""
-        CREATE TRIGGER exists_headvar_checker
-        BEFORE INSERT OR UPDATE
-        ON cond FOR EACH ROW
-        EXECUTE PROCEDURE check_exists_headvar();
+        EXECUTE PROCEDURE check_basestring_or_headvarible();
     """)
 
 
@@ -611,12 +584,9 @@ def init_headvarible_table_triggers():
             IF EXISTS(
                 SELECT 1
                 FROM headvar
-                WHERE name=NEW.name
-                AND separator=new.separator
-                AND select_all=NEW.select_all
-                AND select_numbers=NEW.select_numbers
-                AND select_string=NEW.select_string
-                AND select_reg=NEW.select_reg 
+                WHERE name=NEW.name AND
+                cncid=NEW.cncid AND
+                strid=NEW.strid
                 ) THEN
                     RAISE EXCEPTION 'Данный экземпляр сущности уже существует';
                 ELSE
@@ -633,38 +603,6 @@ def init_headvarible_table_triggers():
         EXECUTE PROCEDURE headvarible_count_instances();
         """)
 
-    db.engine.execute("""
-        CREATE OR REPLACE FUNCTION headvar_check_select_options() RETURNS trigger
-        AS $body$
-        DECLARE
-            select_counter smallint := 0;
-            isnotexists_counter smallint := 0;
-        BEGIN
-            SELECT select_counter + (CASE WHEN NEW.select_all THEN 1 ELSE 0 END) INTO select_counter;
-            SELECT select_counter + (CASE WHEN NEW.select_numbers THEN 1 ELSE 0 END) INTO select_counter;
-            SELECT select_counter + (CASE WHEN NEW.select_string THEN 1 ELSE 0 END) INTO select_counter;
-            SELECT select_counter + (CASE WHEN NEW.select_reg IS NOT NULL THEN 1 ELSE 0 END) INTO select_counter;
-            SELECT isnotexists_counter + (CASE WHEN NEW.isnotexistsdonothing THEN 1 ELSE 0 END) INTO isnotexists_counter;
-            SELECT isnotexists_counter + (CASE WHEN NEW.isnotexistsvalue IS NOT NULL THEN 1 ELSE 0 END) INTO isnotexists_counter;
-            SELECT isnotexists_counter + (CASE WHEN NEW.isnotexistsbreak THEN 1 ELSE 0 END) INTO isnotexists_counter;
-            IF isnotexists_counter != 1 THEN
-                RAISE EXCEPTION 'Недействительные опции isnotexists*, - не выбрано ни одной, или выбрано несколько';
-            END IF;
-            IF select_counter != 1 THEN
-                RAISE EXCEPTION 'Недействительные опции select_*, - не выбрано ни одной, или выбрано несколько';
-            END IF;
-            RETURN NEW;
-        END; $body$
-        LANGUAGE PLPGSQL
-        """)
-
-    db.engine.execute("""
-        CREATE TRIGGER check_headvarible_select_options
-        BEFORE INSERT OR UPDATE
-        ON headvar FOR EACH ROW
-        EXECUTE PROCEDURE headvar_check_select_options();
-        """)
-
 
 def init_headvardelegation_table_triggers():
     db.engine.execute("""
@@ -677,6 +615,7 @@ def init_headvardelegation_table_triggers():
                 AND (insertid=NEW.insertid OR NEW.insertid IS NULL AND insertid IS NULL)
                 AND (renameid=NEW.renameid OR NEW.renameid IS NULL AND renameid IS NULL)
                 AND (conditionid=NEW.conditionid OR NEW.conditionid IS NULL AND conditionid IS NULL)
+                AND description=NEW.description
             ) THEN 
                 RAISE EXCEPTION 'Данный экземпляр сущности уже существует';
             ELSE
@@ -744,6 +683,32 @@ def init_taskdelegation_table_triggers():
         """)
 
 
+def init_searchstring_table_triggers():
+    db.engine.execute("""
+        CREATE OR REPLACE FUNCTION search_other_item() RETURNS trigger
+        AS $body$
+        BEGIN
+            IF EXISTS(SELECT 1
+            FROM sstring
+            WHERE leftseparatorindex=NEW.leftseparatorindex AND
+            rightseparatorindex=NEW.rightseparatorindex AND
+            inner_=NEW.inner_) THEN 
+                RAISE EXCEPTION 'Данный экземпляр сущности уже существует';
+            ELSE
+                RETURN NEW;
+            END IF;
+        END; $body$
+        LANGUAGE PLPGSQL
+    """)
+
+    db.engine.execute("""
+        CREATE TRIGGER check_unique_searchstring
+        BEFORE INSERT OR UPDATE
+        ON sstring FOR EACH ROW
+        EXECUTE PROCEDURE search_other_item();
+    """)
+
+
 if __name__ == "__main__":
     init_rename_table_triggers()
     init_uncomment_table_triggers()
@@ -759,3 +724,4 @@ if __name__ == "__main__":
     init_headvarible_table_triggers()
     init_headvardelegation_table_triggers()
     init_taskdelegation_table_triggers()
+    init_searchstring_table_triggers()

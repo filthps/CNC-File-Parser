@@ -2,7 +2,7 @@
 Назначить каждому классу модели атрибут __db_queue_primary_field_name__, который необходим для класса tools.ORMHelper
 """
 from uuid import uuid4
-from sqlalchemy import String, Integer, Column, Boolean, CheckConstraint
+from sqlalchemy import String, Integer, Column, ForeignKey, Boolean, SmallInteger, Text, CheckConstraint
 from sqlalchemy.orm import relationship
 from flask_sqlalchemy import SQLAlchemy as FlaskSQLAlchemy
 from flask import Flask
@@ -79,15 +79,15 @@ class TaskDelegation(db.Model, ModelController):
     __tablename__ = "taskdelegate"
     __db_queue_primary_field_name__ = "id"
     id = Column(String, primary_key=True, default=get_uuid)
-    machineid = Column(db.ForeignKey("machine.machineid"), nullable=False)
-    operationid = Column(db.ForeignKey("operation.opid"), nullable=False)
+    machineid = Column(ForeignKey("machine.machineid"), nullable=False)
+    operationid = Column(ForeignKey("operation.opid"), nullable=False)
 
 
 class Machine(db.Model, ModelController):
     __tablename__ = "machine"
     __db_queue_primary_field_name__ = "machine_name"
     machineid = Column(Integer, primary_key=True, autoincrement=True)
-    cncid = Column(Integer, db.ForeignKey("cnc", ondelete="SET NULL", onupdate="SET NULL"), nullable=True)
+    cncid = Column(Integer, ForeignKey("cnc", ondelete="SET NULL", onupdate="SET NULL"), nullable=True)
     machine_name = Column(String(100), unique=True, nullable=False)
     x_over = Column(Integer, nullable=True, default=None)
     y_over = Column(Integer, nullable=True, default=None)
@@ -117,14 +117,14 @@ class Operation(db.Model, ModelController):
     __tablename__ = "operation"
     __db_queue_primary_field_name__ = "operation_description"
     opid = Column(String, primary_key=True, default=get_uuid)
-    conditionid = Column(String, db.ForeignKey("cond.cnd"), nullable=True, default=None)
-    insertid = Column(Integer, db.ForeignKey("insert.insid"), nullable=True, default=None)
-    commentid = Column(Integer, db.ForeignKey("comment.commentid"), nullable=True, default=None)
-    uncommentid = Column(Integer, db.ForeignKey("uncomment.id"), nullable=True, default=None)
-    removeid = Column(Integer, db.ForeignKey("remove.removeid"), nullable=True, default=None)
-    renameid = Column(Integer, db.ForeignKey("renam.renameid"), nullable=True, default=None)
-    replaceid = Column(Integer, db.ForeignKey("repl.replaceid"), nullable=True, default=None)
-    numerationid = Column(Integer, db.ForeignKey("num.numerationid"), nullable=True, default=None)
+    conditionid = Column(String, ForeignKey("cond.cnd"), nullable=True, default=None)
+    insertid = Column(Integer, ForeignKey("insert.insid"), nullable=True, default=None)
+    commentid = Column(Integer, ForeignKey("comment.commentid"), nullable=True, default=None)
+    uncommentid = Column(Integer, ForeignKey("uncomment.id"), nullable=True, default=None)
+    removeid = Column(Integer, ForeignKey("remove.removeid"), nullable=True, default=None)
+    renameid = Column(Integer, ForeignKey("renam.renameid"), nullable=True, default=None)
+    replaceid = Column(Integer, ForeignKey("repl.replaceid"), nullable=True, default=None)
+    numerationid = Column(Integer, ForeignKey("num.numerationid"), nullable=True, default=None)
     is_active = Column(Boolean, default=True, nullable=False)
     operation_description = Column(String(300), default="", nullable=False)
     machines = relationship("Machine", secondary=TaskDelegation.__table__)
@@ -134,11 +134,10 @@ class Condition(db.Model, ModelController):
     __tablename__ = "cond"
     __db_queue_primary_field_name__ = "cnd"
     cnd = Column(String, primary_key=True, default=get_uuid)
-    useheadvarible = Column(Boolean, nullable=False, default=False)
+    parent = Column(String, ForeignKey("cond.cnd", ondelete="SET NULL", onupdate="CASCADE"), nullable=True, default=None)
+    stringid = Column(ForeignKey("sstring.strid", ondelete="CASCADE", onupdate="CASCADE"), nullable=True, default=None)
+    target = Column(String, nullable=False, default="")
     conditionbooleanvalue = Column(Boolean, default=True, nullable=False)
-    parent = Column(String, db.ForeignKey("cond.cnd"), nullable=True, default=None)
-    conditionstring = Column(String(100), nullable=False, default="")
-    conditionvalue = Column(String(100), nullable=False, default="")
     isntfindfull = Column(Boolean, default=False, nullable=False)
     isntfindpart = Column(Boolean, default=False, nullable=False)
     findfull = Column(Boolean, default=False, nullable=False)
@@ -147,11 +146,6 @@ class Condition(db.Model, ModelController):
     equal = Column(Boolean, default=False, nullable=False)
     less = Column(Boolean, default=False, nullable=False)
     larger = Column(Boolean, default=False, nullable=False)
-    __table_args__ = (
-        CheckConstraint("conditionstring!=''", name="cond_targetstr_empty"),
-        CheckConstraint("conditionstring!=conditionvalue", name="cond_equal_strings"),
-        CheckConstraint("conditionvalue!=''", name="cond_value_empty"),
-    )
 
 
 class Cnc(db.Model, ModelController):
@@ -171,19 +165,11 @@ class HeadVarible(db.Model, ModelController):
     __tablename__ = "headvar"
     __db_queue_primary_field_name__ = "name"
     varid = Column(String, default=get_uuid, primary_key=True)
+    cncid = Column(ForeignKey("cnc.cncid", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
+    strid = Column(ForeignKey("sstring.strid", ondelete="CASCADE", onupdate="CASCADE"), unique=True, nullable=False)
     name = Column(String, unique=True, nullable=False)
-    separator = Column(String(7), nullable=False)
-    select_all = Column(Boolean, default=True, nullable=False)
-    select_numbers = Column(Boolean, default=False, nullable=False)
-    select_string = Column(Boolean, default=False, nullable=False)
-    select_reg = Column(String, nullable=True, default=None)
-    isnotexistsdonothing = Column(Boolean, default=True, nullable=False)
-    isnotexistsvalue = Column(String, nullable=True, default=None)
-    isnotexistsbreak = Column(Boolean, default=False, nullable=False)
     __table_args__ = (
         CheckConstraint("name!=''", name="headvar_empty_name"),
-        CheckConstraint("select_reg IS NULL OR select_reg LIKE('%<v>%')", name="headvar_reg_format"),
-        CheckConstraint("isnotexistsvalue!=''", name="isnotexistsvalue_empty"),
     )
 
 
@@ -241,11 +227,15 @@ class HeadVarDelegation(db.Model, ModelController):
     __tablename__ = "varsec"
     __db_queue_primary_field_name__ = "secid"
     secid = Column(String, default=get_uuid, primary_key=True)
-    varid = Column(String, db.ForeignKey("headvar.varid"), nullable=False)
-    insertid = Column(Integer, db.ForeignKey("insert.insid"), nullable=True, default=None)
-    renameid = Column(Integer, db.ForeignKey("renam.renameid"), nullable=True, default=None)
-    conditionid = Column(String, db.ForeignKey("cond.cnd"), nullable=True, default=None)
-    strindex = Column(Integer, default=0, nullable=False)
+    varid = Column(String, ForeignKey("headvar.varid"), nullable=False)
+    insertid = Column(Integer, ForeignKey("insert.insid"), nullable=True, default=None)
+    renameid = Column(Integer, ForeignKey("renam.renameid"), nullable=True, default=None)
+    conditionid = Column(String, ForeignKey("cond.cnd"), nullable=False)
+    description = Column(Text, nullable=False, default="", unique=True)
+    __table_args__ = (
+        CheckConstraint("(insertid IS NULL OR renameid IS NULL)=TRUE AND (insertid IS NULL AND renameid IS NULL)=FALSE", name="check_one_item_delegation"),
+        CheckConstraint("description!=''", name="required_desc"),
+    )
 
 
 class Rename(db.Model, ModelController):
@@ -292,6 +282,18 @@ class Replace(db.Model, ModelController):
     )
 
 
+class SearchString(db.Model, ModelController):
+    __tablename__ = "sstring"
+    __db_queue_primary_field_name__ = "strid"
+    strid = Column(String, default=get_uuid, primary_key=True)
+    leftseparatorindex = Column(SmallInteger, nullable=False, default=0)
+    rightseparatorindex = Column(SmallInteger, nullable=False, default=-1)
+    inner = Column(Text, default="", nullable=False)
+    __table_args = (
+        CheckConstraint("inner!=''", name="required_inner")
+    )
+
+
 if __name__ == "__main__":
     def check_bad_attribute_name():
         TaskDelegation()
@@ -308,6 +310,7 @@ if __name__ == "__main__":
         Rename()
         Numeration()
         Replace()
+        SearchString()
     check_bad_attribute_name()
     db.drop_all()
     db.create_all()
