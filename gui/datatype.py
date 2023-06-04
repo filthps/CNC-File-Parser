@@ -338,4 +338,3 @@ if __name__ == "__main__":
         list_1_.add_to_head(val=0)
         print(list_1_)
     test_add_to_head()
-

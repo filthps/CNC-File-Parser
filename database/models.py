@@ -290,7 +290,11 @@ class SearchString(db.Model, ModelController):
     rightseparatorindex = Column(SmallInteger, nullable=False, default=-1)
     inner = Column(Text, default="", nullable=False)
     __table_args = (
-        CheckConstraint("inner!=''", name="required_inner")
+        CheckConstraint("inner!=''", name="required_inner"),
+        CheckConstraint("rightseparatorindex=-1 OR rightseparatorindex>leftseparatorindex", name="valid_right_index"),
+        CheckConstraint("leftseparatorindex>=0", name="valid_left_index"),
+        CheckConstraint("rightseparatorindex=-1 OR LENGTH(inner)>rightseparatorindex", name="check_len_and_right_index"),
+        CheckConstraint("leftseparatorindex<LENGTH(inner)", name="check_len_and_left_index"),
     )
 
 
