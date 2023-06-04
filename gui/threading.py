@@ -2,13 +2,14 @@
 Данный модуль содержит класс QThreadInstance, который нужно применять как декоратор к методам класса в UI,
 в которах происходит взаимодействие как с UI, так и с внешними интерфейсами инфрастуктуры приложения.
 """
-from typing import Callable, Any, Optional
 import dill
+from typing import Callable, Any, Optional
 from PySide2.QtCore import QObject, Signal, QThreadPool, QRunnable
 
 
 class TaskConnection(QObject):
-    callback_signal = Signal(tuple)
+    data_transmission_signal = Signal(tuple)
+    empty_signal = Signal(None)
 
 
 class Task(QRunnable):
@@ -22,15 +23,16 @@ class Task(QRunnable):
 
     def run(self):
         result: Any = self.func(*self.args, **self.kwargs)
-        tuple_ = result
-        if type(result) is not tuple:
-            tuple_ = (result,)
+        if result is None:
+            self.connection.empty_signal.emit()
+            return
+        if not isinstance(result, tuple):
+            result = (result,)
         try:
-            tuple_ = dill.dumps(tuple_)
+            tuple_ = dill.dumps(result)
         except dill.PicklingError as err:
             print("Не удалось вернуть данные главному потоку!")
-            tuple_ = (None,)
-        self.connection.callback_signal.emit(tuple_)
+        self.connection.data_transmission_signal.emit(tuple_)
 
 
 class QThreadInstanceDecorator:
@@ -51,13 +53,22 @@ class QThreadInstanceDecorator:
                 if self.end_f is not None:
                     def callback(serialized_data):
                         deserialized = dill.loads(serialized_data)
-                        if deserialized is None:
-                            self.end_f()
-                            return
-                        self.end_f(*deserialized)
-                    self.task.connection.callback_signal.connect(lambda x: callback(x))
-                self.threadpool.globalInstance().start(self.task)
+                        try:
+                            self.end_f(*deserialized)
+                        except TypeError:
+                            self.end_f(deserialized)
+                    self.task.connection.data_transmission_signal.connect(lambda stringify_data: callback(stringify_data))
+                    self.task.connection.empty_signal.connect(self.end_f)
+                self.threadpool.start(self.task)
                 return
             result = call_f(*a, **k)
-            self.end_f(*result)
+            if result is None:
+                return self.end_f()
+            if type(result) is tuple:
+                try:
+                    self.end_f(*result)
+                except TypeError:
+                    self.end_f(result)
+                return
+            self.end_f(result)
         return outer

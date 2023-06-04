@@ -264,7 +264,7 @@ class ORMItemContainer(LinkedList):
             foreign_key_values.append(node.value[fk_field]) if fk_field in node.value else None  # O(1)
         for node_item in self:  # O(n) * O(j) * O(m) * O(n) * O(1) = O(n)
             if not node_item == node:  # O(g) * O(j) = O (j)
-                pk_field, pk_value = node_item.get_primary_key_and_value()
+                pk_field, pk_value = node_item.get_primary_key_and_value(as_tuple=True)
                 if pk_field in foreign_key_values:  # O(l)
                     if pk_value == node.value[pk_field]:  # O(l) * O(m) * O(1) = O(l * m) = O(m)
                         container.append(**node_item.get_attributes())  # O(1)
@@ -663,7 +663,7 @@ class ORMHelper(ORMAttributes):
             return map(lambda t: t.__dict__, items_db)
         if _queue_only or not items_db:
             return map(lambda t: t.value,
-                       filter(lambda x: not x.type == "_delete", cls.items.search_nodes(model, **attrs))
+                       tuple(filter(lambda x: not x.type == "_delete", cls.items.search_nodes(model, **attrs)))
                        )
         db_items = []
         queue_items = {}  # index: node_value
@@ -698,7 +698,7 @@ class ORMHelper(ORMAttributes):
             output.append(item)
         for item in db_items:
             output.append(item)
-        return map(lambda x: x, output)
+        return iter(output)
 
     @classmethod
     def get_node_dml_type(cls, node_pk_value: Union[str, int], model=None) -> Optional[str]:
@@ -788,7 +788,6 @@ class ORMHelper(ORMAttributes):
         database_adapter.start()
         cls.__set_cache(database_adapter.remaining_nodes or None)
         cls._timer = cls.init_timer() if database_adapter.remaining_nodes else None
-        print("remaining_nodes", database_adapter.remaining_nodes)
         sys.exit()
 
     @classmethod

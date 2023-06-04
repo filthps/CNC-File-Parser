@@ -1,7 +1,7 @@
 import os
 import threading
 from typing import Union, Iterator, Optional, Sequence, Callable
-from itertools import count, cycle
+from itertools import count, cycle, repeat
 from PySide2.QtCore import Qt, QPoint, QSize
 from PySide2.QtCore import QObject, QThread, QRunnable, QThreadPool
 from PySide2.QtCore import Signal, Slot, SIGNAL
@@ -17,9 +17,9 @@ class Tools:
     ui = None
     _UI__TO_SQL_COLUMN_LINK__LINE_EDIT = {}
     _UI__TO_SQL_COLUMN_LINK__COMBO_BOX = {}
-    _UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON: dict[dict[str, str]] = {}
+    _UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON: dict[str, dict[str, bool]] = {}
     _COMBO_BOX_DEFAULT_VALUES = {}
-    _RADIO_BUTTON_DEFAULT_VALUES = tuple()
+    _RADIO_BUTTON_DEFAULT_VALUES: tuple = tuple()  # Кортеж с именами выбранных кнопок
     _LINE_EDIT_DEFAULT_VALUES = {}
     _INTEGER_FIELDS = tuple()
     _STRING_FIELDS = tuple()
@@ -27,13 +27,13 @@ class Tools:
     _NULLABLE_FIELDS = tuple()
 
     def update_fields(self, line_edit_values: Optional[dict] = None,
-                      combo_box_values: Optional[dict] = None, combo_box_default_values: Optional[dict] = None):
+                      combo_box_values: Optional[dict] = None, radio_button_values: Optional[dict] = None):
         """ Обновление содержимого полей """
         for line_edit_name, db_field_name in self._UI__TO_SQL_COLUMN_LINK__LINE_EDIT.items():
             val = line_edit_values.pop(db_field_name, None) if line_edit_values else None
             input_: QLineEdit = getattr(self.ui, line_edit_name)
             if val:
-                input_.setText(str(val))
+                input_.setText(next(val) if type(val) is repeat else str(val))
             else:
                 input_.setText("")
         for ui_field, orm_field in self._UI__TO_SQL_COLUMN_LINK__COMBO_BOX.items():
@@ -47,6 +47,12 @@ class Tools:
                     input_.setCurrentText(default_value)
                 else:
                     input_.setCurrentText("")
+        for ui_field_name, orm_values_group in self._UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON.items():
+            for orm_field_name, orm_field_val in orm_values_group.items():
+                if orm_field_name in radio_button_values and radio_button_values[orm_field_name]:
+                    ui_field: QRadioButton = getattr(self.ui, ui_field_name)
+                    ui_field.setEnabled(True)
+                    break
 
     def check_output_values(self, field_name, value):
         """ Форматировать типы выходных значений перед установкой в очередь отправки """
@@ -82,7 +88,7 @@ class Tools:
             field.setCurrentIndex(0)
         for line_edit_name, default_value in self._LINE_EDIT_DEFAULT_VALUES.items():
             field: QLineEdit = getattr(self.ui, line_edit_name)
-            field.setText(default_value)
+            field.setText(next(default_value) if isinstance(default_value, repeat) else default_value)
 
     @staticmethod
     def __get_widget_index_by_tab_name(widget_instance: Union[QTabWidget, QStackedWidget], tab_name: str) -> int:
