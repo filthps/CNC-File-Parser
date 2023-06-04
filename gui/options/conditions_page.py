@@ -1,13 +1,14 @@
 import uuid
 from typing import Optional, Union
-from PySide2.QtWidgets import QMainWindow, QListWidget, QListWidgetItem, QHBoxLayout, QVBoxLayout, QLabel, \
-    QGroupBox, QLineEdit, QRadioButton, QDialogButtonBox, QSpacerItem
+from PySide2.QtWidgets import QMainWindow, QListWidget, QListWidgetItem, QHBoxLayout, \
+    QVBoxLayout, QGroupBox, QLineEdit, QRadioButton, QDialogButtonBox, QSpacerItem
 from PySide2.QtCore import Slot, Qt
-from gui.tools import Tools, Constructor, MyAbstractDialog, UiLoaderThreadFactory
+from gui.tools import Tools, Constructor, MyAbstractDialog
 from database.models import Condition, HeadVarible, HeadVarDelegation
-from orm import orm
+from gui import orm
 from gui.ui import Ui_main_window as Ui
 from gui.validation import Validator
+from gui.threading import QThreadInstanceDecorator
 
 
 class AddConditionDialog(MyAbstractDialog):
@@ -15,8 +16,12 @@ class AddConditionDialog(MyAbstractDialog):
     Диалоговое окно для добавления 'условия' с вариантами выбора: 1) Поиск по вводимой строке; 2) Поиск по значению
     переменной.
     """
+    EMPTY_VARIBLES_TEXT = "<Переменные не найдены>"
+
     def __init__(self, db: orm.ORMHelper, app=None, callback=None):
         self.accept_button = QDialogButtonBox.Apply
+        self.button_box = QDialogButtonBox(self.accept_button, orientation=Qt.Orientation.Horizontal)
+        self.button_box.setDisabled(True)
         super().__init__(parent=app.app, close_callback=callback, buttons=(self.accept_button,))
         self.conditions_page: Optional["ConditionsPage"] = app
         self.head_varible_area: Optional[QListWidget] = None
@@ -24,10 +29,10 @@ class AddConditionDialog(MyAbstractDialog):
         self.set_string_button: Optional[QRadioButton] = None
         self.set_varible_button: Optional[QRadioButton] = None
         self.db = db
-        self.get_add_condition_dialog()
+        self.create_dialog_ui()
         self.show()
 
-    def get_add_condition_dialog(self):
+    def create_dialog_ui(self):
         def init_ui():
             self.setWindowTitle("Добавить условие")
             main_horizontal_layout = QVBoxLayout()
@@ -57,61 +62,83 @@ class AddConditionDialog(MyAbstractDialog):
             self.set_string_button = radio_button_search_string
             self.set_varible_button = radio_button_set_headvar
             buttons_layout = QHBoxLayout()
-            buttons_box = QDialogButtonBox(self.accept_button, orientation=Qt.Orientation.Horizontal)
             buttons_layout.addSpacerItem(QSpacerItem(300, 0))
-            buttons_layout.addWidget(buttons_box)
+            buttons_layout.addWidget(self.button_box)
             buttons_layout.addSpacerItem(QSpacerItem(300, 0))
             main_horizontal_layout.addLayout(buttons_layout)
         init_ui()
         self.connect_signals()
 
     def connect_signals(self):
-        def toggle_diasable_state(current_enabled: Union[QLineEdit, QListWidget]):
+        def toggle_disable_state(current_enabled: Union[QLineEdit, QListWidget]):
+            self.button_box.setDisabled(False)
             self.head_varible_area.setDisabled(True)
             self.string_input.setDisabled(True)
             current_enabled.setEnabled(True)
         self.set_varible_button.toggled.connect(self.clear_form)
         self.set_string_button.toggled.connect(self.clear_form)
-        self.set_varible_button.toggled.connect(lambda: toggle_diasable_state(self.head_varible_area))
-        self.set_string_button.toggled.connect(lambda: toggle_diasable_state(self.string_input))
-        self.set_varible_button.toggled.connect(lambda: self.load_data() if self.set_varible_button.isChecked() else None)
-        self.accept_button.clicked.connect(self.add_new_condition_item)
+        self.set_varible_button.toggled.connect(lambda: toggle_disable_state(self.head_varible_area))
+        self.set_string_button.toggled.connect(lambda: toggle_disable_state(self.string_input))
+        self.set_varible_button.toggled.connect(self.load_head_varibles)
+        self.button_box.clicked.connect(self.add_new_condition_item)
+
+    def load_head_varibles(self):
+        def insert_head_varibles(items):
+            items = tuple(items)
+            if items:
+                [self.head_varible_area.addItem(QListWidgetItem(item["name"])) for item in items]
+                return
+            self.head_varible_area.addItem(QListWidgetItem(self.EMPTY_VARIBLES_TEXT))
+            self._unlock_dialog()
+
+        @QThreadInstanceDecorator(result_callback=insert_head_varibles)
+        def load_items():
+            items = self.db.get_items(_model=HeadVarible)
+            return items
+        load_items()
+        self._lock_dialog()
 
     def clear_form(self):
         self.string_input.clear()
         self.head_varible_area.clear()
 
-    @UiLoaderThreadFactory()
-    def load_data(self):
-        self._lock_dialog()
-        for data in self.db.get_items(HeadVarible, "name"):
-            name = data["name"]
-            self.head_varible_area.addItem(QListWidgetItem(name))
-        self._unlock_dialog()
-
-    @UiLoaderThreadFactory()
     def add_new_condition_item(self):
+        def success_add():
+            self.close()
+            self.conditions_page.reload()
+
+        @QThreadInstanceDecorator(result_callback=success_add)
+        def set_to_database__head_varible(headvar_name: str):
+            """ Выбор 'переменной из шапки' в кач-ве условия. Создание записи в табице 'HeadVarDelegation'"""
+            head_varible_instance = self.db.get_item(_model=HeadVarible, name=headvar_name)
+            if not head_varible_instance:
+                return
+            h_var_delegation_d = {"secid": str(uuid.uuid4()), "varid": head_varible_instance["varid"]}
+            condition_item_data = {"cnd": str(uuid.uuid4())}
+            h_var_delegation_d.update({"conditionid": condition_item_data["cnd"]})
+            self.db.set_item(_model=Condition, _insert=True, **condition_item_data)
+            self.db.set_item(_insert=True, _model=HeadVarDelegation, **h_var_delegation_d)
+
+        @QThreadInstanceDecorator(result_callback=success_add)
+        def set_to_database__search_string(search_string: str):
+            """Создание условия на основе поисковой строки. Без создание записи в таблице 'HeadVarDelegation'"""
+            self.db.set_item(_model=Condition, _insert=True, **{"cnd": str(uuid.uuid4()), "conditionstring": search_string})
         if self.set_string_button.isChecked():
             condition_string = self.string_input.text()
             if not condition_string:
-                return
-            id_ = uuid.uuid4()
-            self.db.set_item(id_, {"cnd": id_, "conditionstring": condition_string}, insert=True, ready=False)
-        if self.set_varible_button.isChecked():
-            selected_var = self.head_varible_area.currentItem().text()
-            if not selected_var:
-                return
-            id_ = uuid.uuid4()
-            var_instance = self.db.get_item(selected_var, model=HeadVarible, where={"name": selected_var})
-            if not var_instance:
-                self._unlock_dialog()
                 self.close()
-                self.conditions_page.reload()
                 return
-
-            self.db.set_item(id_, {"cnd": id_, "useheadvarible": True}, insert=True)
-            self.db.set_item( insert=True)
-        self.close()
+            set_to_database__search_string(condition_string)
+        if self.set_varible_button.isChecked():
+            head_var_area_selected_item = self.head_varible_area.currentItem()
+            if head_var_area_selected_item is None:
+                self.close()
+                return
+            if head_var_area_selected_item == self.EMPTY_VARIBLES_TEXT:
+                self.close()
+                return
+            selected_varible_name = head_var_area_selected_item.text()
+            set_to_database__head_varible(selected_varible_name)
 
     def _lock_dialog(self):
         self.setDisabled(True)
@@ -122,6 +149,8 @@ class AddConditionDialog(MyAbstractDialog):
 
 class ConditionsPage(Constructor, Tools):
     _UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON = {
+        "radioButton_45": {"conditionbooleanvalue": True},
+        "radioButton_46": {"conditionbooleanvalue": False},
         "radioButton_24": {"findfull": True, "isntfindfull": False, "findpart": False, "isntfindpart": False,
                            "larger": False, "less": False, "equal": False},
         "radioButton_25": {"isntfindfull": True, "findfullfull": False, "findpart": False, "isntfindpart": False,
@@ -135,64 +164,92 @@ class ConditionsPage(Constructor, Tools):
         "radioButton_37": {"findpart": False, "isntfindfull": False, "findfull": False, "isntfindpart": False,
                            "larger": True, "less": False, "equal": False},
         "radioButton_47": {"isntfindpart": True, "findpart": False, "isntfindfull": False, "findfull": False,
-                           "larger": True, "less": False, "equal": False},
+                           "larger": False, "less": False, "equal": False},
         "radioButton_29": {"parentconditionbooleanvalue": True},
         "radioButton_30": {"parentconditionbooleanvalue": False},
     }
     _UI__TO_SQL_COLUMN_LINK__LINE_EDIT = {"lineEdit_28": "conditionvalue"}
-    _UI__TO_SQL_COLUMN_LINK__COMBO_BOX = {"comboBox": "parent"}
+    _UI__TO_SQL_COLUMN_LINK__COMBO_BOX = {"parent_condition_combobox": "parent"}
     _STRING_FIELDS = ("lineEdit_28",)
     _LINE_EDIT_DEFAULT_VALUES = {"lineEdit_28": ""}
-    _COMBO_BOX_DEFAULT_VALUES = {"comboBox": "Выберите промежуточное условие"}
+    _COMBO_BOX_DEFAULT_VALUES = {"parent_condition_combobox": "Выберите промежуточное условие"}
     _RADIO_BUTTON_DEFAULT_VALUES = {"radioButton_26": True}
 
     def __init__(self, app_instance: QMainWindow, ui: Ui):
         super().__init__(app_instance, ui)
         self.app = app_instance
         self.ui = ui
-        self.db_items: ORMHelper = app_instance.db_items_queue
+        self.db_items: orm.ORMHelper = app_instance.db_items_queue
         self.validator: Optional[ConditionsPageValidator] = None
-        self.condition_items_id = {}
+        self.condition_items_id = {}  # name: id
         self.add_condition_dialog: Optional[AddConditionDialog] = None
+        self.field_signals_status = False
 
         def set_db_manager_model():
-            self.db_items.set_model(Condition, "cnd")
+            self.db_items.set_model(Condition)
 
         def init_validator():
             self.validator = ConditionsPageValidator(ui)
 
-        def init_thread_factory():
-            UiLoaderThreadFactory.set_application(app_instance)
-
         set_db_manager_model()
         init_validator()
-        init_thread_factory()
+        self.reload()
         self.connect_main_signals()
 
-    def reload(self):
-        def add_conditions():
-            def create_condition_name(data: dict) -> str:
-                map_ = {"conditiontrue": "Истинно если", "conditionfalse": "Ложно если", "findfull": "совпадает",
-                        "findpart": "содержит", "isntfindfull": "не совпадает", "isntfindpart": "не совпадает",
-                        "equal": "равно", "less": "меньше", "larger": "больше", "parent": "родитель " + data["parent"],
-                        "conditionstring": data["conditionstring"], "conditionvalue": data["conditionvalue"]}
-                return "".join(tuple(map(lambda n: str(map_[n]), data.keys())))
-            items = self.db_items.get_items()
-            for item in items:
-                name = create_condition_name(item)
-                self.condition_items_id.update({item["cnd"]: name})
-                self.ui.conditions_list.addItem(QListWidgetItem(name))
+    def reload(self, in_new_qthread: bool = True):
+        def add_(condition_items):
+            def auto_select_condition_item(index=0) -> Optional[QListWidgetItem]:
+                m = self.ui.conditions_list.takeItem(index)
+                self.ui.conditions_list.addItem(m)
+                self.ui.conditions_list.setItemSelected(m, True)
+                self.ui.conditions_list.setCurrentItem(m)
+                return m
+            self.disconnect_parent_condition_combo_box()
+            self.disconnect_field_signals()
+            self.reset_fields()
+            for item in condition_items:
+                self.add_or_replace_condition_item_to_list_widget(item)
+            self.disconnect_field_signals()
+            active_item = auto_select_condition_item()
+            self.validator.current_condition = active_item
+            self.connect_field_signals()
+            self.connect_parent_condition_combo_box()
+            if active_item is not None:
+                self.validator.refresh()
 
-        def auto_select_condition_item(index=0):
-            item = self.ui.conditions_list.takeItem(index)
-            self.ui.conditions_list.addItem(item)
-            self.ui.conditions_list.setItemSelected(item, True)
-            self.ui.conditions_list.setCurrentItem(item)
-        self.disconnect_parent_condition_combo_box()
+        @QThreadInstanceDecorator(in_new_qthread=in_new_qthread, result_callback=add_)
+        def load_():
+            items = self.db_items.get_items(_model=Condition)
+            return items
+        load_()
+
+    def add_or_replace_condition_item_to_list_widget(self, condition_data: dict, replace=False):
+        """ 1) Найти выбранный QListWidgetItem (со старым именем)
+            2) Сгененировать новое имя
+            3) Вставить новый QListWidgetItem (с новым именем) в индекс или в default_index
+            4) Сохранить связку {id: новый_name} в condition_items_id """
+        def create_condition_name(data: dict) -> str:
+            map_ = {"conditionbooleanvalue": lambda: "Истинно если" if data.get("conditionbooleanvalue", None) else
+                    "..." if data.get("conditionbooleanvalue", None) is None else "Ложно если",
+                    "conditionstring": lambda: f"строка >> {data['conditionstring']} <<" if "conditionstring" in data else "переменная",
+                    "findfull": "совпадает c",
+                    "findpart": "содержит", "isntfindfull": "не совпадает c", "isntfindpart": "не содержит",
+                    "equal": "равно", "less": "меньше чем", "larger": "больше чем",
+                    "conditionvalue": lambda: f"<< {data['conditionvalue']} >>." if "conditionvalue" in data else "...",
+                    "parent": lambda: "Выбрано внешнее условие!" if "parent" in data else ""}
+            return " ".join(
+                map(lambda t: t[1]() if not isinstance(t[1], str) else map_[t[0]] if (t[0] in data and data[t[0]]) else "", map_.items())
+            )
+
+        name = create_condition_name(condition_data)
+        self.condition_items_id.update({name: condition_data["cnd"]})
         self.disconnect_field_signals()
-        self.reset_fields()
-        add_conditions()
-        auto_select_condition_item()
+        if replace:
+            list_item = self.ui.conditions_list.currentItem()
+            list_item.setText(name)
+            self.connect_field_signals()
+            return
+        self.ui.conditions_list.addItem(QListWidgetItem(name))
         self.connect_field_signals()
 
     def connect_main_signals(self):
@@ -205,89 +262,162 @@ class ConditionsPage(Constructor, Tools):
                                                            callback=close_create_condition_window)
         self.ui.add_button_3.clicked.connect(open_create_condition_window)
         self.ui.remove_button_3.clicked.connect(self.remove_condition)
-        self.ui.conditions_list.currentItemChanged.connect(lambda current, prev: self.change_condition(current))
-        self.ui.commandLinkButton_9.clicked.connect(self.save)
+        self.ui.conditions_list.currentItemChanged.connect(lambda current, prev: self.select_condition_item(current))
 
     def connect_field_signals(self):
-        self.ui.lineEdit_28.textChanged.connect(self.update_data("lineEdit_28", line_edit=True))
-        self.ui.radioButton_24.clicked.connect(self.update_data("radioButton_24", radio_button=True))
-        self.ui.radioButton_25.clicked.connect(self.update_data("radioButton_25", radio_button=True))
-        self.ui.radioButton_26.clicked.connect(self.update_data("radioButton_26", radio_button=True))
-        self.ui.radioButton_27.clicked.connect(self.update_data("radioButton_27", radio_button=True))
-        self.ui.radioButton_29.clicked.connect(self.update_data("radioButton_29", radio_button=True))
-        self.ui.radioButton_30.clicked.connect(self.update_data("radioButton_30", radio_button=True))
+        if self.field_signals_status:
+            return
+        self.ui.radioButton_45.toggled.connect(lambda x: self.update_data("radioButton_45", radio_button=True))
+        self.ui.radioButton_46.toggled.connect(lambda x: self.update_data("radioButton_46", radio_button=True))
+        self.ui.radioButton_24.clicked.connect(lambda: self.update_data("radioButton_24", radio_button=True))
+        self.ui.radioButton_25.clicked.connect(lambda: self.update_data("radioButton_25", radio_button=True))
+        self.ui.radioButton_38.clicked.connect(lambda: self.update_data("radioButton_38", radio_button=True))
+        self.ui.radioButton_47.clicked.connect(lambda: self.update_data("radioButton_47", radio_button=True))
+        self.ui.radioButton_35.clicked.connect(lambda: self.update_data("radioButton_35", radio_button=True))
+        self.ui.radioButton_36.clicked.connect(lambda: self.update_data("radioButton_36", radio_button=True))
+        self.ui.radioButton_37.clicked.connect(lambda: self.update_data("radioButton_37", radio_button=True))
+        self.ui.radioButton_26.clicked.connect(lambda: self.update_data("radioButton_26", radio_button=True))
+        self.ui.radioButton_27.clicked.connect(lambda: self.update_data("radioButton_27", radio_button=True))
+        self.ui.radioButton_29.clicked.connect(lambda: self.update_data("radioButton_29", radio_button=True))
+        self.ui.radioButton_30.clicked.connect(lambda: self.update_data("radioButton_30", radio_button=True))
+        self.ui.lineEdit_28.textChanged.connect(lambda x: self.update_data("lineEdit_28", line_edit=True))
+        self.field_signals_status = True
 
     def disconnect_field_signals(self):
-        try:
-            self.ui.lineEdit_28.textChanged.disconnect()
-            self.ui.radioButton_24.clicked.disconnect()
-            self.ui.radioButton_25.clicked.disconnect()
-            self.ui.radioButton_26.clicked.disconnect()
-            self.ui.radioButton_27.clicked.disconnect()
-            self.ui.radioButton_29.clicked.disconnect()
-            self.ui.radioButton_30.clicked.disconnect()
-        except RuntimeError:
-            print("ИНФО. Отключаемые сигналы не были подключены")
+        if not self.field_signals_status:
+            return
+        self.ui.radioButton_45.toggled.disconnect()
+        self.ui.radioButton_46.toggled.disconnect()
+        self.ui.radioButton_24.clicked.disconnect()
+        self.ui.radioButton_25.clicked.disconnect()
+        self.ui.radioButton_38.clicked.disconnect()
+        self.ui.radioButton_47.clicked.disconnect()
+        self.ui.radioButton_35.clicked.disconnect()
+        self.ui.radioButton_36.clicked.disconnect()
+        self.ui.radioButton_37.clicked.disconnect()
+        self.ui.radioButton_26.clicked.disconnect()
+        self.ui.radioButton_27.clicked.disconnect()
+        self.ui.radioButton_29.clicked.disconnect()
+        self.ui.radioButton_30.clicked.disconnect()
+        self.ui.lineEdit_28.textChanged.disconnect()
+        self.field_signals_status = False
 
     def connect_parent_condition_combo_box(self):
-        self.ui.comboBox.textActivated.connect(lambda inner: self.change_parent_condition(inner))
+        self.ui.parent_condition_combobox.textActivated.connect(lambda inner: self.change_parent_condition(inner))
 
     def disconnect_parent_condition_combo_box(self):
-        self.ui.comboBox.textActivated.disconnect()
+        try:
+            self.ui.parent_condition_combobox.textActivated.disconnect()
+        except RuntimeError:
+            print("ИНФО. Отключаемые сигналы не были подключены")
 
     @Slot()
     def remove_condition(self):
         def remove():
+            @QThreadInstanceDecorator(result_callback=lambda: self.reload(in_new_qthread=False))  # todo
+            def delete(item_name):
+                self.db_items.set_item(_delete=True, cnd=self.condition_items_id[item_name], _ready=True)
             current_item: QListWidgetItem = self.ui.conditions_list.currentItem()
+            if current_item is None:
+                return
             name = current_item.text()
-            id = self.n
-        dialog = self.get_prompt_dialog("Удалить условие", ok_callback=remove())
+            delete(name)
+        dialog = self.get_prompt_dialog("Удалить условие", ok_callback=remove)
         dialog.show()
 
     @Slot(str)
-    def change_condition(self, condition_item):
-        pass
+    def select_condition_item(self, condition_item):
+        def update_fields(data: dict):
+            if not data:
+                self.reload()
+            line_edit_data = {"conditionvalue": data.pop("conditionvalue", None)}
+            combo_box_data = {"parent": data.pop("parent", None)}
+            self.disconnect_field_signals()
+            self.disconnect_parent_condition_combo_box()
+            self.update_fields(line_edit_values=line_edit_data, combo_box_values=combo_box_data, radio_button_values=data)
+            self.connect_parent_condition_combo_box()
+            self.connect_field_signals()
+
+        @QThreadInstanceDecorator(result_callback=update_fields)
+        def load_inner(item: str):
+            item_data = self.db_items.get_item(cnd=item, _model=Condition)
+            if not item_data:
+                self.reload(in_new_qthread=False)
+            return item_data
+        if condition_item is None:
+            return
+        self.validator.set_condition_item(condition_item)
+        item_text = condition_item.text()
+        load_inner(self.condition_items_id[item_text])
 
     @Slot(str)
     def change_parent_condition(self, item):
-        current_condition_item = self.ui.comboBox.currentItem()
+        @QThreadInstanceDecorator(result_callback=self.validator.refresh)
+        def set_changes(current_cond_id, val=None):
+            def check_exists(selected_cnd_id, parent_cnd_id):
+                if not self.db_items.get_item(cnd=selected_cnd_id):
+                    self.reload(in_new_qthread=False)
+                if val is not None:
+                    if not self.db_items.get_item(cnd=parent_cnd_id):
+                        self.reload(in_new_qthread=False)
+            check_exists(current_cond_id, val)
+            if val is None:
+                self.db_items.remove_field_from_node(current_cond_id, "parent")
+                return
+            self.db_items.set_item(
+                _ready=self.validator.is_valid,
+                cnd=current_cond_id,
+                parent=val,
+                _update=True)
+        current_condition_item = self.ui.conditions_list.currentItem()
         if not current_condition_item:
             return
-        if item == self._COMBO_BOX_DEFAULT_VALUES["comboBox"]:
+        current_condition_name = current_condition_item.text()
+        id_ = self.condition_items_id[current_condition_name]
+        if item == self._COMBO_BOX_DEFAULT_VALUES["parent_condition_combobox"]:
+            set_changes(id_)
             self.validator.refresh()
             return
+        selected_condition_id = self.condition_items_id[item]
+        set_changes(id_, selected_condition_id)
 
     def update_data(self, field_name, **kwargs):
+        @QThreadInstanceDecorator(result_callback=self.validator.refresh, in_new_qthread=False)
+        def load_condition_instance_and_update_name(id_):
+            data = self.db_items.get_item(cnd=id_)
+            if not data:
+                self.reload()
+            self.add_or_replace_condition_item_to_list_widget(data, replace=True)
+
+        @QThreadInstanceDecorator(result_callback=lambda: load_condition_instance_and_update_name(condition_id))
+        def set_data(id_, **data):
+            exists_node_type = self.db_items.get_node_dml_type(id_, Condition)
+            data.update({("_update" if exists_node_type == "_update" else "_insert"): True})
+            self.db_items.set_item(cnd=id_, **data)
         selected_condition = self.ui.conditions_list.currentItem()
         if not selected_condition:
             return
         condition_text = selected_condition.text()
-        field = getattr(self.ui, field_name)
-        sql_field_name = self._UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]
-        exists_node_type = self.db_items.get_node_dml_type(condition_text, Condition)
+        condition_id = self.condition_items_id[condition_text]
+        ui_field = getattr(self.ui, field_name)
+        field_value = ui_field.text()
         if kwargs.get("line_edit", None):
-            self.db_items.set_item(condition_text, {sql_field_name: self.check_output_values(field_name, field.text())},
-                                   **{("update" if exists_node_type == "update" else "insert"): True},
-                                   where={"targetstr": condition_text})
+            sql_field_name = self._UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]
+            set_data(condition_id, **{sql_field_name: self.check_output_values(sql_field_name, field_value)})
         elif kwargs.get("radio_button", None):
             radio_button_values: dict = self._UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON[field_name]
-            self.db_items.set_item(condition_text, radio_button_values,
-                                   **{("update" if exists_node_type == "update" else "insert"): True},
-                                   where={"targetstr": condition_text})
+            set_data(condition_id, **radio_button_values)
 
     def reset_fields(self):
         self.condition_items_id = {}
+        self.ui.conditions_list.clear()
         super().reset_fields_to_default()
-
-    def save(self):
-        if self.validator.refresh():
-            ...
 
 
 class ConditionsPageValidator(Validator):
     REQUIRED_TEXT_FIELD_VALUES = ("lineEdit_28",)
     REQUIRED_RADIO_BUTTONS = {"groupBox_19": ("radioButton_24", "radioButton_25", "radioButton_38",
-                                              "radioButton_35", "radioButton_36", "radioButton_37",)}
+                                              "radioButton_35", "radioButton_36", "radioButton_37", "radioButton_47")}
 
     def __init__(self, ui):
         super().__init__(ui)

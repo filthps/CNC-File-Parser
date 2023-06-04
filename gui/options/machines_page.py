@@ -1,5 +1,6 @@
 import re
 from typing import Optional
+from itertools import repeat
 from PySide2.QtCore import Slot
 from PySide2.QtWidgets import QListWidgetItem, QLineEdit, QComboBox
 from PySide2.QtWidgets import QFileDialog
@@ -11,6 +12,10 @@ from gui.tools import Constructor, Tools
 from gui.threading import QThreadInstanceDecorator
 
 
+empty_string = repeat("")
+
+
+
 class OptionsPageCreateMachine(Constructor, Tools):
     _UI__TO_SQL_COLUMN_LINK__LINE_EDIT = {"lineEdit_10": "input_catalog",
                                           "lineEdit_21": "output_catalog",
@@ -19,9 +24,9 @@ class OptionsPageCreateMachine(Constructor, Tools):
                                           "lineEdit_17": "spindele_speed"}
     _UI__TO_SQL_COLUMN_LINK__COMBO_BOX = {"choice_cnc": "name"}
     _COMBO_BOX_DEFAULT_VALUES = {"choice_cnc": "Выберите стойку"}
-    _LINE_EDIT_DEFAULT_VALUES = {"lineEdit_10": "", "lineEdit_21": "",
-                                 "lineEdit_11": "", "lineEdit_12": "", "lineEdit_13": "",
-                                 "lineEdit_14": "", "lineEdit_15": "", "lineEdit_16": "", "lineEdit_17": ""}
+    _LINE_EDIT_DEFAULT_VALUES = {"lineEdit_10": empty_string, "lineEdit_21": empty_string,
+                                 "lineEdit_11": empty_string, "lineEdit_12": empty_string, "lineEdit_13": empty_string,
+                                 "lineEdit_14": empty_string, "lineEdit_15": empty_string, "lineEdit_16": empty_string, "lineEdit_17": empty_string}
     _INTEGER_FIELDS = ("lineEdit_11", "lineEdit_12", "lineEdit_13", "lineEdit_14",
                        "lineEdit_15", "lineEdit_16", "lineEdit_17")  # Для замены пустых значений нулями при отправке в бд
 
@@ -46,7 +51,6 @@ class OptionsPageCreateMachine(Constructor, Tools):
 
     def reload(self, create_thread=True):
         """ Очистить поля и обновить данные из базы данных """
-
         def callback(machines, cnc_items):
             self.ui.add_machine_list_0.clear()
             for data in machines:
@@ -125,7 +129,11 @@ class OptionsPageCreateMachine(Constructor, Tools):
         Запрос из БД и установка возможных значений в combo box - 'стойки',
         наполнение словаря self.cnc_names
         """
-        for data in cnc_items:
+        while cnc_items:
+            try:
+                data = next(cnc_items)
+            except StopIteration:
+                break
             cnc_name = data["name"]
             self.cnc_names.update({data["cncid"]: cnc_name})
             self.ui.choice_cnc.addItem(cnc_name)
@@ -161,6 +169,8 @@ class OptionsPageCreateMachine(Constructor, Tools):
             machine = self.db_items.get_item(machine_name=machine_item_name)
             cncs = self.db_items.get_items(_model=Cnc, _db_only=True)
             return machine, cncs
+        if machine_ is None:
+            return
         machine_item_name = machine_.text()
         load_selected_machine()
 
@@ -195,6 +205,8 @@ class OptionsPageCreateMachine(Constructor, Tools):
                 self.db_items.set_item(_delete=True, machine_name=name)
             item: QListWidgetItem = self.ui.add_machine_list_0.currentItem()
             dialog.close()
+            if item is None:
+                return
             process(item.text())
         dialog = self.get_confirm_dialog("Удалить станок?", "Внимание! Информация о свойствах станка будетм утеряна",
                                          ok_callback=ok)
@@ -224,7 +236,6 @@ class OptionsPageCreateMachine(Constructor, Tools):
 
     @Slot(str)
     def change_cnc(self, cnc_name):
-
         @QThreadInstanceDecorator()
         def check_exists_machine_and_cnc_and_update_data(current_machine_name: str, selected_cnc_name: str):
             machine = self.db_items.get_item(machine_name=current_machine_name)
