@@ -123,7 +123,6 @@ def init_condition_table_triggers():
                 FROM cond
                 WHERE (parent=NEW.parent OR NEW.parent IS NULL AND parent IS NULL)
                 AND stringid=NEW.stringid OR NEW.stringid IS NULL AND stringid IS NULL
-                AND target=NEW.target
                 AND conditionbooleanvalue=NEW.conditionbooleanvalue
                 AND isntfindfull=NEW.isntfindfull
                 AND isntfindpart=NEW.isntfindpart
@@ -177,28 +176,6 @@ def init_condition_table_triggers():
         BEFORE INSERT OR UPDATE
         ON cond FOR EACH ROW
         EXECUTE PROCEDURE check_condition_options();
-    """)
-
-    db.engine.execute("""
-        CREATE OR REPLACE FUNCTION check_basestring_or_headvarible() RETURNS trigger
-        AS $body$
-        BEGIN
-            IF (SELECT TRUE
-            FROM varsec
-            WHERE conditionid=NEW.cnd) AND NEW.stringid IS NOT NULL THEN
-                RAISE EXCEPTION 'Условие работает либо по значению переменной шапки, либо по поисковой строке. Недопустимо и то и другое одновременно.';
-            ELSE
-                RETURN NEW;
-            END IF;
-        END; $body$
-        LANGUAGE PLPGSQL
-    """)
-
-    db.engine.execute("""
-        CREATE TRIGGER check_input
-        BEFORE INSERT OR UPDATE
-        ON cond FOR EACH ROW
-        EXECUTE PROCEDURE check_basestring_or_headvarible();
     """)
 
 
@@ -614,8 +591,6 @@ def init_headvardelegation_table_triggers():
                 WHERE varid=NEW.varid
                 AND (insertid=NEW.insertid OR NEW.insertid IS NULL AND insertid IS NULL)
                 AND (renameid=NEW.renameid OR NEW.renameid IS NULL AND renameid IS NULL)
-                AND (conditionid=NEW.conditionid OR NEW.conditionid IS NULL AND conditionid IS NULL)
-                AND description=NEW.description
             ) THEN 
                 RAISE EXCEPTION 'Данный экземпляр сущности уже существует';
             ELSE
@@ -640,7 +615,6 @@ def init_headvardelegation_table_triggers():
         BEGIN
             SELECT counter + (CASE WHEN NEW.insertid IS NOT NULL THEN 1 ELSE 0 END) INTO counter;
             SELECT counter + (CASE WHEN NEW.renameid IS NOT NULL THEN 1 ELSE 0 END) INTO counter;
-            SELECT counter + (CASE WHEN NEW.conditionid IS NOT NULL THEN 1 ELSE 0 END) INTO counter;
             IF counter != 1 THEN
                 RAISE EXCEPTION 'Недействительные опции для FK*, - не выбрано ни одной, или выбрано несколько';
             ELSE
@@ -690,9 +664,9 @@ def init_searchstring_table_triggers():
         BEGIN
             IF EXISTS(SELECT 1
             FROM sstring
-            WHERE leftseparatorindex=NEW.leftseparatorindex AND
-            rightseparatorindex=NEW.rightseparatorindex AND
-            inner_=NEW.inner_) THEN 
+            WHERE inner_=NEW.inner_ AND
+            target=NEW.target)
+            THEN 
                 RAISE EXCEPTION 'Данный экземпляр сущности уже существует';
             ELSE
                 RETURN NEW;

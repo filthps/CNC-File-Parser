@@ -136,7 +136,6 @@ class Condition(db.Model, ModelController):
     cnd = Column(String, primary_key=True, default=get_uuid)
     parent = Column(String, ForeignKey("cond.cnd", ondelete="SET NULL", onupdate="CASCADE"), nullable=True, default=None)
     stringid = Column(ForeignKey("sstring.strid", ondelete="CASCADE", onupdate="CASCADE"), nullable=True, default=None)
-    target = Column(String, nullable=False, default="")
     conditionbooleanvalue = Column(Boolean, default=True, nullable=False)
     isntfindfull = Column(Boolean, default=False, nullable=False)
     isntfindpart = Column(Boolean, default=False, nullable=False)
@@ -230,11 +229,8 @@ class HeadVarDelegation(db.Model, ModelController):
     varid = Column(String, ForeignKey("headvar.varid"), nullable=False)
     insertid = Column(Integer, ForeignKey("insert.insid"), nullable=True, default=None)
     renameid = Column(Integer, ForeignKey("renam.renameid"), nullable=True, default=None)
-    conditionid = Column(String, ForeignKey("cond.cnd"), nullable=False)
-    description = Column(Text, nullable=False, default="", unique=True)
     __table_args__ = (
         CheckConstraint("(insertid IS NULL OR renameid IS NULL)=TRUE AND (insertid IS NULL AND renameid IS NULL)=FALSE", name="check_one_item_delegation"),
-        CheckConstraint("description!=''", name="required_desc"),
     )
 
 
@@ -286,15 +282,12 @@ class SearchString(db.Model, ModelController):
     __tablename__ = "sstring"
     __db_queue_primary_field_name__ = "strid"
     strid = Column(String, default=get_uuid, primary_key=True)
-    leftseparatorindex = Column(SmallInteger, nullable=False, default=0)
-    rightseparatorindex = Column(SmallInteger, nullable=False, default=-1)
-    inner = Column(Text, default="", nullable=False)
+    inner_ = Column(Text, default="", nullable=False)
+    target = Column(String(30), default="", nullable=False)
     __table_args = (
-        CheckConstraint("inner!=''", name="required_inner"),
-        CheckConstraint("rightseparatorindex=-1 OR rightseparatorindex>leftseparatorindex", name="valid_right_index"),
-        CheckConstraint("leftseparatorindex>=0", name="valid_left_index"),
-        CheckConstraint("rightseparatorindex=-1 OR LENGTH(inner)>rightseparatorindex", name="check_len_and_right_index"),
-        CheckConstraint("leftseparatorindex<LENGTH(inner)", name="check_len_and_left_index"),
+        CheckConstraint("inner_!=''", name="required_inner"),
+        CheckConstraint("target!=''", name="check_empty_target"),
+        CheckConstraint("CHARINDEX(target, inner_)>0", name="valid_target"),
     )
 
 
