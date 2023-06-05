@@ -6,7 +6,7 @@ from gui import orm
 from gui.tools import Constructor, Tools
 from gui.ui import Ui_main_window
 from gui.validation import Validator
-from gui.threading import QThreadInstanceDecorator
+from gui.threading_ import QThreadInstanceDecorator
 
 
 class AddCNC(Constructor, Tools):

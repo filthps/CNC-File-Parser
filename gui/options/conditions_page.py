@@ -8,7 +8,7 @@ from database.models import Condition, HeadVarible, HeadVarDelegation
 from gui import orm
 from gui.ui import Ui_main_window as Ui
 from gui.validation import Validator
-from gui.threading import QThreadInstanceDecorator
+from gui.threading_ import QThreadInstanceDecorator
 
 
 class AddConditionDialog(MyAbstractDialog):
