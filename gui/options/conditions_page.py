@@ -346,16 +346,15 @@ class ConditionsPage(Constructor, Tools, InputTools):
             4) Сохранить связку {id: новый_name} в condition_items_id """
         def create_condition_name(data_: dict) -> str:
             def get_substring(main_string):
-                l_index = data_["lindex"]
-                r_index = data_["rindex"]
                 return main_string[l_index:r_index]
+            l_index, r_index = data_["lindex"], data_["rindex"]
             search_str_inner = data_.get("inner_", "")
             search_str_target = get_substring(search_str_inner) if "varid" not in data_ else ""
             parent_cond_bool_value = data_.get('parentconditionbooleanvalue', "")
             condition_bool_val = data.get("conditionbooleanvalue", "")
             map_ = {"conditionbooleanvalue": lambda: "Истинно если" if condition_bool_val else "Ложно если",
                     "parentconditionbooleanvalue": lambda: f"родительское условие {'верно' if parent_cond_bool_value else 'ложно'}",
-                    "strid": f"{'и ' if 'parent' in data else ''}{f'подстрока >>{search_str_target}<< найдена в строке >>{search_str_inner}<<' if search_str_target else f'строка >> {search_str_inner} <<'}",
+                    "strid": f"{'и ' if 'parent' in data else ''}{f'подстрока >>{search_str_target}<< найдена в строке >{search_str_inner[0:l_index]>>search_str_target<<search_str_inner[r_index:-1]}<' if search_str_target else f'строка >>{search_str_inner}<<'}",
                     "findfull": "совпадает c",
                     "findpart": "содержит", "isntfindfull": "не совпадает c", "isntfindpart": "не содержит",
                     "equal": "равно", "less": "меньше чем", "larger": "больше чем",
