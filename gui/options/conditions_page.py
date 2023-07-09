@@ -1,33 +1,57 @@
+import re
 import uuid
 from typing import Optional, Union
+from types import SimpleNamespace
 from PySide2.QtWidgets import QMainWindow, QListWidget, QListWidgetItem, QHBoxLayout, \
-    QVBoxLayout, QGroupBox, QLineEdit, QRadioButton, QDialogButtonBox, QSpacerItem
+    QVBoxLayout, QGroupBox, QLineEdit, QRadioButton, QDialogButtonBox, QSpacerItem, QTextBrowser, QLabel, QFormLayout
 from PySide2.QtCore import Slot, Qt
+from PySide2.QtGui import QSyntaxHighlighter, QColor
 from gui.tools import Tools, Constructor, MyAbstractDialog
-from database.models import Condition, HeadVarible, HeadVarDelegation
+from database.models import Condition, HeadVarible, HeadVarDelegation, SearchString
 from gui import orm
 from gui.ui import Ui_main_window as Ui
 from gui.validation import Validator
 from gui.threading_ import QThreadInstanceDecorator
 
 
-class AddConditionDialog(MyAbstractDialog):
+class Highlighter(QSyntaxHighlighter):  # todo: или реализовать пояснения через это, вместо html+css
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
+
+    def rehighlight(self) -> None:
+        pass
+
+
+class InputTools:
+    @staticmethod
+    @Slot()
+    def to_upper_case(input_: QLineEdit, text: str):
+        cursor_position: int = input_.cursorPosition()
+        input_.setText(text.upper())
+        input_.setCursorPosition(cursor_position)
+
+
+class AddConditionDialog(MyAbstractDialog, InputTools):
     """
     Диалоговое окно для добавления 'условия' с вариантами выбора: 1) Поиск по вводимой строке; 2) Поиск по значению
     переменной.
     """
     EMPTY_VARIBLES_TEXT = "<Переменные не найдены>"
 
-    def __init__(self, db: orm.ORMHelper, app=None, callback=None):
-        self.accept_button = QDialogButtonBox.Apply
-        self.button_box = QDialogButtonBox(self.accept_button, orientation=Qt.Orientation.Horizontal)
-        self.button_box.setDisabled(True)
-        super().__init__(parent=app.app, close_callback=callback, buttons=(self.accept_button,))
+    def __init__(self, db: orm.ORMHelper, app: Optional["ConditionsPage"] = None, callback=None):
+        self.ui = SimpleNamespace()
+        self.ui.accept_button = QDialogButtonBox.Apply
+        self.ui.button_box = QDialogButtonBox(self.ui.accept_button, orientation=Qt.Orientation.Horizontal)
+        self.ui.button_box.setDisabled(True)
+        self.ui.head_varible_area = None
+        self.ui.string_input = None
+        self.ui.set_string_button = None
+        self.ui.set_varible_button = None
+        self.ui.string_help_text = None
+        self.ui.sep_input = None
+        self.ui.group_box = None
+        super().__init__(parent=app.app, close_callback=callback, buttons=(self.ui.accept_button,))
         self.conditions_page: Optional["ConditionsPage"] = app
-        self.head_varible_area: Optional[QListWidget] = None
-        self.string_input: Optional[QLineEdit] = None
-        self.set_string_button: Optional[QRadioButton] = None
-        self.set_varible_button: Optional[QRadioButton] = None
         self.db = db
         self.create_dialog_ui()
         self.show()
@@ -37,14 +61,32 @@ class AddConditionDialog(MyAbstractDialog):
             self.setWindowTitle("Добавить условие")
             main_horizontal_layout = QVBoxLayout()
             horizontal_box_layout = QHBoxLayout()
+            sep_h_layout = QFormLayout()
             box = QGroupBox()
+            self.ui.group_box = box
             box.setTitle("Что следует проверять")
-            radio_button_search_string = QRadioButton("Искать следующую строку:")
+            radio_button_search_string = QRadioButton("Искать подстроку:")
             condition_string_input = QLineEdit()
             condition_string_input.setDisabled(True)
+            separator_input = QLineEdit()
+            separator_input.setDisabled(True)
+            separator_input.setMaximumWidth(20)
+            separator_input.setMaxLength(1)
+            separator_label = QLabel("Разделитель:")
+            sep_h_layout.addRow(separator_label, separator_input)
+            desc = QTextBrowser()
+            desc.setHtml(f"<p>Введите строку полностью, а внутри неё, при помощи символов <p style = 'color: #D05932'><ins>*<p style = 'color: #333'>, <p style = 'color: #333'>цель проверки, - то что будет проверяться."
+                         "<p>Например:"
+                         f"<p style = 'color: #074E67'><dfn> G1 X100 Y100 F <p style ='color: #D05932'>*2500*<p style = 'color: #D05932'><br><ins>2500</p><p style = 'color: #333'> - можно с чём-нибудь сравнить, или сопоставить."
+                         )
+            desc.setStyleSheet("p {display: inline-block; font-family: Times, serif; color: #333; word-break: normal;}")  # todo: разобраться здесь
+            desc.setDisabled(True)
+            self.ui.string_help_text = desc
             vertical_layout_search_string = QVBoxLayout()
+            vertical_layout_search_string.addLayout(sep_h_layout)
             vertical_layout_search_string.addWidget(radio_button_search_string)
             vertical_layout_search_string.addWidget(condition_string_input)
+            vertical_layout_search_string.addWidget(desc)
             vertical_layout_search_string.addSpacerItem(QSpacerItem(0, 200))
             vertical_layout_set_head_varible = QVBoxLayout()
             radio_button_set_headvar = QRadioButton("Искать значение переменной:")
@@ -53,17 +95,19 @@ class AddConditionDialog(MyAbstractDialog):
             vertical_layout_set_head_varible.addWidget(radio_button_set_headvar)
             vertical_layout_set_head_varible.addWidget(head_varible_area)
             horizontal_box_layout.addLayout(vertical_layout_search_string)
+            horizontal_box_layout.addLayout(sep_h_layout)
             horizontal_box_layout.addLayout(vertical_layout_set_head_varible)
             box.setLayout(horizontal_box_layout)
             main_horizontal_layout.addWidget(box)
             self.setLayout(main_horizontal_layout)
-            self.head_varible_area = head_varible_area
-            self.string_input = condition_string_input
-            self.set_string_button = radio_button_search_string
-            self.set_varible_button = radio_button_set_headvar
+            self.ui.head_varible_area = head_varible_area
+            self.ui.string_input = condition_string_input
+            self.ui.set_string_button = radio_button_search_string
+            self.ui.set_varible_button = radio_button_set_headvar
+            self.ui.sep_input = separator_input
             buttons_layout = QHBoxLayout()
             buttons_layout.addSpacerItem(QSpacerItem(300, 0))
-            buttons_layout.addWidget(self.button_box)
+            buttons_layout.addWidget(self.ui.button_box)
             buttons_layout.addSpacerItem(QSpacerItem(300, 0))
             main_horizontal_layout.addLayout(buttons_layout)
         init_ui()
@@ -71,24 +115,79 @@ class AddConditionDialog(MyAbstractDialog):
 
     def connect_signals(self):
         def toggle_disable_state(current_enabled: Union[QLineEdit, QListWidget]):
-            self.button_box.setDisabled(False)
-            self.head_varible_area.setDisabled(True)
-            self.string_input.setDisabled(True)
+            self.ui.head_varible_area.setDisabled(True)
+            self.ui.string_input.setDisabled(True)
             current_enabled.setEnabled(True)
-        self.set_varible_button.toggled.connect(self.clear_form)
-        self.set_string_button.toggled.connect(self.clear_form)
-        self.set_varible_button.toggled.connect(lambda: toggle_disable_state(self.head_varible_area))
-        self.set_string_button.toggled.connect(lambda: toggle_disable_state(self.string_input))
-        self.set_varible_button.toggled.connect(self.load_head_varibles)
-        self.button_box.clicked.connect(self.add_new_condition_item)
+        self.ui.set_varible_button.toggled.connect(self.clear_form)
+        self.ui.set_string_button.toggled.connect(self.clear_form)
+        self.ui.set_varible_button.toggled.connect(lambda: toggle_disable_state(self.ui.head_varible_area))
+        self.ui.set_string_button.toggled.connect(lambda: toggle_disable_state(self.ui.string_input))
+        self.ui.set_varible_button.toggled.connect(lambda: self.ui.string_help_text.setDisabled(True))
+        self.ui.set_string_button.toggled.connect(lambda: self.ui.string_help_text.setDisabled(False))
+        self.ui.set_varible_button.toggled.connect(lambda: self.ui.sep_input.setDisabled(True))
+        self.ui.set_string_button.toggled.connect(lambda: self.ui.sep_input.setDisabled(False))
+        self.ui.sep_input.textChanged.connect(self._separator_input_validation)
+        self.ui.string_input.textChanged.connect(self._string_input_validation)
+        self.ui.head_varible_area.itemChanged.connect(lambda item: self._head_varible_validation(item))
+        self.ui.set_varible_button.toggled.connect(self.load_head_varibles)
+        self.ui.button_box.clicked.connect(self.add_new_condition_item)
+        if self.conditions_page.ui.radioButton_28.isChecked():
+            self.ui.string_input.textEdited.connect(lambda val: self.to_upper_case(self.ui.string_input, val))
 
+    @Slot()
+    def _string_input_validation(self):
+        inner_text = self.ui.string_input.text()
+        separator = self.ui.sep_input.text()
+        if not inner_text:
+            self.ui.button_box.setDisabled(True)
+            return
+        if sum(map(lambda s: 1 if s == separator else 0, inner_text)) != 2:
+            self.ui.button_box.setDisabled(True)
+            return
+        condition_target_str = self._get_condition_substring()
+        if not condition_target_str:
+            self.ui.button_box.setDisabled(True)
+            return
+        if self.ui.sep_input.text():
+            self.ui.button_box.setDisabled(False)
+
+    @Slot()
+    def _head_varible_validation(self, item: Optional[QListWidgetItem]):
+        if not item:
+            self.ui.button_box.setDisabled(True)
+            return
+        item_text = item.text()
+        if not item_text:
+            self.ui.button_box.setDisabled(True)
+            return
+        if item_text == self.EMPTY_VARIBLES_TEXT:
+            self.ui.button_box.setDisabled(True)
+            return
+        self.ui.button_box.setDisabled(False)
+
+    @Slot()
+    def _separator_input_validation(self, value):
+        if not value:
+            self.ui.button_box.setDisabled(True)
+            return
+        if len(value) != 1:
+            self.ui.button_box.setDisabled(True)
+            return
+        if not bool(re.match(r"^\W$", value, flags=re.S)):
+            self.ui.button_box.setDisabled(True)
+            self.ui.sep_input.clear()
+            return
+        if self.ui.string_input.text():
+            self.ui.button_box.setDisabled(False)
+
+    @Slot()
     def load_head_varibles(self):
         def insert_head_varibles(items):
             items = tuple(items)
             if items:
-                [self.head_varible_area.addItem(QListWidgetItem(item["name"])) for item in items]
+                [self.ui.head_varible_area.addItem(QListWidgetItem(item["name"])) for item in items]
                 return
-            self.head_varible_area.addItem(QListWidgetItem(self.EMPTY_VARIBLES_TEXT))
+            self.ui.head_varible_area.addItem(QListWidgetItem(self.EMPTY_VARIBLES_TEXT))
             self._unlock_dialog()
 
         @QThreadInstanceDecorator(result_callback=insert_head_varibles)
@@ -99,9 +198,10 @@ class AddConditionDialog(MyAbstractDialog):
         self._lock_dialog()
 
     def clear_form(self):
-        self.string_input.clear()
-        self.head_varible_area.clear()
+        self.ui.string_input.clear()
+        self.ui.head_varible_area.clear()
 
+    @Slot()
     def add_new_condition_item(self):
         def success_add():
             self.close()
@@ -110,27 +210,28 @@ class AddConditionDialog(MyAbstractDialog):
         @QThreadInstanceDecorator(result_callback=success_add)
         def set_to_database__head_varible(headvar_name: str):
             """ Выбор 'переменной из шапки' в кач-ве условия. Создание записи в табице 'HeadVarDelegation'"""
-            head_varible_instance = self.db.get_item(_model=HeadVarible, name=headvar_name)
-            if not head_varible_instance:
-                return
-            h_var_delegation_d = {"secid": str(uuid.uuid4()), "varid": head_varible_instance["varid"]}
-            condition_item_data = {"cnd": str(uuid.uuid4())}
-            h_var_delegation_d.update({"conditionid": condition_item_data["cnd"]})
-            self.db.set_item(_model=Condition, _insert=True, **condition_item_data)
-            self.db.set_item(_insert=True, _model=HeadVarDelegation, **h_var_delegation_d)
+            pass
 
         @QThreadInstanceDecorator(result_callback=success_add)
-        def set_to_database__search_string(search_string: str):
+        def set_to_database__search_string(left_index: int, right_index: int, inner: str):
             """Создание условия на основе поисковой строки. Без создание записи в таблице 'HeadVarDelegation'"""
-            self.db.set_item(_model=Condition, _insert=True, **{"cnd": str(uuid.uuid4()), "conditionstring": search_string})
-        if self.set_string_button.isChecked():
-            condition_string = self.string_input.text()
-            if not condition_string:
-                self.close()
-                return
-            set_to_database__search_string(condition_string)
-        if self.set_varible_button.isChecked():
-            head_var_area_selected_item = self.head_varible_area.currentItem()
+            def add_initial_values_radio_buttons() -> dict:
+                d = {}
+                [d.update(self.conditions_page.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON[k]) if k in self.conditions_page.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON else None
+                 for k, v in self.conditions_page.RADIO_BUTTON_DEFAULT_VALUES.items()]
+                return d
+            search_str_id = str(uuid.uuid4())
+            self.db.set_item(_model=SearchString, inner_=inner, lindex=left_index, rindex=right_index, strid=search_str_id, _insert=True)
+            self.db.set_item(_model=Condition, stringid=search_str_id, cnd=str(uuid.uuid4()), _insert=True,
+                             **add_initial_values_radio_buttons())
+
+        if self.ui.set_string_button.isChecked():
+            condition_string = self._get_cond_string()
+            substring = self._get_condition_substring()
+            start_index = condition_string.index(substring)
+            set_to_database__search_string(start_index, start_index + len(substring), condition_string)
+        if self.ui.set_varible_button.isChecked():
+            head_var_area_selected_item = self.ui.head_varible_area.currentItem()
             if head_var_area_selected_item is None:
                 self.close()
                 return
@@ -146,9 +247,22 @@ class AddConditionDialog(MyAbstractDialog):
     def _unlock_dialog(self):
         self.setEnabled(True)
 
+    def _get_cond_string(self) -> str:
+        """ Убрать символы разделителя """
+        sep_symbol: str = self.ui.sep_input.text()
+        inner: str = self.ui.string_input.text()
+        return inner.replace(sep_symbol, "")
 
-class ConditionsPage(Constructor, Tools):
-    _UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON = {
+    def _get_condition_substring(self) -> str:
+        sep_symbol = self.ui.sep_input.text()
+        str_ = self.ui.string_input.text()
+        left_sep_index = str_.index(sep_symbol)
+        right_sep_index = str_.rindex(sep_symbol)
+        return str_[left_sep_index + 1:right_sep_index]
+
+
+class ConditionsPage(Constructor, Tools, InputTools):
+    UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON = {
         "radioButton_45": {"conditionbooleanvalue": True},
         "radioButton_46": {"conditionbooleanvalue": False},
         "radioButton_24": {"findfull": True, "isntfindfull": False, "findpart": False, "isntfindpart": False,
@@ -168,12 +282,12 @@ class ConditionsPage(Constructor, Tools):
         "radioButton_29": {"parentconditionbooleanvalue": True},
         "radioButton_30": {"parentconditionbooleanvalue": False},
     }
-    _UI__TO_SQL_COLUMN_LINK__LINE_EDIT = {"lineEdit_28": "conditionvalue"}
-    _UI__TO_SQL_COLUMN_LINK__COMBO_BOX = {"parent_condition_combobox": "parent"}
-    _STRING_FIELDS = ("lineEdit_28",)
-    _LINE_EDIT_DEFAULT_VALUES = {"lineEdit_28": ""}
-    _COMBO_BOX_DEFAULT_VALUES = {"parent_condition_combobox": "Выберите промежуточное условие"}
-    _RADIO_BUTTON_DEFAULT_VALUES = {"radioButton_26": True}
+    UI__TO_SQL_COLUMN_LINK__LINE_EDIT = {"lineEdit_28": "conditionvalue"}
+    UI__TO_SQL_COLUMN_LINK__COMBO_BOX = {"parent_condition_combobox": "parent"}
+    STRING_FIELDS = ("lineEdit_28",)
+    LINE_EDIT_DEFAULT_VALUES = {"lineEdit_28": ""}
+    COMBO_BOX_DEFAULT_VALUES = {"parent_condition_combobox": "Выберите промежуточное условие"}
+    RADIO_BUTTON_DEFAULT_VALUES = {"radioButton_26": True, "radioButton_45": True, "radioButton_28": True}
 
     def __init__(self, app_instance: QMainWindow, ui: Ui):
         super().__init__(app_instance, ui)
@@ -181,7 +295,7 @@ class ConditionsPage(Constructor, Tools):
         self.ui = ui
         self.db_items: orm.ORMHelper = app_instance.db_items_queue
         self.validator: Optional[ConditionsPageValidator] = None
-        self.condition_items_id = {}  # name: id
+        self.condition_items_id = {}  # name: {"condition": ..., "search_str": ..., "head_var": ...}
         self.add_condition_dialog: Optional[AddConditionDialog] = None
         self.field_signals_status = False
 
@@ -197,7 +311,7 @@ class ConditionsPage(Constructor, Tools):
         self.connect_main_signals()
 
     def reload(self, in_new_qthread: bool = True):
-        def add_(condition_items):
+        def add_(items):
             def auto_select_condition_item(index=0) -> Optional[QListWidgetItem]:
                 m = self.ui.conditions_list.takeItem(index)
                 self.ui.conditions_list.addItem(m)
@@ -207,8 +321,8 @@ class ConditionsPage(Constructor, Tools):
             self.disconnect_parent_condition_combo_box()
             self.disconnect_field_signals()
             self.reset_fields()
-            for item in condition_items:
-                self.add_or_replace_condition_item_to_list_widget(item)
+            items = tuple(items)
+            [self.add_or_replace_condition_item_to_list_widget(item) for item in items]
             self.disconnect_field_signals()
             active_item = auto_select_condition_item()
             self.validator.current_condition = active_item
@@ -219,30 +333,44 @@ class ConditionsPage(Constructor, Tools):
 
         @QThreadInstanceDecorator(in_new_qthread=in_new_qthread, result_callback=add_)
         def load_():
-            items = self.db_items.get_items(_model=Condition)
+            items = self.db_items.join_select(SearchString, Condition, HeadVarible,
+                                              on={"Condition.stringid": "SearchString.strid",
+                                                  "Condition.hvarid": "HeadVarible.varid"})
             return items
         load_()
 
-    def add_or_replace_condition_item_to_list_widget(self, condition_data: dict, replace=False):
+    def add_or_replace_condition_item_to_list_widget(self, data: dict, replace=False):
         """ 1) Найти выбранный QListWidgetItem (со старым именем)
             2) Сгененировать новое имя
             3) Вставить новый QListWidgetItem (с новым именем) в индекс или в default_index
             4) Сохранить связку {id: новый_name} в condition_items_id """
-        def create_condition_name(data: dict) -> str:
-            map_ = {"conditionbooleanvalue": lambda: "Истинно если" if data.get("conditionbooleanvalue", None) else
-                    "..." if data.get("conditionbooleanvalue", None) is None else "Ложно если",
-                    "conditionstring": lambda: f"строка >> {data['conditionstring']} <<" if "conditionstring" in data else "переменная",
+        def create_condition_name(data_: dict) -> str:
+            def get_substring(main_string):
+                l_index = data_["lindex"]
+                r_index = data_["rindex"]
+                return main_string[l_index:r_index]
+            search_str_inner = data_.get("inner_", "")
+            search_str_target = get_substring(search_str_inner) if "varid" not in data_ else ""
+            parent_cond_bool_value = data_.get('parentconditionbooleanvalue', "")
+            condition_bool_val = data.get("conditionbooleanvalue", "")
+            map_ = {"conditionbooleanvalue": lambda: "Истинно если" if condition_bool_val else "Ложно если",
+                    "parentconditionbooleanvalue": lambda: f"родительское условие {'верно' if parent_cond_bool_value else 'ложно'}",
+                    "strid": f"{'и ' if 'parent' in data else ''}{f'подстрока >>{search_str_target}<< найдена в строке >>{search_str_inner}<<' if search_str_target else f'строка >> {search_str_inner} <<'}",
                     "findfull": "совпадает c",
                     "findpart": "содержит", "isntfindfull": "не совпадает c", "isntfindpart": "не содержит",
                     "equal": "равно", "less": "меньше чем", "larger": "больше чем",
-                    "conditionvalue": lambda: f"<< {data['conditionvalue']} >>." if "conditionvalue" in data else "...",
-                    "parent": lambda: "Выбрано внешнее условие!" if "parent" in data else ""}
+                    "conditionvalue": lambda: f"<< {data_.get('condinner', '...')}",
+                    "parent": lambda: "Выбрано внешнее условие!" if "parent" in data_ else "",
+                    "stringid": None,
+                    "inner_": None,
+                    "lindex": None,
+                    "rindex": None,
+                    "cnd": None}
             return " ".join(
-                map(lambda t: t[1]() if not isinstance(t[1], str) else map_[t[0]] if (t[0] in data and data[t[0]]) else "", map_.items())
+               (map_[key] if type(map_[key]) is str else map_[key]() if val is not None and map_[key] is not None else "" for key, val in data_.items())
             )
-
-        name = create_condition_name(condition_data)
-        self.condition_items_id.update({name: condition_data["cnd"]})
+        name = create_condition_name(data)
+        self.condition_items_id.update({name: {"condition": data["cnd"], "search_str": data["strid"]}})
         self.disconnect_field_signals()
         if replace:
             list_item = self.ui.conditions_list.currentItem()
@@ -262,11 +390,11 @@ class ConditionsPage(Constructor, Tools):
                                                            callback=close_create_condition_window)
         self.ui.add_button_3.clicked.connect(open_create_condition_window)
         self.ui.remove_button_3.clicked.connect(self.remove_condition)
-        self.ui.conditions_list.currentItemChanged.connect(lambda current, prev: self.select_condition_item(current))
 
     def connect_field_signals(self):
         if self.field_signals_status:
             return
+        self.ui.conditions_list.currentItemChanged.connect(lambda current, prev: self.select_condition_item(current))
         self.ui.radioButton_45.toggled.connect(lambda x: self.update_data("radioButton_45", radio_button=True))
         self.ui.radioButton_46.toggled.connect(lambda x: self.update_data("radioButton_46", radio_button=True))
         self.ui.radioButton_24.clicked.connect(lambda: self.update_data("radioButton_24", radio_button=True))
@@ -286,6 +414,7 @@ class ConditionsPage(Constructor, Tools):
     def disconnect_field_signals(self):
         if not self.field_signals_status:
             return
+        self.ui.conditions_list.currentItemChanged.disconnect()
         self.ui.radioButton_45.toggled.disconnect()
         self.ui.radioButton_46.toggled.disconnect()
         self.ui.radioButton_24.clicked.disconnect()
@@ -339,16 +468,25 @@ class ConditionsPage(Constructor, Tools):
             self.connect_field_signals()
 
         @QThreadInstanceDecorator(result_callback=update_fields)
-        def load_inner(item: str):
-            item_data = self.db_items.get_item(cnd=item, _model=Condition)
+        def load_inner(condition=None, search_str=None, head_var=None):
+            w = {}
+            w.update({"Condition": {"cnd": condition}}) if condition else None
+            w.update({"SearchString": {"strid": search_str}}) if search_str is not None else None
+            w.update({"HeadVarible": {"varid": head_var}}) if head_var is not None else None
+            item_data = self.db_items.join_select(SearchString, Condition, HeadVarible,
+                                                  on={"Condition.stringid": "SearchString.strid",
+                                                      "Condition.hvarid": "HeadVarible.varid"},
+                                                  _where=w)
+            item_data = tuple(item_data)
             if not item_data:
                 self.reload(in_new_qthread=False)
             return item_data
         if condition_item is None:
             return
+
         self.validator.set_condition_item(condition_item)
         item_text = condition_item.text()
-        load_inner(self.condition_items_id[item_text])
+        load_inner(**self.condition_items_id[item_text])
 
     @Slot(str)
     def change_parent_condition(self, item):
@@ -374,7 +512,7 @@ class ConditionsPage(Constructor, Tools):
             return
         current_condition_name = current_condition_item.text()
         id_ = self.condition_items_id[current_condition_name]
-        if item == self._COMBO_BOX_DEFAULT_VALUES["parent_condition_combobox"]:
+        if item == self.COMBO_BOX_DEFAULT_VALUES["parent_condition_combobox"]:
             set_changes(id_)
             self.validator.refresh()
             return
@@ -402,10 +540,10 @@ class ConditionsPage(Constructor, Tools):
         ui_field = getattr(self.ui, field_name)
         field_value = ui_field.text()
         if kwargs.get("line_edit", None):
-            sql_field_name = self._UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]
+            sql_field_name = self.UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]
             set_data(condition_id, **{sql_field_name: self.check_output_values(sql_field_name, field_value)})
         elif kwargs.get("radio_button", None):
-            radio_button_values: dict = self._UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON[field_name]
+            radio_button_values: dict = self.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON[field_name]
             set_data(condition_id, **radio_button_values)
 
     def reset_fields(self):

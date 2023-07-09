@@ -17,17 +17,17 @@ empty_string = repeat("")
 
 
 class OptionsPageCreateMachine(Constructor, Tools):
-    _UI__TO_SQL_COLUMN_LINK__LINE_EDIT = {"lineEdit_10": "input_catalog",
+    UI__TO_SQL_COLUMN_LINK__LINE_EDIT = {"lineEdit_10": "input_catalog",
                                           "lineEdit_21": "output_catalog",
                                           "lineEdit_11": "x_over", "lineEdit_12": "y_over", "lineEdit_13": "z_over",
                                           "lineEdit_14": "x_fspeed", "lineEdit_15": "y_fspeed", "lineEdit_16": "z_fspeed",
                                           "lineEdit_17": "spindele_speed"}
-    _UI__TO_SQL_COLUMN_LINK__COMBO_BOX = {"choice_cnc": "name"}
-    _COMBO_BOX_DEFAULT_VALUES = {"choice_cnc": "Выберите стойку"}
-    _LINE_EDIT_DEFAULT_VALUES = {"lineEdit_10": empty_string, "lineEdit_21": empty_string,
+    UI__TO_SQL_COLUMN_LINK__COMBO_BOX = {"choice_cnc": "name"}
+    COMBO_BOX_DEFAULT_VALUES = {"choice_cnc": "Выберите стойку"}
+    LINE_EDIT_DEFAULT_VALUES = {"lineEdit_10": empty_string, "lineEdit_21": empty_string,
                                  "lineEdit_11": empty_string, "lineEdit_12": empty_string, "lineEdit_13": empty_string,
                                  "lineEdit_14": empty_string, "lineEdit_15": empty_string, "lineEdit_16": empty_string, "lineEdit_17": empty_string}
-    _INTEGER_FIELDS = ("lineEdit_11", "lineEdit_12", "lineEdit_13", "lineEdit_14",
+    INTEGER_FIELDS = ("lineEdit_11", "lineEdit_12", "lineEdit_13", "lineEdit_14",
                        "lineEdit_15", "lineEdit_16", "lineEdit_17")  # Для замены пустых значений нулями при отправке в бд
 
     def __init__(self, main_app_instance, ui: Ui):
@@ -223,7 +223,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
                     self.reload(create_thread=False)
             check_machine_is_exists()
             exists_node_type = self.db_items.get_node_dml_type(machine_n)
-            sql_column_name = self._UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]
+            sql_column_name = self.UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]
             self.db_items.set_item(**{sql_column_name: self.check_output_values(field_name, value)},
                                    _ready=self.validator.refresh(), machine_name=machine_n,
                                    **{("_update" if exists_node_type == "_update" else "_insert"): True})
@@ -242,7 +242,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
             cnc = self.db_items.get_item(_model=Cnc, name=selected_cnc_name)
             if not cnc or not machine:
                 self.reload(create_thread=False)
-            if selected_cnc_name == self._COMBO_BOX_DEFAULT_VALUES:
+            if selected_cnc_name == self.COMBO_BOX_DEFAULT_VALUES:
                 self.db_items.remove_field_from_node(selected_machine_name, "cncid")
                 return
             self.db_items.set_item(cncid=cnc["cncid"],
@@ -261,10 +261,10 @@ class OptionsPageCreateMachine(Constructor, Tools):
         self.cnc_names = {}
 
     def set_fields_state(self, disabled=False):
-        for field_name in self._UI__TO_SQL_COLUMN_LINK__COMBO_BOX:
+        for field_name in self.UI__TO_SQL_COLUMN_LINK__COMBO_BOX:
             item: QComboBox = getattr(self.ui, field_name)
             item.setDisabled(disabled)
-        for field_name in self._UI__TO_SQL_COLUMN_LINK__LINE_EDIT:
+        for field_name in self.UI__TO_SQL_COLUMN_LINK__LINE_EDIT:
             item: QLineEdit = getattr(self.ui, field_name)
             item.setDisabled(disabled)
         self.ui.add_machine_input.setDisabled(disabled)
