@@ -123,6 +123,7 @@ def init_condition_table_triggers():
                 FROM cond
                 WHERE (parent=NEW.parent OR NEW.parent IS NULL AND parent IS NULL)
                 AND stringid=NEW.stringid OR NEW.stringid IS NULL AND stringid IS NULL
+                AND condinner=NEW.condinner
                 AND conditionbooleanvalue=NEW.conditionbooleanvalue
                 AND isntfindfull=NEW.isntfindfull
                 AND isntfindpart=NEW.isntfindpart
@@ -132,6 +133,7 @@ def init_condition_table_triggers():
                 AND equal=NEW.equal
                 AND less=NEW.less
                 AND larger=NEW.larger
+                AND (hvarid IS NULL AND NEW.hvarid IS NULL) OR hvarid=NEW.hvarid
             ) THEN
                 RAISE EXCEPTION 'Данный экземпляр сущности уже существует!';
             ELSE
@@ -665,7 +667,9 @@ def init_searchstring_table_triggers():
             IF EXISTS(SELECT 1
             FROM sstring
             WHERE inner_=NEW.inner_ AND
-            target=NEW.target)
+            ignorecase=NEW.ignorecase AND
+            lindex=NEW.lindex AND
+            rindex=NEW.rindex)
             THEN 
                 RAISE EXCEPTION 'Данный экземпляр сущности уже существует';
             ELSE

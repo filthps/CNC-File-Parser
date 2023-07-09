@@ -1,15 +1,16 @@
 """
 Назначить каждому классу модели атрибут __db_queue_primary_field_name__, который необходим для класса tools.ORMHelper
 """
+import itertools
 from uuid import uuid4
 from sqlalchemy import String, Integer, Column, ForeignKey, Boolean, SmallInteger, Text, CheckConstraint
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, InstrumentedAttribute
 from flask_sqlalchemy import SQLAlchemy as FlaskSQLAlchemy
 from flask import Flask
 
 
 DATABASE_PATH = "postgresql://postgres:g8ln7ze5vm6a@localhost:5432/intex1"
-RESERVED_WORDS = ("__insert", "__update", "__delete", "__ready", "__model", "__callback", "__node_name",)  # Используются в классе ORMHelper
+RESERVED_WORDS = ("__insert", "__update", "__delete", "__ready", "__model", "__callback", "__node_name", "__primary_key__")  # Используются в классе ORMHelper
 
 
 app = Flask(__name__)
@@ -48,8 +49,19 @@ class ModelController:
                 # то это поле будет удалено из значения ноды:
                 # pk - целочисленный автоинкремент, то нет смысла пытаться это отправлять в бд
                 cls.__remove_pk__ = True
+
+        def set_primary_key_field_name_to_cls():
+            """
+            Найти столбец с первичным ключом, сохранить его имя в атрибут класса __primary_key__.
+            Для orm.py
+            """
+            for attribute_name, val in cls.__dict__.items():
+                if hasattr(val, "primary_key") and type(val) is InstrumentedAttribute:
+                    setattr(cls, "__primary_key__", attribute_name)
+                    break
         check_class_attributes()
         check_db_helper_queue_main_field()
+        set_primary_key_field_name_to_cls()
         return super().__new__(cls)
 
 
@@ -68,10 +80,11 @@ OPERATION_TYPES = (
 
 class CustomModel(db.Model, ModelController):
     """
-    Для аннотации типов.
-    Кстомный класс модели SQLAlchemy для использования в классе ORMHelper модуля tools!
+    Абстрактный класс для аннотации типов.
+    класс модели SQLAlchemy для использования в классе ORMHelper модуля tools!
     """
     abstract_field = Column(Integer, primary_key=True)
+    __init__ = None
     __call__ = None
 
 
@@ -80,7 +93,7 @@ class TaskDelegation(db.Model, ModelController):
     __db_queue_primary_field_name__ = "id"
     id = Column(String, primary_key=True, default=get_uuid)
     machineid = Column(ForeignKey("machine.machineid"), nullable=False)
-    operationid = Column(ForeignKey("operation.opid"), nullable=False)
+    operationid = Column(ForeignKey("OperationDelegation.opid"), nullable=False)
 
 
 class Machine(db.Model, ModelController):
@@ -98,7 +111,7 @@ class Machine(db.Model, ModelController):
     spindele_speed = Column(Integer, nullable=True, default=None)
     input_catalog = Column(String, nullable=False)
     output_catalog = Column(String, nullable=False)
-    operations = relationship("Operation", secondary=TaskDelegation.__table__)
+    operations = relationship("OperationDelegation", secondary=TaskDelegation.__table__)
     __table_args__ = (
         CheckConstraint("machine_name!=''", name="machine_name_empty"),
         CheckConstraint("input_catalog!=''", name="input_catalog_empty"),
@@ -113,14 +126,14 @@ class Machine(db.Model, ModelController):
     )
 
 
-class Operation(db.Model, ModelController):
-    __tablename__ = "operation"
+class OperationDelegation(db.Model, ModelController):
+    __tablename__ = "OperationDelegation"
     __db_queue_primary_field_name__ = "operation_description"
     opid = Column(String, primary_key=True, default=get_uuid)
     conditionid = Column(String, ForeignKey("cond.cnd"), nullable=True, default=None)
     insertid = Column(Integer, ForeignKey("insert.insid"), nullable=True, default=None)
     commentid = Column(Integer, ForeignKey("comment.commentid"), nullable=True, default=None)
-    uncommentid = Column(Integer, ForeignKey("uncomment.id"), nullable=True, default=None)
+    uncommentid = Column(Integer, ForeignKey("uncomment.uid"), nullable=True, default=None)
     removeid = Column(Integer, ForeignKey("remove.removeid"), nullable=True, default=None)
     renameid = Column(Integer, ForeignKey("renam.renameid"), nullable=True, default=None)
     replaceid = Column(Integer, ForeignKey("repl.replaceid"), nullable=True, default=None)
@@ -135,7 +148,9 @@ class Condition(db.Model, ModelController):
     __db_queue_primary_field_name__ = "cnd"
     cnd = Column(String, primary_key=True, default=get_uuid)
     parent = Column(String, ForeignKey("cond.cnd", ondelete="SET NULL", onupdate="CASCADE"), nullable=True, default=None)
+    hvarid = Column(ForeignKey("headvar.varid", ondelete="CASCADE", onupdate="CASCADE"), nullable=True, default=None)
     stringid = Column(ForeignKey("sstring.strid", ondelete="CASCADE", onupdate="CASCADE"), nullable=True, default=None)
+    condinner = Column(String(50), nullable=False, default="")
     conditionbooleanvalue = Column(Boolean, default=True, nullable=False)
     isntfindfull = Column(Boolean, default=False, nullable=False)
     isntfindpart = Column(Boolean, default=False, nullable=False)
@@ -145,6 +160,10 @@ class Condition(db.Model, ModelController):
     equal = Column(Boolean, default=False, nullable=False)
     less = Column(Boolean, default=False, nullable=False)
     larger = Column(Boolean, default=False, nullable=False)
+    __table_args__ = (
+        CheckConstraint("condinner!=''", name="condinner_empty"),
+        CheckConstraint("hvarid IS NOT NULL OR stringid IS NOT NULL", name="check_cnd_target")
+    )
 
 
 class Cnc(db.Model, ModelController):
@@ -199,8 +218,8 @@ class Comment(db.Model, ModelController):
 
 class Uncomment(db.Model, ModelController):
     __tablename__ = "uncomment"
-    __db_queue_primary_field_name__ = "id"
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    __db_queue_primary_field_name__ = "uid"
+    uid = Column(Integer, primary_key=True, autoincrement=True)
     findstr = Column(String(100), nullable=False)
     iffullmatch = Column(Boolean, default=False, nullable=False)
     ifcontains = Column(Boolean, default=False, nullable=False)
@@ -283,11 +302,13 @@ class SearchString(db.Model, ModelController):
     __db_queue_primary_field_name__ = "strid"
     strid = Column(String, default=get_uuid, primary_key=True)
     inner_ = Column(Text, default="", nullable=False)
-    target = Column(String(30), default="", nullable=False)
+    ignorecase = Column(Boolean, default=True, nullable=False)
+    lindex = Column(SmallInteger, default=0, nullable=False)
+    rindex = Column(SmallInteger, default=-1, nullable=False)
     __table_args = (
         CheckConstraint("inner_!=''", name="required_inner"),
-        CheckConstraint("target!=''", name="check_empty_target"),
-        CheckConstraint("CHARINDEX(target, inner_)>0", name="valid_target"),
+        CheckConstraint("rindex=-1 OR LENGTH(inner) < rindex", name="valid_rindex"),
+        CheckConstraint("lindex>=0 AND lindex<LENGTH(inner)", name="valid_lindex"),
     )
 
 
@@ -295,7 +316,7 @@ if __name__ == "__main__":
     def check_bad_attribute_name():
         TaskDelegation()
         Machine()
-        Operation()
+        OperationDelegation()
         Condition()
         Cnc()
         HeadVarible()
@@ -308,19 +329,23 @@ if __name__ == "__main__":
         Numeration()
         Replace()
         SearchString()
+
+    def test_unique_primary_key_column_name(field_name: str):
+        """ Уникальность названия для столбца первичного ключа по всем таблицам """
+        def primary_keys():
+            for m in (TaskDelegation(), Machine(), OperationDelegation(), Condition(), Cnc(), HeadVarible(), Insert(), Comment(),
+                      Uncomment(), Remove(), HeadVarDelegation(), Rename(), Numeration(), Replace(), SearchString(),):
+                yield {m.__class__.__name__: getattr(m, field_name)}
+        repeat_table_names = []
+        primary_key_field_names = list(itertools.chain(*tuple(map(lambda x: tuple(x.values()), primary_keys()))))
+        for elem in primary_keys():
+            model_name, pk_key = tuple(elem.keys())[0], tuple(elem.values())[0]
+            if primary_key_field_names.count(pk_key) > 1:
+                repeat_table_names.append(model_name)
+        if repeat_table_names:
+            raise KeyError(f"Во всём проекте названия полей-первичных ключей должны быть уникальными! "
+                           f" Повторы в таблицах: {', '.join(repeat_table_names)}")
     check_bad_attribute_name()
+    test_unique_primary_key_column_name("__primary_key__")  # test database PK
     db.drop_all()
     db.create_all()
-
-    def create_cnc():
-        i = Cnc(comment_symbol=",", name="Fida")
-        db.session.add(i)
-        db.session.commit()
-    #create_cnc()
-
-    def create_machine():
-        m = Machine(machine_name="Heller", cncid=n.cncid,
-                    input_catalog="dfdf", output_catalog="sgdfgdfgb")
-        db.session.add(m)
-        db.session.commit()
-    #create_machine()

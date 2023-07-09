@@ -139,6 +139,14 @@ class LinkedList(LinkedListAbstraction):
         if items is not None:
             [self.append(val=item) for item in items]
 
+    @property
+    def head(self):
+        return self._head
+
+    @property
+    def tail(self):
+        return self._tail
+
     def append(self, **kwargs):
         """
         Добавить ноду в нонец
