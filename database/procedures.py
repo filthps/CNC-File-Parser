@@ -8,7 +8,7 @@ def init_operation_delegation_table_triggers():
         AS $body$
         BEGIN
             IF EXISTS(SELECT 1
-            FROM operation
+            FROM operationdelegation
             WHERE (conditionid=NEW.conditionid OR NEW.conditionid IS NULL AND conditionid IS NULL)
             AND (insertid=NEW.insertid OR NEW.insertid IS NULL AND insertid IS NULL)
             AND (commentid=NEW.commentid OR NEW.commentid IS NULL AND commentid IS NULL)
@@ -29,7 +29,7 @@ def init_operation_delegation_table_triggers():
     db.engine.execute("""
         CREATE TRIGGER operation_delegation_trigger
         BEFORE INSERT OR UPDATE
-        ON operation FOR EACH ROW
+        ON operationdelegation FOR EACH ROW
         EXECUTE PROCEDURE check_unique_delegation();
     """)
 
@@ -61,7 +61,7 @@ def init_operation_delegation_table_triggers():
     db.engine.execute("""
         CREATE TRIGGER delegation_trigger_counter
         BEFORE INSERT OR UPDATE
-        ON operation FOR EACH ROW
+        ON operationdelegation FOR EACH ROW
         EXECUTE PROCEDURE check_count_delegation_options();
     """)
 

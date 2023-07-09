@@ -9,7 +9,7 @@ from flask_sqlalchemy import SQLAlchemy as FlaskSQLAlchemy
 from flask import Flask
 
 
-DATABASE_PATH = "postgresql://postgres:g8ln7ze5vm6a@localhost:5432/intex1"
+DATABASE_PATH = "postgresql://postgres:OxWjmg6AnK@localhost:5432/intex1"
 RESERVED_WORDS = ("__insert", "__update", "__delete", "__ready", "__model", "__callback", "__node_name", "__primary_key__")  # Используются в классе ORMHelper
 
 
@@ -93,7 +93,7 @@ class TaskDelegation(db.Model, ModelController):
     __db_queue_primary_field_name__ = "id"
     id = Column(String, primary_key=True, default=get_uuid)
     machineid = Column(ForeignKey("machine.machineid"), nullable=False)
-    operationid = Column(ForeignKey("OperationDelegation.opid"), nullable=False)
+    operationid = Column(ForeignKey("operationdelegation.opid"), nullable=False)
 
 
 class Machine(db.Model, ModelController):
@@ -127,7 +127,7 @@ class Machine(db.Model, ModelController):
 
 
 class OperationDelegation(db.Model, ModelController):
-    __tablename__ = "OperationDelegation"
+    __tablename__ = "operationdelegation"
     __db_queue_primary_field_name__ = "operation_description"
     opid = Column(String, primary_key=True, default=get_uuid)
     conditionid = Column(String, ForeignKey("cond.cnd"), nullable=True, default=None)
