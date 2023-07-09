@@ -1,4 +1,5 @@
 import re
+import typing
 from PySide2.QtGui import QColor
 from PySide2.QtWidgets import QLineEdit, QWidget, QRadioButton, QComboBox
 from gui.ui import Ui_main_window
@@ -12,7 +13,7 @@ class Validator:
     INVALID_TEXT_FIELD_VALUES: dict[str, re.Pattern] = {}  # Ключи определяют перечень участвующих в валидации полей c текстовым содержимым, значение - регулярка, отображающая "плохое" значение
     INVALID_TEXT: dict[str, str] = {}  # Словарь - имя виджета: текст-подсказка к неправильному полю
 
-    def __init__(self, ui: Ui_main_window):
+    def __init__(self, ui: typing.Union[Ui_main_window, typing.Any]):
         self.ui = ui
         self._is_valid = False
 

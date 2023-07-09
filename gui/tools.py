@@ -15,39 +15,39 @@ from gui.ui import Ui_main_window as Ui
 
 class Tools:
     ui = None
-    _UI__TO_SQL_COLUMN_LINK__LINE_EDIT = {}
-    _UI__TO_SQL_COLUMN_LINK__COMBO_BOX = {}
-    _UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON: dict[str, dict[str, bool]] = {}
-    _COMBO_BOX_DEFAULT_VALUES = {}
-    _RADIO_BUTTON_DEFAULT_VALUES: tuple = tuple()  # Кортеж с именами выбранных кнопок
-    _LINE_EDIT_DEFAULT_VALUES = {}
-    _INTEGER_FIELDS = tuple()
-    _STRING_FIELDS = tuple()
-    _FLOAT_FIELDS = tuple()
-    _NULLABLE_FIELDS = tuple()
+    UI__TO_SQL_COLUMN_LINK__LINE_EDIT = {}
+    UI__TO_SQL_COLUMN_LINK__COMBO_BOX = {}
+    UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON: dict[str, dict[str, bool]] = {}
+    COMBO_BOX_DEFAULT_VALUES = {}
+    RADIO_BUTTON_DEFAULT_VALUES: tuple = tuple()  # Кортеж с именами выбранных кнопок
+    LINE_EDIT_DEFAULT_VALUES = {}
+    INTEGER_FIELDS = tuple()
+    STRING_FIELDS = tuple()
+    FLOAT_FIELDS = tuple()
+    NULLABLE_FIELDS = tuple()
 
     def update_fields(self, line_edit_values: Optional[dict] = None,
                       combo_box_values: Optional[dict] = None, radio_button_values: Optional[dict] = None):
         """ Обновление содержимого полей """
-        for line_edit_name, db_field_name in self._UI__TO_SQL_COLUMN_LINK__LINE_EDIT.items():
+        for line_edit_name, db_field_name in self.UI__TO_SQL_COLUMN_LINK__LINE_EDIT.items():
             val = line_edit_values.pop(db_field_name, None) if line_edit_values else None
             input_: QLineEdit = getattr(self.ui, line_edit_name)
             if val:
                 input_.setText(next(val) if type(val) is repeat else str(val))
             else:
                 input_.setText("")
-        for ui_field, orm_field in self._UI__TO_SQL_COLUMN_LINK__COMBO_BOX.items():
+        for ui_field, orm_field in self.UI__TO_SQL_COLUMN_LINK__COMBO_BOX.items():
             input_: QComboBox = getattr(self.ui, ui_field)
             value = combo_box_values.get(orm_field) if combo_box_values else None
             if value:
                 input_.setCurrentText(str(value))
             else:
-                default_value = self._COMBO_BOX_DEFAULT_VALUES.get(orm_field, None)
+                default_value = self.COMBO_BOX_DEFAULT_VALUES.get(orm_field, None)
                 if default_value:
                     input_.setCurrentText(default_value)
                 else:
                     input_.setCurrentText("")
-        for ui_field_name, orm_values_group in self._UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON.items():
+        for ui_field_name, orm_values_group in self.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON.items():
             for orm_field_name, orm_field_val in orm_values_group.items():
                 if orm_field_name in radio_button_values and radio_button_values[orm_field_name]:
                     ui_field: QRadioButton = getattr(self.ui, ui_field_name)
@@ -56,37 +56,37 @@ class Tools:
 
     def check_output_values(self, field_name, value):
         """ Форматировать типы выходных значений перед установкой в очередь отправки """
-        if field_name in self._INTEGER_FIELDS:
+        if field_name in self.INTEGER_FIELDS:
             if not value:
                 return 0
             if type(value) is int:
                 return value
             return int(value) if str.isdigit(value) else value
-        if field_name in self._FLOAT_FIELDS:
+        if field_name in self.FLOAT_FIELDS:
             if not value:
                 return float()
             if isinstance(value, float):
                 return value
             return float(value) if str.isdecimal(value) else value
-        if field_name in self._STRING_FIELDS:
+        if field_name in self.STRING_FIELDS:
             if not value:
                 return ""
             return str(value)
-        if field_name in self._NULLABLE_FIELDS:
+        if field_name in self.NULLABLE_FIELDS:
             if not value:
                 return None
         return value
 
     def reset_fields_to_default(self):
-        for radio_button_name in self._RADIO_BUTTON_DEFAULT_VALUES:
+        for radio_button_name in self.RADIO_BUTTON_DEFAULT_VALUES:
             field: QRadioButton = getattr(self.ui, radio_button_name)
             field.setChecked(True)
-        for combo_box_name, default_text in self._COMBO_BOX_DEFAULT_VALUES.items():
+        for combo_box_name, default_text in self.COMBO_BOX_DEFAULT_VALUES.items():
             field: QComboBox = getattr(self.ui, combo_box_name)
             field.clear()
             field.addItem(default_text)
             field.setCurrentIndex(0)
-        for line_edit_name, default_value in self._LINE_EDIT_DEFAULT_VALUES.items():
+        for line_edit_name, default_value in self.LINE_EDIT_DEFAULT_VALUES.items():
             field: QLineEdit = getattr(self.ui, line_edit_name)
             field.setText(next(default_value) if isinstance(default_value, repeat) else default_value)
 
