@@ -347,5 +347,6 @@ if __name__ == "__main__":
                            f" Повторы в таблицах: {', '.join(repeat_table_names)}")
     check_bad_attribute_name()
     test_unique_primary_key_column_name("__primary_key__")  # test database PK
-    db.drop_all()
-    db.create_all()
+    test_unique_primary_key_column_name("__db_queue_primary_field_name__")
+    #db.drop_all()
+    #db.create_all()

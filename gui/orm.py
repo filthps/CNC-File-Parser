@@ -80,8 +80,15 @@ class ORMItem(LinkedListItem, ORMAttributes):
     def foreign_key_fields(self):
         return self.__foreign_key_fields
 
-    def get_primary_key_and_value(self, as_tuple=False, only_key=False, only_value=False) -> Union[dict, tuple, int, str]:
-        key = getattr(self.__model(), "__db_queue_primary_field_name__")
+    def get_primary_key_and_value(self, from_database=False, as_tuple=False, only_key=False, only_value=False) -> Union[dict, tuple, int, str]:
+        """
+        :param from_database: True - выдаст пару ключ-значение от атрибута '__primary_key__', - который установлен в БД
+        False - '__db_queue_primary_field_name__' - который определяет уникальность ноды в ORMQueue
+        :param as_tuple: ключ-значение в виде кортежа
+        :param only_key: только название столбца - PK
+        :param only_value: только значение столбца первичного ключа
+         """
+        key = getattr(self.__model(), "__db_queue_primary_field_name__" if not from_database else "__primary_key__")
         if only_key:
             return key
         try:
@@ -411,8 +418,9 @@ class JoinedORMItem(ORMAttributes):
         :param items: Ноды прямиком из кэша
         """
         super().__init__()
-        self._nodes__with_data_from_database = items  # todo
-        self._nodes__with_added_from_ui_data = None  # todo
+        self.merged_values = None  # Cache
+        self._nodes__with_data_from_database = items  # todo фиксируют последние изменения из бд
+        self._nodes__with_added_from_ui_data = None  # todo реплицируемы через self.update
         #  todo Получить из ORMHelper.join_select 2 набора нод
         #  todo вернуть пользователю экземпляр JoinedORMItem() для возможности добавления изменений через self.update()
         #  todo выявлять к какой именно ноде относятся изменения, ставить ноду в очередь
@@ -430,11 +438,11 @@ class JoinedORMItem(ORMAttributes):
     def is_valid_model_instance(models: Iterable[CustomModel]):
         [super().is_valid_model_instance(model) for model in models]
 
-    def get_attributes(self) -> dict:
-        return {"_models": self.models, **self.value}
-
-    def _find_node(self):
+    def _find_node(self, **pk_data):
         pass
+
+    def __str__(self):
+        return
 
 
 class SQLAlchemyQueryManager:
