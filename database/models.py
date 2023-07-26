@@ -9,8 +9,8 @@ from flask_sqlalchemy import SQLAlchemy as FlaskSQLAlchemy
 from flask import Flask
 
 
-DATABASE_PATH = "postgresql://postgres:OxWjmg6AnK@localhost:5432/intex1"
-RESERVED_WORDS = ("__insert", "__update", "__delete", "__ready", "__model", "__callback", "__node_name", "__primary_key__")  # Используются в классе ORMHelper
+DATABASE_PATH = "postgresql://postgres:g8ln7ze5vm6a@localhost:5432/intex1"
+RESERVED_WORDS = ("__insert", "__update", "__delete", "__ready", "__model", "__primary_key__", "column_names")  # Используются в классе ORMHelper
 
 
 app = Flask(__name__)
@@ -19,9 +19,10 @@ db = FlaskSQLAlchemy(app)
 
 
 class ModelController:
-    __remove_pk__ = False
-
     def __new__(cls, **k):
+        cls.__remove_pk__ = False
+        cls.column_names = []
+
         def check_class_attributes():
             """ Предотвратить использование заерезервированных в классе ORMHelper слов """
             for special_word in RESERVED_WORDS:
@@ -40,7 +41,7 @@ class ModelController:
             if "__db_queue_primary_field_name__" not in dir(cls):
                 raise AttributeError("Добавьте атрибут __db_queue_primary_field_name__, "
                                      "содержащий имя поля, которое наиболее удобно в качестве первичного ключа для"
-                                     "элеметнов очереди ORMItem, смотри модуль tools")
+                                     "элеметнов очереди ORMItem.")
             primary_field_name = getattr(cls, "__db_queue_primary_field_name__")
             primary_field = getattr(cls, primary_field_name)
             if str(primary_field.property.columns[0].type) == "INTEGER" and \
@@ -59,9 +60,16 @@ class ModelController:
                 if hasattr(val, "primary_key") and type(val) is InstrumentedAttribute:
                     setattr(cls, "__primary_key__", attribute_name)
                     break
+
+        def collect_all_column_names():
+            """ Собрать в атрибут класса column_names все имена стоблцов таблицы """
+            for attr_name, value in cls.__dict__.items():
+                if type(value) is InstrumentedAttribute:
+                    cls.column_names.append(attr_name)
         check_class_attributes()
         check_db_helper_queue_main_field()
         set_primary_key_field_name_to_cls()
+        collect_all_column_names()
         return super().__new__(cls)
 
 

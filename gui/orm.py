@@ -1,8 +1,9 @@
+import itertools
 import sys
 import copy
 import threading
-from typing import Union, Iterator, Iterable, Optional, Callable
-from collections import ChainMap
+from typing import Union, Generator, Iterator, Iterable, Optional, Callable
+from collections import ChainMap, Counter
 from pymemcache.client.base import Client
 from pymemcache.exceptions import MemcacheError
 from pymemcache_dill_serde import DillSerde
@@ -11,16 +12,17 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import create_engine, text
 from sqlalchemy.sql.dml import Insert, Update, Delete
 from sqlalchemy.orm import Query, sessionmaker as session_factory, Session
-from sqlalchemy.exc import IntegrityError, DisconnectionError
-from gui.datatype import LinkedList, LinkedListItem
+from sqlalchemy.exc import IntegrityError, DisconnectionError, OperationalError
+from gui.datatype import LinkedList, LinkedListItem, LinkedDict
 from database.models import CustomModel, DATABASE_PATH
 
 
 class ORMAttributes:
     @staticmethod
     def is_valid_model_instance(item: CustomModel):
+        item = item()  # __new__
         if not hasattr(item, "__db_queue_primary_field_name__") or \
-                not any([hasattr(m, "__remove_pk__") for m in item.mro()]):
+                not hasattr(item, "__remove_pk__") or not hasattr(item, "column_names"):
             raise TypeError("Значение атрибута model - неподходящего типа."
                             "Используйте только кастомный класс - 'CustomModel', смотри models.")
 
@@ -240,9 +242,9 @@ class ORMItemQueue(LinkedList):
             """
             nodes_to_move_in_end_queue = self.__class__()
             new_item_primary_key_name = new_item.get_primary_key_and_value(only_key=True)
-            for node in self:  # O(n)
-                if new_item_primary_key_name in node.foreign_key_fields:  # O(k)
-                    nodes_to_move_in_end_queue.enqueue(**node.get_attributes())  # O(i)
+            for left_node in self:  # O(n)
+                if new_item_primary_key_name in left_node.foreign_key_fields:  # O(k)
+                    nodes_to_move_in_end_queue.enqueue(**left_node.get_attributes())  # O(i)
             new_container = self
             if nodes_to_move_in_end_queue:
                 new_container = self + nodes_to_move_in_end_queue  # O(i)
@@ -254,34 +256,34 @@ class ORMItemQueue(LinkedList):
 
     def dequeue(self) -> Optional[ORMItem]:
         """ Извлечение ноды с начала очереди """
-        node = self._head
-        if node is None:
+        left_node = self._head
+        if left_node is None:
             return
-        self._remove_from_queue(node)
-        return node
+        self._remove_from_queue(left_node)
+        return left_node
 
     def remove(self, model, pk_field_name, pk_field_value):
-        node = self.get_node(model, **{pk_field_name: pk_field_value})
-        if node:
-            self._remove_from_queue(node)
-            return node
+        left_node = self.get_node(model, **{pk_field_name: pk_field_value})
+        if left_node:
+            self._remove_from_queue(left_node)
+            return left_node
 
-    def get_related_nodes(self, node: ORMItem) -> "ORMItemQueue":
+    def get_related_nodes(self, left_node: ORMItem) -> "ORMItemQueue":
         """ Получить все связанные (внешним ключом) с передаваемой нодой ноды.
         O(i) * O(1) + O(n) = O(n)"""
         container = self.__class__()
         foreign_key_values = []
-        for fk_field in node.foreign_key_fields:  # O(i)
-            foreign_key_values.append(node.value[fk_field]) if fk_field in node.value else None  # O(1)
+        for fk_field in left_node.foreign_key_fields:  # O(i)
+            foreign_key_values.append(left_node.value[fk_field]) if fk_field in left_node.value else None  # O(1)
         for node_item in self:  # O(n) * O(j) * O(m) * O(n) * O(1) = O(n)
-            if not node_item == node:  # O(g) * O(j) = O (j)
+            if not node_item == left_node:  # O(g) * O(j) = O (j)
                 pk_field, pk_value = node_item.get_primary_key_and_value(as_tuple=True)
                 if pk_field in foreign_key_values:  # O(l)
-                    if pk_value == node.value[pk_field]:  # O(l) * O(m) * O(1) = O(l * m) = O(m)
+                    if pk_value == left_node.value[pk_field]:  # O(l) * O(m) * O(1) = O(l * m) = O(m)
                         container.append(**node_item.get_attributes())  # O(1)
         return container
 
-    def search_nodes(self, model: CustomModel, negative_selection=False, **_filter) -> "ORMItemQueue":
+    def search_nodes(self, model: CustomModel, negative_selection=False, **_filter) -> "ORMItemQueue":  # O(n)
         """
         Искать ноды по совпадениям любых полей
         :arg model: кастомный объект, смотри модуль database/models
@@ -291,18 +293,18 @@ class ORMItemQueue(LinkedList):
         ORMItem.is_valid_model_instance(model)
         items = self.__class__()
         nodes = iter(self)
-        while nodes:  # O(n) * O(u * k) * O(i-->n) = От Ω(n) - θ(n * i) до O(n**2)
+        while nodes:
             try:
-                node: ORMItem = next(nodes)
+                left_node: ORMItem = next(nodes)
             except StopIteration:
                 return items
-            if node.model.__name__ == model.__name__:  # O(u * k)
+            if left_node.model.__name__ == model.__name__:  # O(u * k)
                 if not _filter and not negative_selection:
-                    items.append(**node.get_attributes())
+                    items.append(**left_node.get_attributes())
                 for field_name, value in _filter.items():
-                    if field_name in node.value:
-                        if node.value[field_name] == value:
-                            items.append(**node.get_attributes())
+                    if field_name in left_node.value:
+                        if left_node.value[field_name] == value:
+                            items.append(**left_node.get_attributes())
                             break
         return items
 
@@ -317,26 +319,26 @@ class ORMItemQueue(LinkedList):
             raise ValueError("Параметр primary_key_data содержит название поля, которое является первичным ключом модели"
                              "и значение для этого поля")
         nodes = iter(self)
-        while nodes:  # O(n) * O(u)
+        while nodes:  # O(n) * O(k)
             try:
-                node: Optional[ORMItem] = next(nodes)
+                left_node: Optional[ORMItem] = next(nodes)
             except StopIteration:
                 break
-            if node.model.__name__ == model.__name__:
-                if node.get_primary_key_and_value() == primary_key_data:
-                    return node
+            if left_node.model.__name__ == model.__name__:  # O(k) * O(x)
+                if left_node.get_primary_key_and_value() == primary_key_data:  # O(k1) * O(x1) * # O(k2) * O(x2)
+                    return left_node
 
     def __repr__(self):
-        return f"{self.__class__}({tuple(str(m) for m in self)})"
+        return f"{self.__class__.__name__}({tuple(repr(m) for m in self)})"
 
     def __str__(self):
-        return str(tuple(repr(m) for m in self))
+        return str(tuple(str(m) for m in self))
 
     def __contains__(self, item: ORMItem) -> bool:
         if type(item) is not ORMItem:
             return False
-        node = self.get_node(item.model, **item.get_primary_key_and_value())
-        return bool(node)
+        left_node = self.get_node(item.model, **item.get_primary_key_and_value())
+        return bool(left_node)
 
     def __add__(self, other: Union["ORMItemQueue"]):
         if not type(other) is self.__class__:
@@ -357,9 +359,19 @@ class ORMItemQueue(LinkedList):
     def __sub__(self, other: "ORMItemQueue"):
         if not isinstance(other, self.__class__):
             raise TypeError
-        result_instance = copy.copy(self)
+        result_instance = copy.deepcopy(self)
         [result_instance.remove(n.model, *n.get_primary_key_and_value(as_tuple=True)) for n in other]
         return result_instance
+
+    def __and__(self, other: "ORMItemQueue"):
+        if type(other) is not self.__class__:
+            raise TypeError
+        output = self.__class__()
+        for left_node in self:
+            for right_node in other:
+                if left_node == right_node:
+                    output.enqueue(**left_node.get_attributes())
+                    output.enqueue(**right_node.get_attributes())
 
     def _replication(self, **new_node_complete_data: dict) -> tuple[Optional[ORMItem], ORMItem]:  # O(l * k) + O(n) + O(1) = O(n)
         """
@@ -403,46 +415,86 @@ class ORMItemQueue(LinkedList):
                 new_item = potential_new_item
         return exists_item, new_item
 
-    def _remove_from_queue(self, node: ORMItem) -> None:
-        if type(node) is not self.LinkedListItem:
+    def _remove_from_queue(self, left_node: ORMItem) -> None:
+        if type(left_node) is not self.LinkedListItem:
             raise TypeError
-        del self[node.index]
+        del self[left_node.index]
 
 
 class JoinedORMItem(ORMAttributes):
     """ Экземпляр этого класса возвращается функцией ORMHelper.join_select()
-     Внутри него инкапсулированы ноды. Иммутабельный контейнер с контейнером нод. """
-    def __init__(self, items: Optional[ORMItemQueue] = None):
-        """
+     Внутри него инкапсулированы ноды. Иммутабельный контейнер с контейнером нод.
+      1 экземпляр этого класса 1 результат вызова ORMHelper.join_select()
+      JoinedORMItem().__getattribute__(model_name).__getitem__(node_value_dict_key).
+      """
 
-        :param items: Ноды прямиком из кэша
-        """
+    def __init__(self, local_nodes: list["SpecialOrmContainer"],
+                 nodes_from_database__join_select: list["SpecialOrmContainer"], reference_table: str):
         super().__init__()
-        self.merged_values = None  # Cache
-        self._nodes__with_data_from_database = items  # todo фиксируют последние изменения из бд
-        self._nodes__with_added_from_ui_data = None  # todo реплицируемы через self.update
-        #  todo Получить из ORMHelper.join_select 2 набора нод
-        #  todo вернуть пользователю экземпляр JoinedORMItem() для возможности добавления изменений через self.update()
-        #  todo выявлять к какой именно ноде относятся изменения, ставить ноду в очередь
-        #  todo вызвать сохран нод в кеш
-        #  todo таймер для ORMHelper.release()
+        self._main_table_name: str = reference_table
+        self._merged_nodes: list["SpecialOrmContainer"] = []
+        self._local_nodes: list["SpecialOrmContainer"] = local_nodes
+        self._nodes__with_data_from_database: list["SpecialOrmContainer"] = nodes_from_database__join_select
 
-    def update(self, **kwargs):
-        """ Публичный метод для удобного добавления значений столбцов из UI.
-         """
+    def _merge(self):
+        def get_all_merged_entries():
+            for nodes_group_from_db in self._nodes__with_data_from_database:
+                node, ref_node = None, None
+                for node in nodes_group_from_db:
+                    if node.model.__name__ == self._main_table_name:
+                        ref_node = node
+                        break
+                for nodes_group_from_local_queue in self._local_nodes:
+                    local_node = nodes_group_from_local_queue.get_node(ref_node.model,
+                                                                       **ref_node.get_primary_key_and_value())
+                    if local_node:
+                        merged_data.update({local_node.get_primary_key_and_value(as_tuple=True):
+                                            nodes_group_from_db + nodes_group_from_local_queue})
+                        models.update({local_node.get_primary_key_and_value(as_tuple=True): node.model.__name__})
 
-    def get_merged_value(self):
-        ...
+        def get_all_local_entries() -> list["SpecialOrmContainer"]:
+            local_items = copy.deepcopy(self._local_nodes)
+            for index, container in self._local_nodes:
+                for pk_tuple in merged_data.keys():
+                    find_node = container.get_node(models[pk_tuple], **dict(zip(*(tuple(x) for x in pk_tuple))))
+                    if find_node:
+                        del local_items[index]
+            return local_items
+        merged_data = {}  # {pk_tuple: container}
+        models = {}
+        get_all_merged_entries()
+        not_intersected_data = get_all_local_entries()
+        all_items = list(merged_data.values())
+        all_items.extend(not_intersected_data)
+        self._merged_nodes = all_items
 
-    @staticmethod
-    def is_valid_model_instance(models: Iterable[CustomModel]):
-        [super().is_valid_model_instance(model) for model in models]
+    def __iter__(self):
+        def gen_():
+            for nodes_group in self._merged_nodes:
+                yield nodes_group
+        return gen_()
 
-    def _find_node(self, **pk_data):
-        pass
+    def __getitem__(self, index: int):
+        if not isinstance(index, int):
+            raise TypeError
+        if index < 0:
+            index = len(self._merged_nodes) - index
+        if len(self._merged_nodes) - 1 < index:
+            raise IndexError
+        if index < 0:
+            raise IndexError
+        return self._merged_nodes[index]
 
     def __str__(self):
-        return
+        s = "Локальные: \r"
+        s += ", ".join(str(self._local_nodes))
+        s += "\r join_select из Базы данных \r"
+        s += ", ".join(str(self._nodes__with_data_from_database))
+        return s
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}({[repr(orm_container) for orm_container in self._local_nodes]}, " \
+               f"{[repr(node) for node in self._nodes__with_data_from_database]})"
 
 
 class SQLAlchemyQueryManager:
@@ -465,15 +517,15 @@ class SQLAlchemyQueryManager:
         
     def start(self):
         self._sort_nodes()  # Упорядочить, разбить по savepoint
-        self._manage_queries()  # Обратиться к node.make_query, - собрать объекты sql-иньекций
+        self._manage_queries()  # Обратиться к left_node.make_query, - собрать объекты sql-иньекций
         self._open_connection_and_push()
         
     def _manage_queries(self):
         if self._query_objects:
             return self._query_objects
         for node_grop in self._sort_nodes():
-            for node in node_grop:
-                self._query_objects.update({node.index: node.make_query()})
+            for left_node in node_grop:
+                self._query_objects.update({left_node.index: left_node.make_query()})
         return self._query_objects
 
     def _open_connection_and_push(self):
@@ -497,9 +549,9 @@ class SQLAlchemyQueryManager:
             point = None
             if multiple_items_in_transaction:
                 point = session.begin_nested()
-            for node in node_group:
-                dml = self._query_objects.get(node.index)
-                if not node.type == "_delete":
+            for left_node in node_group:
+                dml = self._query_objects.get(left_node.index)
+                if not left_node.type == "_delete":
                     try:
                         session.add(dml)
                     except IntegrityError:
@@ -538,15 +590,37 @@ class SQLAlchemyQueryManager:
             return [make_sort_container(n, linked_nodes) for n in related_nodes]  # O(m)
         if self._sorted:
             return self._sorted
-        node = self._node_items.dequeue()
-        while node:  # todo: n**2
-            if node.retries < self.MAX_RETRIES:
-                if node.ready:
-                    self._sorted.append(make_sort_container(node, ORMItemQueue()))  # O(n) + O(1) = O(n)
+        left_node = self._node_items.dequeue()
+        while left_node:  # todo: n**2
+            if left_node.retries < self.MAX_RETRIES:
+                if left_node.ready:
+                    self._sorted.append(make_sort_container(left_node, ORMItemQueue()))  # O(n) + O(1) = O(n)
                 else:
-                    self.remaining_nodes.append(**node.get_attributes())
-            node = self._node_items.dequeue()
+                    self.remaining_nodes.append(**left_node.get_attributes())
+            left_node = self._node_items.dequeue()
         return self._sorted
+
+
+class SpecialOrmItem(ORMItem):
+    def __getattribute__(self, item: str):
+        if not isinstance(item, str):
+            raise TypeError
+        for key, value in self.value:
+            if key == item:
+                return value
+        super().__getattribute__(item)
+
+
+class SpecialOrmContainer(ORMItemQueue):
+    LinkedListItem = SpecialOrmItem
+
+    def __getattribute__(self, item: str):
+        if type(item) is not str:
+            raise TypeError
+        for node in self:
+            if node.model.__name__ == item:
+                return node
+        super().__getattribute__(item)
 
 
 class ORMHelper(ORMAttributes):
@@ -665,33 +739,38 @@ class ORMHelper(ORMAttributes):
         1) Получаем запись из таблицы в виде словаря
         2) Получаем данные из очереди в виде словаря
         3) db_data.update(quque_data)
-        Если primary_field со значением node.name найден в БД, то нода удаляется
+        Если primary_field со значением left_node.name найден в БД, то нода удаляется
         """
         model = _model or cls._model_obj
         cls.is_valid_model_instance(model)
         if not filter_:
             return {}
-        node: Optional[ORMItem] = None
+        left_node: Optional[ORMItem] = None
         if _only_queue:
             nodes = cls.items.search_nodes(model, **filter_)
             if len(nodes):
-                node = nodes[0]
-            if node is None:
+                left_node = nodes[0]
+            if left_node is None:
                 return {}
-            return node.value
-        query = cls.database.query(model).filter_by(**filter_).first()
+            return left_node.value
+        try:
+            query = cls.database.query(model).filter_by(**filter_).first()
+        except OperationalError:
+            print("Ошибка соединения с базой данных! Смотри константу 'DATABASE_PATH' в модуле models.py, "
+                  "такая проблема обычно возникает из-за авторизации. Смотри пароль!!!")
+            raise OperationalError
         data_db = {} if not query else query.__dict__
         if _only_db:
             return data_db
         nodes = cls.items.search_nodes(model, **filter_)
         if len(nodes):
-            node = nodes[0]
-        if node is None:
+            left_node = nodes[0]
+        if left_node is None:
             return data_db
-        if node.type == "_delete":
+        if left_node.type == "_delete":
             return {}
         updated_node_data = data_db
-        updated_node_data.update(node.value)
+        updated_node_data.update(left_node.value)
         return updated_node_data
 
     @classmethod
@@ -704,9 +783,19 @@ class ORMHelper(ORMAttributes):
         model = _model or cls._model_obj
         cls.is_valid_model_instance(model)
         if not attrs:
-            items_db = cls.database.query(model).all()
+            try:
+                items_db = cls.database.query(model).all()
+            except OperationalError:
+                print("Ошибка соединения с базой данных! Смотри константу 'DATABASE_PATH' в модуле models.py, "
+                      "такая проблема обычно возникает из-за авторизации. Смотри пароль!!!")
+                raise OperationalError
         else:
-            items_db = cls.database.query(model).filter_by(**attrs).all()
+            try:
+                items_db = cls.database.query(model).filter_by(**attrs).all()
+            except OperationalError:
+                print("Ошибка соединения с базой данных! Смотри константу 'DATABASE_PATH' в модуле models.py, "
+                      "такая проблема обычно возникает из-за авторизации. Смотри пароль!!!")
+                raise OperationalError
         if _db_only or not cls.items:
             return map(lambda t: t.__dict__, items_db)
         if _queue_only or not items_db:
@@ -721,20 +810,20 @@ class ORMHelper(ORMAttributes):
             db_data: dict = db_item.__dict__
             if pk_name not in db_data:
                 raise Exception("Несогласованность данных в кэше и базе данных. ""Возможно, кэш сильно устарел.")
-            node: ORMItem = cls.items.get_node(model, **{pk_name: db_data[pk_name]})
-            if node:
-                nodes_implements_db.enqueue(**node.get_attributes())
-                if not node.type == "_delete":
-                    db_data.update(node.value)
-                    queue_items.update({node.index: db_data})
+            left_node: ORMItem = cls.items.get_node(model, **{pk_name: db_data[pk_name]})
+            if left_node:
+                nodes_implements_db.enqueue(**left_node.get_attributes())
+                if not left_node.type == "_delete":
+                    db_data.update(left_node.value)
+                    queue_items.update({left_node.index: db_data})
             else:
                 db_items.append(db_data)
-        for node in cls.items:  # O(k)
-            if node not in nodes_implements_db:  # O(l)
-                if node.model.__name__ == model.__name__:
-                    if not node.type == "_delete":
-                        val = node.value
-                        queue_items.update({node.index: val}) if val else None
+        for left_node in cls.items:  # O(k)
+            if left_node not in nodes_implements_db:  # O(l)
+                if left_node.model.__name__ == model.__name__:
+                    if not left_node.type == "_delete":
+                        val = left_node.value
+                        queue_items.update({left_node.index: val}) if val else None
         # queue_items - нужен для сортировки
         # теперь все элементы отправим в output в следующей последовательности:
         # 1) ноды которые пересеклись со значениями из базы (сортировка по index)
@@ -749,7 +838,7 @@ class ORMHelper(ORMAttributes):
         return iter(output)
 
     @classmethod
-    def join_select(cls, *models: Iterable[CustomModel], on: dict, _where: dict = None) -> Iterator[dict]:
+    def join_select(cls, *models: Iterable[CustomModel], on: dict, _where: dict = None) -> JoinedORMItem:
         """
         join_select(model_a, model,b, on={model_b: 'model_a.column_name'})
 
@@ -757,103 +846,138 @@ class ORMHelper(ORMAttributes):
         :param on: modelName.column1: modelName2.column2
         :return: table val
         """
-        models = list(models)
-        _where = _where or {}
-        [cls.is_valid_model_instance(m) for m in models]
-        if not models:
-            raise ValueError
-        if _where is not None and type(_where) is not dict:
-            raise ValueError
-        if len(on) != len(models) - 1:
-            raise ValueError(
-                "Правильный способ работы с данным методом: join_select(model_a, model,b, on={model_b.column_name: 'model_a.column_name'})"
-            )
+        def valid_params():
+            nonlocal _where, models
+            models = list(models)
+            _where = _where or {}
+            [cls.is_valid_model_instance(m) for m in models]
+            if not models:
+                raise ValueError
+            if _where is not None and type(_where) is not dict:
+                raise ValueError
+            if len(on) != len(models) - 1:
+                raise ValueError(
+                    "Правильный способ работы с данным методом: join_select(model_a, model,b, on={model_b.column_name: 'model_a.column_name'})"
+                )
+            for left_table_dot_field, right_table_dot_field in on.items():
+                if not type(left_table_dot_field) is str or not isinstance(right_table_dot_field, str):
+                    raise TypeError("...on={model_b.column_name: 'model_a.column_name'}")
+                left_model = left_table_dot_field.split(".")[0]
+                right_model = right_table_dot_field.split(".")[0]
+                if len(left_table_dot_field.split(".")) != 2 or len(right_table_dot_field.split(".")) != 2:
+                    raise AttributeError("...on={model_b.column_name: 'model_a.column_name'}")
+                if left_model not in name_and_model_dict:
+                    raise ImportError(f"Класс модели {left_model} не найден")
+                if right_model not in name_and_model_dict:
+                    raise ImportError(f"Класс модели {right_model} не найден")
+                left_model_field = left_table_dot_field.split(".")[1]
+                right_model_field = right_table_dot_field.split(".")[1]
+                if not getattr(name_and_model_dict[left_model], left_model_field, None):
+                    raise AttributeError(f"Столбец {left_model_field} у таблицы {left_model} не найден")
+                if not getattr(name_and_model_dict[right_model], right_model_field, None):
+                    raise AttributeError(f"Столбец {right_model_field} у таблицы {right_model} не найден")
         name_and_model_dict = {m.__name__: m for m in models}
-        for left_table_dot_field, right_table_dot_field in on.items():
-            if not type(left_table_dot_field) is str or not isinstance(right_table_dot_field, str):
-                raise TypeError("...on={model_b.column_name: 'model_a.column_name'}")
-            left_model = left_table_dot_field.split(".")[0]
-            right_model = right_table_dot_field.split(".")[0]
-            if len(left_table_dot_field.split(".")) != 2 or len(right_table_dot_field.split(".")) != 2:
-                raise AttributeError("...on={model_b.column_name: 'model_a.column_name'}")
-            if left_model not in name_and_model_dict:
-                raise ImportError(f"Класс модели {left_model} не найден")
-            if right_model not in name_and_model_dict:
-                raise ImportError(f"Класс модели {right_model} не найден")
-            left_model_field = left_table_dot_field.split(".")[1]
-            right_model_field = right_table_dot_field.split(".")[1]
-            if not getattr(name_and_model_dict[left_model], left_model_field, None):
-                raise AttributeError(f"Столбец {left_model_field} у таблицы {left_model} не найден")
-            if not getattr(name_and_model_dict[right_model], right_model_field, None):
-                raise AttributeError(f"Столбец {right_model_field} у таблицы {right_model} не найден")
+        valid_params()
+
+        def count_ref_table():
+            """ Опорная модель, - к которой, условно, применяется конструкция FROM (она встретится в словаре on 2 раза) """
+            def get_reference_table() -> str:
+                return models_repeat_counter[list(models_repeat_counter.values()).index(max_repeat_counter)]
+            left_tables = [str_.split(".")[0] for str_ in on.keys()]
+            right_tables = [str_.split(".")[0] for str_ in on.values()]
+            all_tables = list(itertools.chain(left_tables, right_tables))
+            models_repeat_counter = {model_name: all_tables.count(model_name) for model_name in all_tables}
+            max_repeat_counter = max(models_repeat_counter.values())
+            return get_reference_table()
+        reference_table_name = count_ref_table()
 
         def collect_db_data():
-            def create_request() -> str:
-                s = f"dirty_data = db.database.query({tuple(name_and_model_dict.keys())[0]})"
-                for left_table_dot_field, right_table_dot_field in on.items():
-                    left_table, left_table_field = left_table_dot_field.split(".")
+            def create_request() -> str:  # O(n) * O(m)
+                s = f"dirty_data = db.database.query({tuple(name_and_model_dict.keys())[0]})"  # O(l) * O(1)
+                for left_table_dot_field, right_table_dot_field in on.items():  # O(n)
+                    left_table, left_table_field = left_table_dot_field.split(".")  # O(m)
                     s += f".join({left_table}, "
                     s += f"{left_table}.{left_table_field} == {right_table_dot_field})"
                 if on:
+                    on_keys_counter = 0
                     s += ".filter("
-                    for left_table_and_column, right_table_and_column in on.items():
+                    for left_table_and_column, right_table_and_column in on.items():  # O(t)
                         s += f"{left_table_and_column} == {right_table_and_column}"
-                        if list(on).index(left_table_and_column) < len(on) - 1:
+                        if on_keys_counter < len(on) - 1:  # O(1)
                             s += ", "
+                        on_keys_counter += 1
                     s += ")"
                 return s
 
-            def add_requested_items_to_orm_queue():
-                result_items = ORMItemQueue()
-                pk_names = map(lambda i: {getattr(i(), "__primary_key__"): i.__name__}, models)
-                for table_data in dirty_data:
-                    for pk_data in pk_names:
-                        primary_key_name, model_name = tuple(pk_data.items())
-                        if primary_key_name in table_data:
-                            result_items.enqueue(_model=name_and_model_dict[model_name], _insert=True,
-                                                 **table_data)
-                return result_items
+            def add_items_to_orm_queue() -> list[SpecialOrmContainer]:  # O(i) * O(k) * O(m) * O(n) * O(j) * O(l)
+                group_by_row = []
+                for mix_table_data in dirty_data:  # O(i)
+                    row = SpecialOrmContainer()  # todo: что будет, если в 2 таблицах есть одноимённые столбцы?! testcase
+                    for model in models:  # O(k)
+                        all_column_names = getattr(model(), "column_names")
+                        r = {col_name: col_val for col_name, col_val in mix_table_data.items()
+                             if col_name in all_column_names}  # O(n) * O(j)
+                        row.append(_model=model, _insert=True, **r)  # O(l)
+                    group_by_row.append(row)
+                return group_by_row
             dirty_data = []
             sql_text = create_request()
             exec(sql_text, {"db": cls}, ChainMap(*list(map(lambda x: {x.__name__: x}, models))))
-            return add_requested_items_to_orm_queue()
+            return add_items_to_orm_queue()
 
         def collect_local_data():
-            result_items = ORMItemQueue()
-            heap = ORMItemQueue()
-
-            def collect_all():
+            def collect_all():  # n**2!
                 nonlocal heap
-                for model in models:
-                    heap += cls.items.search_nodes(model, **_where.get(model.__name__, {}))
+                for model in models:  # O(n)
+                    heap += cls.items.search_nodes(model, **_where.get(model.__name__, {}))  # O(n * k)
+                    
+            def collect_node_values(on_keys_or_values: Union[dict.keys, dict.values], values_data: dict[str, dict[str, dict]]):
+                for node in heap:
+                    for table_and_column in on_keys_or_values:
+                        table, table_column = table_and_column.split(".")
+                        if table == node.model.__name__:
+                            if table_column in node.value:
+                                table_data = values_data.get(table, {})
+                                table_column_data = table_data.get(table_column, {})
+                                table_column_data.update(node.get_primary_key_and_value())
+                                if table_column_data and table_column not in table_column_data:
+                                    table_data.update({table: {table_column: table_column_data}})
+                                if table_data and table not in values_data:
+                                    values_data.update({table: table_data})
 
-            def filter_by_on():
-                for left_table_dot_field, right_table_dot_field in on.items():
-                    left_table, left_table_field = left_table_dot_field.split(".")
-                    right_table, right_table_field = right_table_dot_field.split(".")
-                    left_nodes = iter(heap.search_nodes(name_and_model_dict[left_table]))
-                    while left_nodes:
-                        try:
-                            left_node: ORMItem = next(left_nodes)
-                        except StopIteration:
-                            break
-                        right_nodes = iter(heap.search_nodes(name_and_model_dict[right_table]))
-                        while right_nodes:
-                            try:
-                                right_node: ORMItem = next(right_nodes)
-                            except StopIteration:
-                                break
-                            if left_node.value[left_table_field] == right_node.value[right_table_field]:
-                                value = left_node.value
-                                value.update(right_node.value)
-                                result_items.enqueue(_model=name_and_model_dict[left_model], _insert=True, **value)
+            def compare_by_matched_fk():
+                for left_table_and_column, right_table_and_column in on.items():
+                    left_table, left_table_column = left_table_and_column.split(".")
+                    right_table, right_table_column = right_table_and_column.split(".")
+                    right_values_by_table = right_node_values.get(right_table, None)
+                    if right_values_by_table:
+                        right_nodes_pk_by_column = right_values_by_table.get(right_table_column, None)
+                        if right_nodes_pk_by_column:
+                            left_values_by_table = left_node_values.get(left_table, None)
+                            left_nodes_pk_by_column = left_values_by_table.get(left_table_column, None)
+                            if left_nodes_pk_by_column:
+                                for right_nodes_pk in right_nodes_pk_by_column:
+                                    right_node = heap.get_node(right_table, **right_nodes_pk)
+                                    for left_node_pk in left_nodes_pk_by_column:
+                                        left_node = heap.get_node(left_table, **left_node_pk)
+                                        if left_node.value[left_table_column] == right_node.value[right_table_column]:
+                                            cn = SpecialOrmContainer()
+                                            cn.append(**left_node.get_attributes())
+                                            cn.append(**right_node.get_attributes())
+                                            matched_nodes.append(cn)
+
+            heap = ORMItemQueue()
             collect_all()
-            filter_by_on()
-            return result_items
+            left_node_values = {}
+            right_node_values = {}
+            collect_node_values(on.keys(), left_node_values)
+            collect_node_values(on.values(), right_node_values)
+            matched_nodes = []
+            compare_by_matched_fk()
+            return matched_nodes
         database_data = collect_db_data()
         local_data = collect_local_data()
-
-        return iter(tuple((node.value for node in database_data + local_data)))
+        return JoinedORMItem(local_data, database_data, reference_table_name)
 
     @classmethod
     def get_node_dml_type(cls, node_pk_value: Union[str, int], model=None) -> Optional[str]:
@@ -866,8 +990,8 @@ class ORMHelper(ORMAttributes):
         if not isinstance(node_pk_value, (str, int,)):
             raise TypeError
         primary_key_field_name = getattr(model, "__db_queue_primary_field_name__")
-        node = cls.items.get_node(model, **{primary_key_field_name: node_pk_value})
-        return node.type if node is not None else None
+        left_node = cls.items.get_node(model, **{primary_key_field_name: node_pk_value})
+        return left_node.type if left_node is not None else None
 
     @classmethod
     def remove_items(cls, node_or_nodes: Union[Union[int, str], Iterable[Union[str, int]]], model=None):
