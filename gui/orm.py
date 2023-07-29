@@ -171,6 +171,12 @@ class ORMItem(LinkedListItem, ORMAttributes):
             return False
         return True
 
+    def __contains__(self, item: str):
+        if not isinstance(item, str):
+            return False
+        if item in self.value:
+            return True
+
     def __bool__(self):
         return bool(len(self))
 
@@ -425,9 +431,8 @@ class JoinedORMItem(ORMAttributes):
     """ Экземпляр этого класса возвращается функцией ORMHelper.join_select()
      Внутри него инкапсулированы ноды. Иммутабельный контейнер с контейнером нод.
       1 экземпляр этого класса 1 результат вызова ORMHelper.join_select()
-      JoinedORMItem().__getattribute__(model_name).__getitem__(node_value_dict_key).
+      JoinedORMItem().__getitem__(model_name).__getitem__(node_value_dict_key).
       """
-
     def __init__(self, local_nodes: list["SpecialOrmContainer"],
                  nodes_from_database__join_select: list["SpecialOrmContainer"], reference_table: str):
         super().__init__()
@@ -435,6 +440,38 @@ class JoinedORMItem(ORMAttributes):
         self._merged_nodes: list["SpecialOrmContainer"] = []
         self._local_nodes: list["SpecialOrmContainer"] = local_nodes
         self._nodes__with_data_from_database: list["SpecialOrmContainer"] = nodes_from_database__join_select
+
+    def __iter__(self):
+        def gen_():
+            for nodes_group in self._merged_nodes:
+                yield nodes_group
+        if not self._merged_nodes:
+            self._merge()
+        return gen_()
+
+    def __getitem__(self, index: int):
+        if not self._merged_nodes:
+            self._merge()
+        if not isinstance(index, int):
+            raise TypeError
+        if index < 0:
+            index = len(self._merged_nodes) - index
+        if len(self._merged_nodes) - 1 < index:
+            raise IndexError
+        if index < 0:
+            raise IndexError
+        return self._merged_nodes[index]
+
+    def __str__(self):
+        s = "Локальные: \r"
+        s += ", ".join(str(self._local_nodes))
+        s += "\r join_select из Базы данных \r"
+        s += ", ".join(str(self._nodes__with_data_from_database))
+        return s
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}({[repr(orm_container) for orm_container in self._local_nodes]}, " \
+               f"{[repr(node) for node in self._nodes__with_data_from_database]})"
 
     def _merge(self):
         def get_all_merged_entries():
@@ -467,34 +504,6 @@ class JoinedORMItem(ORMAttributes):
         all_items = list(merged_data.values())
         all_items.extend(not_intersected_data)
         self._merged_nodes = all_items
-
-    def __iter__(self):
-        def gen_():
-            for nodes_group in self._merged_nodes:
-                yield nodes_group
-        return gen_()
-
-    def __getitem__(self, index: int):
-        if not isinstance(index, int):
-            raise TypeError
-        if index < 0:
-            index = len(self._merged_nodes) - index
-        if len(self._merged_nodes) - 1 < index:
-            raise IndexError
-        if index < 0:
-            raise IndexError
-        return self._merged_nodes[index]
-
-    def __str__(self):
-        s = "Локальные: \r"
-        s += ", ".join(str(self._local_nodes))
-        s += "\r join_select из Базы данных \r"
-        s += ", ".join(str(self._nodes__with_data_from_database))
-        return s
-
-    def __repr__(self):
-        return f"{self.__class__.__name__}({[repr(orm_container) for orm_container in self._local_nodes]}, " \
-               f"{[repr(node) for node in self._nodes__with_data_from_database]})"
 
 
 class SQLAlchemyQueryManager:
@@ -602,25 +611,39 @@ class SQLAlchemyQueryManager:
 
 
 class SpecialOrmItem(ORMItem):
-    def __getattribute__(self, item: str):
+    def get(self, k, default_value=None):
+        try:
+            value = self.__getitem__(k)
+        except KeyError:
+            value = default_value
+        return value
+
+    def __getitem__(self, item: str):
         if not isinstance(item, str):
             raise TypeError
-        for key, value in self.value:
+        for key, value in self.value.items():
             if key == item:
                 return value
-        super().__getattribute__(item)
+        raise KeyError(f"Столбец {item} не найден")
 
 
 class SpecialOrmContainer(ORMItemQueue):
     LinkedListItem = SpecialOrmItem
 
-    def __getattribute__(self, item: str):
+    def get(self, k, default_value=None):
+        try:
+            value = self.__getitem__(k)
+        except KeyError:
+            value = default_value
+        return value
+
+    def __getitem__(self, item: str) -> SpecialOrmItem:
         if type(item) is not str:
             raise TypeError
         for node in self:
             if node.model.__name__ == item:
                 return node
-        super().__getattribute__(item)
+        raise KeyError(f"Таблица {item} не фигурирует в результатах этого join_select")
 
 
 class ORMHelper(ORMAttributes):
@@ -882,7 +905,9 @@ class ORMHelper(ORMAttributes):
         def count_ref_table():
             """ Опорная модель, - к которой, условно, применяется конструкция FROM (она встретится в словаре on 2 раза) """
             def get_reference_table() -> str:
-                return models_repeat_counter[list(models_repeat_counter.values()).index(max_repeat_counter)]
+                max_match_counter_index = list(models_repeat_counter.values()).index(max_repeat_counter)
+                table_name_with_max_retries = tuple(models_repeat_counter.keys())[max_match_counter_index]
+                return models_repeat_counter[table_name_with_max_retries]
             left_tables = [str_.split(".")[0] for str_ in on.keys()]
             right_tables = [str_.split(".")[0] for str_ in on.values()]
             all_tables = list(itertools.chain(left_tables, right_tables))
@@ -940,10 +965,10 @@ class ORMHelper(ORMAttributes):
                                 table_data = values_data.get(table, {})
                                 table_column_data = table_data.get(table_column, {})
                                 table_column_data.update(node.get_primary_key_and_value())
-                                if table_column_data and table_column not in table_column_data:
-                                    table_data.update({table: {table_column: table_column_data}})
-                                if table_data and table not in values_data:
-                                    values_data.update({table: table_data})
+                                if table not in values_data:
+                                    values_data.update({table: {table_column: table_column_data}})
+                                if table_column not in table_data:
+                                    table_data.update({table_column: table_column_data})
 
             def compare_by_matched_fk():
                 for left_table_and_column, right_table_and_column in on.items():
@@ -956,10 +981,10 @@ class ORMHelper(ORMAttributes):
                             left_values_by_table = left_node_values.get(left_table, None)
                             left_nodes_pk_by_column = left_values_by_table.get(left_table_column, None)
                             if left_nodes_pk_by_column:
-                                for right_nodes_pk in right_nodes_pk_by_column:
-                                    right_node = heap.get_node(right_table, **right_nodes_pk)
-                                    for left_node_pk in left_nodes_pk_by_column:
-                                        left_node = heap.get_node(left_table, **left_node_pk)
+                                for right_node_pk, right_node_pk_value in right_nodes_pk_by_column.items():
+                                    right_node = heap.get_node(name_and_model_dict[right_table], **{right_node_pk: right_node_pk_value})
+                                    for left_node_pk, left_node_pk_value in left_nodes_pk_by_column.items():
+                                        left_node = heap.get_node(name_and_model_dict[left_table], **{left_node_pk: left_node_pk_value})
                                         if left_node.value[left_table_column] == right_node.value[right_table_column]:
                                             cn = SpecialOrmContainer()
                                             cn.append(**left_node.get_attributes())
