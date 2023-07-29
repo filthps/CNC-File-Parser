@@ -179,6 +179,7 @@ class AddConditionDialog(MyAbstractDialog, InputTools):
             return
         if self.ui.string_input.text():
             self.ui.button_box.setDisabled(False)
+            self._string_input_validation()
 
     @Slot()
     def load_head_varibles(self):
@@ -311,7 +312,7 @@ class ConditionsPage(Constructor, Tools, InputTools):
         self.connect_main_signals()
 
     def reload(self, in_new_qthread: bool = True):
-        def add_(items):
+        def add_(items: orm.JoinedORMItem):
             def auto_select_condition_item(index=0) -> Optional[QListWidgetItem]:
                 m = self.ui.conditions_list.takeItem(index)
                 self.ui.conditions_list.addItem(m)
@@ -321,9 +322,7 @@ class ConditionsPage(Constructor, Tools, InputTools):
             self.disconnect_parent_condition_combo_box()
             self.disconnect_field_signals()
             self.reset_fields()
-            items = tuple(items)
-            [self.add_or_replace_condition_item_to_list_widget(item) for item in items]
-            self.disconnect_field_signals()
+            [self.add_or_replace_condition_item_to_list_widget(group) for group in items]
             active_item = auto_select_condition_item()
             self.validator.current_condition = active_item
             self.connect_field_signals()
@@ -339,37 +338,49 @@ class ConditionsPage(Constructor, Tools, InputTools):
             return items
         load_()
 
-    def add_or_replace_condition_item_to_list_widget(self, data: dict, replace=False):
+    def add_or_replace_condition_item_to_list_widget(self, data: orm.SpecialOrmContainer, replace=False):
         """ 1) Найти выбранный QListWidgetItem (со старым именем)
             2) Сгененировать новое имя
             3) Вставить новый QListWidgetItem (с новым именем) в индекс или в default_index
             4) Сохранить связку {id: новый_name} в condition_items_id """
-        def create_condition_name(data_: dict) -> str:
+        def create_condition_name() -> str:
             def get_substring(main_string):
                 return main_string[l_index:r_index]
-            l_index, r_index = data_["lindex"], data_["rindex"]
-            search_str_inner = data_.get("inner_", "")
-            search_str_target = get_substring(search_str_inner) if "varid" not in data_ else ""
-            parent_cond_bool_value = data_.get('parentconditionbooleanvalue', "")
-            condition_bool_val = data.get("conditionbooleanvalue", "")
-            map_ = {"conditionbooleanvalue": lambda: "Истинно если" if condition_bool_val else "Ложно если",
-                    "parentconditionbooleanvalue": lambda: f"родительское условие {'верно' if parent_cond_bool_value else 'ложно'}",
-                    "strid": f"{'и ' if 'parent' in data else ''}{f'подстрока >>{search_str_target}<< найдена в строке >{search_str_inner[0:l_index]>>search_str_target<<search_str_inner[r_index:-1]}<' if search_str_target else f'строка >>{search_str_inner}<<'}",
-                    "findfull": "совпадает c",
-                    "findpart": "содержит", "isntfindfull": "не совпадает c", "isntfindpart": "не содержит",
-                    "equal": "равно", "less": "меньше чем", "larger": "больше чем",
-                    "conditionvalue": lambda: f"<< {data_.get('condinner', '...')}",
-                    "parent": lambda: "Выбрано внешнее условие!" if "parent" in data_ else "",
-                    "stringid": None,
-                    "inner_": None,
-                    "lindex": None,
-                    "rindex": None,
-                    "cnd": None}
-            return " ".join(
-               (map_[key] if type(map_[key]) is str else map_[key]() if val is not None and map_[key] is not None else "" for key, val in data_.items())
-            )
-        name = create_condition_name(data)
-        self.condition_items_id.update({name: {"condition": data["cnd"], "search_str": data["strid"]}})
+            search_string_table = data["SearchString"]
+            l_index, r_index = search_string_table.get("lindex", ""), search_string_table.get("rindex", "")
+            search_str_inner = search_string_table.get("inner_", "")
+            search_str_target = get_substring(search_str_inner) if "varid" not in data.get("HeadVarible", "") else ""
+            parent_cond_bool_value = data["Condition"].get('parentconditionbooleanvalue', "")
+            condition_bool_val = data["Condition"].get("conditionbooleanvalue", "")
+            map_ = {"Condition.conditionbooleanvalue": lambda: "Истинно если" if condition_bool_val else "Ложно если",
+                    "Condition.parentconditionbooleanvalue": lambda: f"родительское условие {'верно' if parent_cond_bool_value else 'ложно'}",
+                    "SearchString.strid": f"{'и ' if 'parent' in data['Condition'] else ''}{f'подстрока >>{search_str_target}<< найдена в строке >{search_str_inner[0:l_index]>>search_str_target<<search_str_inner[r_index:-1]}<' if search_str_target else f'строка >>{search_str_inner}<<'}",
+                    "Condition.findfull": "совпадает c",
+                    "Condition.findpart": "содержит", "isntfindfull": "не совпадает c", "isntfindpart": "не содержит",
+                    "Condition.equal": "равно", "less": "меньше чем", "larger": "больше чем",
+                    "Condition.condinner": lambda: f"<< {data['Condition'].get('condinner', '...')}",
+                    "Condition.parent": lambda: "Выбрано внешнее условие!" if "parent" in data["Condition"] else "",
+                    "Condition.stringid": None,
+                    "SearchString.inner_": None,
+                    "SearchString.lindex": None,
+                    "SearchString.rindex": None,
+                    "Condition.cnd": None
+                    }
+
+            def string_gen():
+                for table in data:
+                    key = table.model.__name__
+                    for column, value in table.value:
+                        string_or_anonimous_function = map_.get(f"{key}.{column}", None)
+                        if string_or_anonimous_function is not None:
+                            if isinstance(string_or_anonimous_function, str):
+                                yield string_or_anonimous_function
+                            else:
+                                yield string_or_anonimous_function()
+            return " ".join([string for string in string_gen()])
+        name = create_condition_name()
+
+        #self.condition_items_id.update({name: {"condition": data["cnd"], "search_str": data["strid"]}})
         self.disconnect_field_signals()
         if replace:
             list_item = self.ui.conditions_list.currentItem()
@@ -524,7 +535,7 @@ class ConditionsPage(Constructor, Tools, InputTools):
             data = self.db_items.get_item(cnd=id_)
             if not data:
                 self.reload()
-            self.add_or_replace_condition_item_to_list_widget(data, replace=True)
+            #self.add_or_replace_condition_item_to_list_widget(data, replace=True)
 
         @QThreadInstanceDecorator(result_callback=lambda: load_condition_instance_and_update_name(condition_id))
         def set_data(id_, **data):
