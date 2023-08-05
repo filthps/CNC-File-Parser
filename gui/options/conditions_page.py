@@ -296,7 +296,7 @@ class ConditionsPage(Constructor, Tools, InputTools):
         self.ui = ui
         self.db_items: orm.ORMHelper = app_instance.db_items_queue
         self.validator: Optional[ConditionsPageValidator] = None
-        self.condition_items_id = {}  # name: {"condition": ..., "search_str": ..., "head_var": ...}
+        self.condition_items_id = {}  # name: uid
         self.add_condition_dialog: Optional[AddConditionDialog] = None
         self.field_signals_status = False
 
@@ -344,6 +344,17 @@ class ConditionsPage(Constructor, Tools, InputTools):
             3) Вставить новый QListWidgetItem (с новым именем) в индекс или в default_index
             4) Сохранить связку {id: новый_name} в condition_items_id """
         def create_condition_name() -> str:
+            def string_gen():
+                for table in data:
+                    key = table.model.__name__
+                    for column, value in table.value.items():
+                        string_or_anonimous_function = map_.get(f"{key}.{column}", None)
+                        if string_or_anonimous_function is not None:
+                            if isinstance(string_or_anonimous_function, str):
+                                yield string_or_anonimous_function
+                            else:
+                                yield string_or_anonimous_function()
+
             def get_substring(main_string):
                 return main_string[l_index:r_index]
             search_string_table = data["SearchString"]
@@ -354,11 +365,11 @@ class ConditionsPage(Constructor, Tools, InputTools):
             condition_bool_val = data["Condition"].get("conditionbooleanvalue", "")
             map_ = {"Condition.conditionbooleanvalue": lambda: "Истинно если" if condition_bool_val else "Ложно если",
                     "Condition.parentconditionbooleanvalue": lambda: f"родительское условие {'верно' if parent_cond_bool_value else 'ложно'}",
-                    "SearchString.strid": f"{'и ' if 'parent' in data['Condition'] else ''}{f'подстрока >>{search_str_target}<< найдена в строке >{search_str_inner[0:l_index]>>search_str_target<<search_str_inner[r_index:-1]}<' if search_str_target else f'строка >>{search_str_inner}<<'}",
+                    "SearchString.strid": f"{'и ' if 'parent' in data['Condition'] else ''}{f'подстрока >>{search_str_target}<< найдена в строке {search_str_inner[0:l_index]}>{search_str_target}<{search_str_inner[r_index:]}' if search_str_target else f'строка >>{search_str_inner}<<'}",
+                    "Condition.condinner": lambda: f"<< {data['Condition'].get('condinner', '...')}",
                     "Condition.findfull": "совпадает c",
                     "Condition.findpart": "содержит", "isntfindfull": "не совпадает c", "isntfindpart": "не содержит",
                     "Condition.equal": "равно", "less": "меньше чем", "larger": "больше чем",
-                    "Condition.condinner": lambda: f"<< {data['Condition'].get('condinner', '...')}",
                     "Condition.parent": lambda: "Выбрано внешнее условие!" if "parent" in data["Condition"] else "",
                     "Condition.stringid": None,
                     "SearchString.inner_": None,
@@ -366,21 +377,8 @@ class ConditionsPage(Constructor, Tools, InputTools):
                     "SearchString.rindex": None,
                     "Condition.cnd": None
                     }
-
-            def string_gen():
-                for table in data:
-                    key = table.model.__name__
-                    for column, value in table.value:
-                        string_or_anonimous_function = map_.get(f"{key}.{column}", None)
-                        if string_or_anonimous_function is not None:
-                            if isinstance(string_or_anonimous_function, str):
-                                yield string_or_anonimous_function
-                            else:
-                                yield string_or_anonimous_function()
             return " ".join([string for string in string_gen()])
         name = create_condition_name()
-
-        #self.condition_items_id.update({name: {"condition": data["cnd"], "search_str": data["strid"]}})
         self.disconnect_field_signals()
         if replace:
             list_item = self.ui.conditions_list.currentItem()
@@ -389,6 +387,7 @@ class ConditionsPage(Constructor, Tools, InputTools):
             return
         self.ui.conditions_list.addItem(QListWidgetItem(name))
         self.connect_field_signals()
+        self.condition_items_id.update({name: data["Condition"]["cnd"]})
 
     def connect_main_signals(self):
         def open_create_condition_window():
@@ -405,20 +404,20 @@ class ConditionsPage(Constructor, Tools, InputTools):
         if self.field_signals_status:
             return
         self.ui.conditions_list.currentItemChanged.connect(lambda current, prev: self.select_condition_item(current))
-        self.ui.radioButton_45.toggled.connect(lambda x: self.update_data("radioButton_45", radio_button=True))
-        self.ui.radioButton_46.toggled.connect(lambda x: self.update_data("radioButton_46", radio_button=True))
-        self.ui.radioButton_24.clicked.connect(lambda: self.update_data("radioButton_24", radio_button=True))
-        self.ui.radioButton_25.clicked.connect(lambda: self.update_data("radioButton_25", radio_button=True))
-        self.ui.radioButton_38.clicked.connect(lambda: self.update_data("radioButton_38", radio_button=True))
-        self.ui.radioButton_47.clicked.connect(lambda: self.update_data("radioButton_47", radio_button=True))
-        self.ui.radioButton_35.clicked.connect(lambda: self.update_data("radioButton_35", radio_button=True))
-        self.ui.radioButton_36.clicked.connect(lambda: self.update_data("radioButton_36", radio_button=True))
-        self.ui.radioButton_37.clicked.connect(lambda: self.update_data("radioButton_37", radio_button=True))
-        self.ui.radioButton_26.clicked.connect(lambda: self.update_data("radioButton_26", radio_button=True))
-        self.ui.radioButton_27.clicked.connect(lambda: self.update_data("radioButton_27", radio_button=True))
-        self.ui.radioButton_29.clicked.connect(lambda: self.update_data("radioButton_29", radio_button=True))
-        self.ui.radioButton_30.clicked.connect(lambda: self.update_data("radioButton_30", radio_button=True))
-        self.ui.lineEdit_28.textChanged.connect(lambda x: self.update_data("lineEdit_28", line_edit=True))
+        self.ui.radioButton_45.toggled.connect(lambda x: self.update_data("radioButton_45", radio_button=True) if x else None)
+        self.ui.radioButton_46.toggled.connect(lambda x: self.update_data("radioButton_46", radio_button=True) if x else None)
+        self.ui.radioButton_24.clicked.connect(lambda x: self.update_data("radioButton_24", radio_button=True) if x else None)
+        self.ui.radioButton_25.clicked.connect(lambda x: self.update_data("radioButton_25", radio_button=True) if x else None)
+        self.ui.radioButton_38.clicked.connect(lambda x: self.update_data("radioButton_38", radio_button=True) if x else None)
+        self.ui.radioButton_47.clicked.connect(lambda x: self.update_data("radioButton_47", radio_button=True) if x else None)
+        self.ui.radioButton_35.clicked.connect(lambda x: self.update_data("radioButton_35", radio_button=True) if x else None)
+        self.ui.radioButton_36.clicked.connect(lambda x: self.update_data("radioButton_36", radio_button=True) if x else None)
+        self.ui.radioButton_37.clicked.connect(lambda x: self.update_data("radioButton_37", radio_button=True) if x else None)
+        self.ui.radioButton_26.clicked.connect(lambda x: self.update_data("radioButton_26", radio_button=True) if x else None)
+        self.ui.radioButton_27.clicked.connect(lambda x: self.update_data("radioButton_27", radio_button=True) if x else None)
+        self.ui.radioButton_29.clicked.connect(lambda x: self.update_data("radioButton_29", radio_button=True) if x else None)
+        self.ui.radioButton_30.clicked.connect(lambda x: self.update_data("radioButton_30", radio_button=True) if x else None)
+        self.ui.lineEdit_28.textChanged.connect(lambda x: self.update_data("lineEdit_28", line_edit=True) if x else None)
         self.field_signals_status = True
 
     def disconnect_field_signals(self):
@@ -465,38 +464,37 @@ class ConditionsPage(Constructor, Tools, InputTools):
         dialog.show()
 
     @Slot(str)
-    def select_condition_item(self, condition_item):
-        def update_fields(data: dict):
+    def select_condition_item(self, condition_item: Optional[QListWidgetItem]):
+        def update_fields(data: tuple[orm.SpecialOrmContainer]):
             if not data:
                 self.reload()
-            line_edit_data = {"conditionvalue": data.pop("conditionvalue", None)}
-            combo_box_data = {"parent": data.pop("parent", None)}
+            data = data[0]
+            all_data = {}
+            [all_data.update(node.value) for node in data]
+            line_edit_data = {"conditionvalue": all_data.pop("conditionvalue", None)}
+            combo_box_data = {"parent": all_data.pop("parent", None)}
             self.disconnect_field_signals()
             self.disconnect_parent_condition_combo_box()
-            self.update_fields(line_edit_values=line_edit_data, combo_box_values=combo_box_data, radio_button_values=data)
+            self.update_fields(line_edit_values=line_edit_data, combo_box_values=combo_box_data,
+                               radio_button_values=all_data)
             self.connect_parent_condition_combo_box()
             self.connect_field_signals()
 
         @QThreadInstanceDecorator(result_callback=update_fields)
-        def load_inner(condition=None, search_str=None, head_var=None):
-            w = {}
-            w.update({"Condition": {"cnd": condition}}) if condition else None
-            w.update({"SearchString": {"strid": search_str}}) if search_str is not None else None
-            w.update({"HeadVarible": {"varid": head_var}}) if head_var is not None else None
+        def load_inner(id_):
             item_data = self.db_items.join_select(SearchString, Condition, HeadVarible,
                                                   on={"Condition.stringid": "SearchString.strid",
                                                       "Condition.hvarid": "HeadVarible.varid"},
-                                                  _where=w)
+                                                  _where={"Condition": {"cnd": id_}})
             item_data = tuple(item_data)
             if not item_data:
                 self.reload(in_new_qthread=False)
             return item_data
         if condition_item is None:
             return
-
         self.validator.set_condition_item(condition_item)
         item_text = condition_item.text()
-        load_inner(**self.condition_items_id[item_text])
+        load_inner(self.condition_items_id[item_text])
 
     @Slot(str)
     def change_parent_condition(self, item):
@@ -530,31 +528,34 @@ class ConditionsPage(Constructor, Tools, InputTools):
         set_changes(id_, selected_condition_id)
 
     def update_data(self, field_name, **kwargs):
-        @QThreadInstanceDecorator(result_callback=self.validator.refresh, in_new_qthread=False)
-        def load_condition_instance_and_update_name(id_):
-            data = self.db_items.get_item(cnd=id_)
-            if not data:
-                self.reload()
-            #self.add_or_replace_condition_item_to_list_widget(data, replace=True)
+        @QThreadInstanceDecorator(result_callback=self.validator.refresh)
+        def update_data(editable_item: orm.JoinedORMItem):
+            if not editable_item:
+                self.reload(in_new_qthread=False)
+                return
+            if "line_edit" in kwargs:
+                sql_column_name = self.UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]
+                ui_field = getattr(self.ui, field_name)
+                value = ui_field.text()
+                editable_item.update(sql_column_name, value, **{"cnd": self.condition_items_id[condition_text]})
+                return
+            if "radio_button" in kwargs:
+                new_values = self.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON[field_name]
+                [editable_item.update(sql_col_name, value, **{"cnd": self.condition_items_id[condition_text]})
+                 for sql_col_name, value in new_values.items()]
 
-        @QThreadInstanceDecorator(result_callback=lambda: load_condition_instance_and_update_name(condition_id))
-        def set_data(id_, **data):
-            exists_node_type = self.db_items.get_node_dml_type(id_, Condition)
-            data.update({("_update" if exists_node_type == "_update" else "_insert"): True})
-            self.db_items.set_item(cnd=id_, **data)
+        @QThreadInstanceDecorator(result_callback=update_data)
+        def join_select(name: str):
+            item = self.db_items.join_select(Condition, SearchString, HeadVarible,
+                                             on={"Condition.stringid": "SearchString.strid",
+                                                 "Condition.hvarid": "HeadVarible.varid"},
+                                             _where={"Condition": {"cnd": self.condition_items_id[name]}})
+            return item
         selected_condition = self.ui.conditions_list.currentItem()
         if not selected_condition:
             return
         condition_text = selected_condition.text()
-        condition_id = self.condition_items_id[condition_text]
-        ui_field = getattr(self.ui, field_name)
-        field_value = ui_field.text()
-        if kwargs.get("line_edit", None):
-            sql_field_name = self.UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]
-            set_data(condition_id, **{sql_field_name: self.check_output_values(sql_field_name, field_value)})
-        elif kwargs.get("radio_button", None):
-            radio_button_values: dict = self.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON[field_name]
-            set_data(condition_id, **radio_button_values)
+        join_select(condition_text)
 
     def reset_fields(self):
         self.condition_items_id = {}
