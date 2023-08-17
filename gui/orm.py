@@ -1072,8 +1072,10 @@ class JoinedORMItem(ORMAttributes):
         """
         :param column_name: изменяемый столбец
         :param column_value: значение
-        :param pk: model_name: {primary_key: primary_key_value} | {primary_key: primary_key_value}
-        :return:
+        :param pk: model_name: Optional[{primary_key: primary_key_value}]
+
+        Определить к какой таблице принадлежит обновляемый столбец, обновить ноду в очереди, сохранить очередь,
+        запустить таймер
         """
         def get_updated_node():
             nonlocal node

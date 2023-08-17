@@ -1,6 +1,7 @@
+import itertools
 import re
 import uuid
-from typing import Optional, Union
+from typing import Optional, Union, Iterator
 from types import SimpleNamespace
 from PySide2.QtWidgets import QMainWindow, QListWidget, QListWidgetItem, QHBoxLayout, \
     QVBoxLayout, QGroupBox, QLineEdit, QRadioButton, QDialogButtonBox, QSpacerItem, QTextBrowser, QLabel, QFormLayout
@@ -216,15 +217,23 @@ class AddConditionDialog(MyAbstractDialog, InputTools):
         @QThreadInstanceDecorator(result_callback=success_add)
         def set_to_database__search_string(left_index: int, right_index: int, inner: str):
             """Создание условия на основе поисковой строки. Без создание записи в таблице 'HeadVarDelegation'"""
-            def add_initial_values_radio_buttons() -> dict:
-                d = {}
+            def add_initial_values_radio_buttons_condition_table() -> dict:
+                d, condition_table_columns = {}, ("conditionbooleanvalue",)
                 [d.update(self.conditions_page.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON[k]) if k in self.conditions_page.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON else None
-                 for k, v in self.conditions_page.RADIO_BUTTON_DEFAULT_VALUES.items()]
-                return d
+                 for k in self.conditions_page.RADIO_BUTTON_DEFAULT_VALUES.keys()]
+                return {column_name: value for column_name, value in d.items() if column_name in condition_table_columns}
+
+            def add_initial_values_radio_buttons_search_string_table():
+                d, search_string_table_columns = {}, ("ignorecase",)
+                [d.update(self.conditions_page.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON[button])
+                 for button in self.conditions_page.RADIO_BUTTON_DEFAULT_VALUES.keys()
+                 if button in self.conditions_page.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON]
+                return {col: val for col, val in d.items() if col in search_string_table_columns}
             search_str_id = str(uuid.uuid4())
-            self.db.set_item(_model=SearchString, inner_=inner, lindex=left_index, rindex=right_index, strid=search_str_id, _insert=True)
+            self.db.set_item(_model=SearchString, inner_=inner, lindex=left_index, rindex=right_index, strid=search_str_id,
+                             _insert=True, **add_initial_values_radio_buttons_search_string_table())
             self.db.set_item(_model=Condition, stringid=search_str_id, cnd=str(uuid.uuid4()), _insert=True,
-                             **add_initial_values_radio_buttons())
+                             **add_initial_values_radio_buttons_condition_table())
 
         if self.ui.set_string_button.isChecked():
             condition_string = self._get_cond_string()
@@ -282,6 +291,8 @@ class ConditionsPage(Constructor, Tools, InputTools):
                            "larger": False, "less": False, "equal": False},
         "radioButton_29": {"parentconditionbooleanvalue": True},
         "radioButton_30": {"parentconditionbooleanvalue": False},
+        "radioButton_28": {"ignorecase": True},
+        "radioButton_48": {"ignorecase": False}
     }
     UI__TO_SQL_COLUMN_LINK__LINE_EDIT = {"lineEdit_28": "conditionvalue"}
     UI__TO_SQL_COLUMN_LINK__COMBO_BOX = {"parent_condition_combobox": "parent"}
@@ -345,39 +356,59 @@ class ConditionsPage(Constructor, Tools, InputTools):
             4) Сохранить связку {id: новый_name} в condition_items_id """
         def create_condition_name() -> str:
             def string_gen():
-                for table in data:
-                    key = table.model.__name__
-                    for column, value in table.value.items():
-                        string_or_anonimous_function = map_.get(f"{key}.{column}", None)
-                        if string_or_anonimous_function is not None:
-                            if isinstance(string_or_anonimous_function, str):
-                                yield string_or_anonimous_function
-                            else:
-                                yield string_or_anonimous_function()
+                for key_, string_or_anonimous_function in map_.items():
+                    if not string_or_anonimous_function:
+                        continue
+                    for node in data:
+                        model_name = node.model.__name__
+                        for column_name, value in node.value.items():
+                            if key_ == f"{model_name}.{column_name}":
+                                if isinstance(string_or_anonimous_function, str):
+                                    yield string_or_anonimous_function
+                                else:
+                                    yield string_or_anonimous_function(value)
 
             def get_substring(main_string):
                 return main_string[l_index:r_index]
             search_string_table = data["SearchString"]
             l_index, r_index = search_string_table.get("lindex", ""), search_string_table.get("rindex", "")
             search_str_inner = search_string_table.get("inner_", "")
+            separated_inner = f"{search_str_inner[0:l_index]}>{search_str_inner[l_index:r_index]}<{search_str_inner[r_index:]}"
             search_str_target = get_substring(search_str_inner) if "varid" not in data.get("HeadVarible", "") else ""
             parent_cond_bool_value = data["Condition"].get('parentconditionbooleanvalue', "")
             condition_bool_val = data["Condition"].get("conditionbooleanvalue", "")
-            map_ = {"Condition.conditionbooleanvalue": lambda: "Истинно если" if condition_bool_val else "Ложно если",
-                    "Condition.parentconditionbooleanvalue": lambda: f"родительское условие {'верно' if parent_cond_bool_value else 'ложно'}",
-                    "SearchString.strid": f"{'и ' if 'parent' in data['Condition'] else ''}{f'подстрока >>{search_str_target}<< найдена в строке {search_str_inner[0:l_index]}>{search_str_target}<{search_str_inner[r_index:]}' if search_str_target else f'строка >>{search_str_inner}<<'}",
-                    "Condition.condinner": lambda: f"<< {data['Condition'].get('condinner', '...')}",
-                    "Condition.findfull": "совпадает c",
-                    "Condition.findpart": "содержит", "isntfindfull": "не совпадает c", "isntfindpart": "не содержит",
-                    "Condition.equal": "равно", "less": "меньше чем", "larger": "больше чем",
-                    "Condition.parent": lambda: "Выбрано внешнее условие!" if "parent" in data["Condition"] else "",
-                    "Condition.stringid": None,
-                    "SearchString.inner_": None,
+            condition_bool_val = "Истинно если" if condition_bool_val else "Ложно если"
+            condition_empty_details = data["Condition"].get(
+                "findfull",
+                data["Condition"].get("findpart",
+                                      data["Condition"].get("isntfindfull",
+                                                            data["Condition"].get("isntfindpart",
+                                                                                  data["Condition"].get("equal",
+                                                                                                        data["Condition"].get("less",
+                                                                                                                              data["Condition"].get("larger", None)
+                                                                                                                              )
+                                                                                                        )
+                                                                                  )
+                                                            )
+                                      )
+            )
+            map_ = {"Condition.conditionbooleanvalue": condition_bool_val,
+                    "Condition.parentconditionbooleanvalue": lambda t: f"родительское условие {'верно' if parent_cond_bool_value else 'ложно'}",
+                    "Condition.parent": "и ",
+                    "Condition.stringid": f"подстрока >>{search_str_target}<<",
+                    "SearchString.inner_": f"в строке {separated_inner} {'...' if condition_empty_details is None else ''}",
+                    "Condition.findfull": lambda y: "совпадает c" if y else None,
+                    "Condition.findpart": lambda y: "содержит" if y else None,
+                    "Condition.isntfindfull": lambda y: "не совпадает c" if y else None,
+                    "Condition.isntfindpart": lambda x: "не содержит" if x else "",
+                    "Condition.equal": lambda u: "равно" if u else "",
+                    "Condition.less": lambda i: "меньше чем" if i else "",
+                    "Condition.larger": lambda i: "больше чем" if i else "",
                     "SearchString.lindex": None,
                     "SearchString.rindex": None,
                     "Condition.cnd": None
                     }
-            return " ".join([string for string in string_gen()])
+            return " ".join([string for string in string_gen() if string is not None])
         name = create_condition_name()
         self.disconnect_field_signals()
         if replace:
@@ -465,9 +496,11 @@ class ConditionsPage(Constructor, Tools, InputTools):
 
     @Slot(str)
     def select_condition_item(self, condition_item: Optional[QListWidgetItem]):
-        def update_fields(data: tuple[orm.SpecialOrmContainer]):
-            if not data:
-                self.reload()
+        def update_fields(data: orm.JoinedORMItem):
+            def filter_radio_button_data():
+                all_radio_buttons_sql_column_names = set(itertools.chain.from_iterable(val.keys() for val in self.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON.values()))
+                res = {key: value for key, value in all_data.items() if key in all_radio_buttons_sql_column_names}
+                return res
             data = data[0]
             all_data = {}
             [all_data.update(node.value) for node in data]
@@ -476,7 +509,9 @@ class ConditionsPage(Constructor, Tools, InputTools):
             self.disconnect_field_signals()
             self.disconnect_parent_condition_combo_box()
             self.update_fields(line_edit_values=line_edit_data, combo_box_values=combo_box_data,
-                               radio_button_values=all_data)
+                               radio_button_values=filter_radio_button_data())
+            self.validator.set_condition_item(condition_item)
+            self.validator.refresh()
             self.connect_parent_condition_combo_box()
             self.connect_field_signals()
 
@@ -486,13 +521,11 @@ class ConditionsPage(Constructor, Tools, InputTools):
                                                   on={"Condition.stringid": "SearchString.strid",
                                                       "Condition.hvarid": "HeadVarible.varid"},
                                                   _where={"Condition": {"cnd": id_}})
-            item_data = tuple(item_data)
             if not item_data:
                 self.reload(in_new_qthread=False)
             return item_data
         if condition_item is None:
             return
-        self.validator.set_condition_item(condition_item)
         item_text = condition_item.text()
         load_inner(self.condition_items_id[item_text])
 
@@ -528,7 +561,7 @@ class ConditionsPage(Constructor, Tools, InputTools):
         set_changes(id_, selected_condition_id)
 
     def update_data(self, field_name, **kwargs):
-        @QThreadInstanceDecorator(result_callback=self.validator.refresh)
+        @QThreadInstanceDecorator(result_callback=self.reload)
         def update_data(editable_item: orm.JoinedORMItem):
             if not editable_item:
                 self.reload(in_new_qthread=False)

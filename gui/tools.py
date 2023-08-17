@@ -19,7 +19,7 @@ class Tools:
     UI__TO_SQL_COLUMN_LINK__COMBO_BOX = {}
     UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON: dict[str, dict[str, bool]] = {}
     COMBO_BOX_DEFAULT_VALUES = {}
-    RADIO_BUTTON_DEFAULT_VALUES: tuple = tuple()  # Кортеж с именами выбранных кнопок
+    RADIO_BUTTON_DEFAULT_VALUES: dict = {}
     LINE_EDIT_DEFAULT_VALUES = {}
     INTEGER_FIELDS = tuple()
     STRING_FIELDS = tuple()
@@ -49,10 +49,14 @@ class Tools:
                     input_.setCurrentText("")
         for ui_field_name, orm_values_group in self.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON.items():
             for orm_field_name, orm_field_val in orm_values_group.items():
-                if orm_field_name in radio_button_values and radio_button_values[orm_field_name]:
-                    ui_field: QRadioButton = getattr(self.ui, ui_field_name)
-                    ui_field.setEnabled(True)
-                    break
+                if orm_field_name in radio_button_values:
+                    if orm_field_val == radio_button_values[orm_field_name]:
+                        ui_field: QRadioButton = getattr(self.ui, ui_field_name)
+                        if len(orm_values_group) == 1:
+                            ui_field.setChecked(orm_field_val)
+                        if len(orm_values_group) > 1:
+                            if orm_field_val:
+                                ui_field.setChecked(True)
 
     def check_output_values(self, field_name, value):
         """ Форматировать типы выходных значений перед установкой в очередь отправки """
@@ -78,9 +82,9 @@ class Tools:
         return value
 
     def reset_fields_to_default(self):
-        for radio_button_name in self.RADIO_BUTTON_DEFAULT_VALUES:
-            field: QRadioButton = getattr(self.ui, radio_button_name)
-            field.setChecked(True)
+        for radio_button_name, value in self.RADIO_BUTTON_DEFAULT_VALUES.items():
+            field: QRadioButton = getattr(self.ui, radio_button_name, None)
+            field.setChecked(value)
         for combo_box_name, default_text in self.COMBO_BOX_DEFAULT_VALUES.items():
             field: QComboBox = getattr(self.ui, combo_box_name)
             field.clear()

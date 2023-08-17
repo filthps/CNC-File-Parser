@@ -46,17 +46,19 @@ class QThreadInstanceDecorator:
         self.create_new_task = in_new_qthread
 
     def __call__(self, call_f):
-        def outer(*a, **k):
-            self.create_new_task = k.pop("create_thread", self.create_new_task)
+        def outer(*a, create_thread: Optional[bool] = None, **k):
+            self.create_new_task = create_thread if create_thread is not None else self.create_new_task
             if self.create_new_task:
                 self.task = Task(call_f, *a, **k)
                 if self.end_f is not None:
                     def callback(serialized_data):
                         deserialized = dill.loads(serialized_data)
-                        try:
+                        if not deserialized:
+                            self.end_f()
+                        if isinstance(deserialized, tuple):
                             self.end_f(*deserialized)
-                        except TypeError:
-                            self.end_f(deserialized)
+                            return
+                        self.end_f(deserialized)
                     self.task.connection.data_transmission_signal.connect(lambda stringify_data: callback(stringify_data))
                     self.task.connection.empty_signal.connect(self.end_f)
                 self.threadpool.start(self.task)
@@ -65,10 +67,7 @@ class QThreadInstanceDecorator:
             if result is None:
                 return self.end_f()
             if type(result) is tuple:
-                try:
-                    self.end_f(*result)
-                except TypeError:
-                    self.end_f(result)
+                self.end_f(*result)
                 return
             self.end_f(result)
         return outer

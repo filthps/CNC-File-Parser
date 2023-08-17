@@ -170,7 +170,7 @@ class Condition(db.Model, ModelController):
     larger = Column(Boolean, default=False, nullable=False)
     __table_args__ = (
         CheckConstraint("condinner!=''", name="condinner_empty"),
-        CheckConstraint("hvarid IS NOT NULL OR stringid IS NOT NULL", name="check_cnd_target")
+        CheckConstraint("hvarid IS NOT NULL OR stringid IS NOT NULL", name="check_cnd_target"),
     )
 
 
