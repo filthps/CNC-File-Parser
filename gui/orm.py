@@ -538,6 +538,7 @@ class SQLAlchemyQueryManager:
                 except PsycopgError as error:
                     self.remaining_nodes += node_group  # todo: O(n**2)!
                     print(error)
+        session.close()
         self._sorted = []
         self._query_objects = {}
 
