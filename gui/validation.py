@@ -19,6 +19,7 @@ class Validator:
 
     @property
     def is_valid(self):
+        self.refresh()
         return self._is_valid
 
     @staticmethod
