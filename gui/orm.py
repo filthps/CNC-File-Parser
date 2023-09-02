@@ -479,7 +479,7 @@ class SQLAlchemyQueryManager:
         if not self._query_objects:
             return
         engine = create_engine(self.path)
-        engine.execution_options(isolation_level="READ UNCOMMITTED")
+        engine.execution_options(isolation_level="AUTOCOMMIT")
         factory_instance = session_factory()
         factory_instance.close_all()
         factory_instance.configure(bind=engine)
@@ -491,6 +491,7 @@ class SQLAlchemyQueryManager:
             multiple_items_in_transaction = True if len(node_group) > 1 else False
             has_error = False
             point = None
+            counter = 0
             if multiple_items_in_transaction:
                 point = session.begin_nested()
             for node in node_group:
@@ -507,6 +508,8 @@ class SQLAlchemyQueryManager:
                         self.remaining_nodes += node_group  # todo: O(n**2)!
                         print(error)
                         has_error = True
+                    if multiple_items_in_transaction and counter < len(node_group) - 1:
+                        session.flush()
                 else:
                     try:
                         session.delete(dml)
@@ -518,6 +521,7 @@ class SQLAlchemyQueryManager:
                         self.remaining_nodes += node_group  # todo: O(n**2)!
                         print(error)
                         has_error = True
+                counter += 1
             if has_error:
                 if point:
                     point.rollback()
