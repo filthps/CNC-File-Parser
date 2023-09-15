@@ -62,7 +62,8 @@ class ORMItem(LinkedListItem, ORMAttributes):
              необходимо для корректной работы ORMHelper.join_select"""
             _ = self.get_primary_key_and_value()  # test attr __db_queue_primary_field_name__
             db_primary_key = getattr(self.model(), "__primary_key__")
-            if db_primary_key not in self.value:
+            local_primary_key = getattr(self.model(), "__db_queue_primary_field_name__")
+            if db_primary_key not in self.value and local_primary_key not in self.value:
                 raise ValueError("Любая нода, будь то insert, update или delete,"
                                  "должна иметь в значении поле первичного ключа (для базы данных) со значением!")
         check_queue_and_database_pk()
@@ -729,7 +730,7 @@ class ORMHelper(ORMAttributes):
         cls.items.enqueue(_model=model, _ready=_ready,
                           _insert=_insert, _update=_update,
                           _delete=_delete, _where=_where, **value)
-        cls.__set_cache(cls.items)
+        cls.__set_cache()
         cls._timer.cancel() if cls._timer else None
         cls._timer = cls.init_timer()
 
@@ -739,7 +740,7 @@ class ORMHelper(ORMAttributes):
         if not isinstance(collection, ORMItemQueue):
             raise TypeError
         cls._items = collection
-        cls.__set_cache(cls.items)
+        cls.__set_cache()
         cls._timer.cancel() if cls._timer else None
         cls._timer = cls.init_timer()
         raise Warning("Подмена контейнера кешированных элементов")
@@ -1030,7 +1031,7 @@ class ORMHelper(ORMAttributes):
                 if not isinstance(pk_field_value, (int, str,)):
                     raise TypeError
                 cls.items.remove(model, **{primary_key_field_name: pk_field_value})
-        cls.__set_cache(cls.items)
+        cls.__set_cache()
 
     @classmethod
     def remove_field_from_node(cls, pk_field_value, field_or_fields: Union[Iterable[str], str], _model=None):
@@ -1061,7 +1062,7 @@ class ORMHelper(ORMAttributes):
             if field_or_fields in node_data:
                 del node_data[field_or_fields]
         cls.items.replace(old_node, ORMItemQueue.LinkedListItem(**node_data))
-        cls.__set_cache(cls.items)
+        cls.__set_cache()
 
     @classmethod
     def is_node_from_cache(cls, model=None, **attrs) -> bool:
@@ -1083,7 +1084,8 @@ class ORMHelper(ORMAttributes):
         """
         database_adapter = SQLAlchemyQueryManager(DATABASE_PATH, cls.items)
         database_adapter.start()
-        cls.__set_cache(database_adapter.remaining_nodes or None)
+        cls._items = database_adapter.remaining_nodes or None
+        cls.__set_cache()
         cls._timer = cls.init_timer() if database_adapter.remaining_nodes else None
         sys.exit()
 
@@ -1097,9 +1099,8 @@ class ORMHelper(ORMAttributes):
         super().__getattribute__(item)
 
     @classmethod
-    def __set_cache(cls, container: Optional[ORMItemQueue]):
-        cls._items = container
-        cls.cache.set("ORMItems", container, cls.CACHE_LIFETIME_HOURS)
+    def __set_cache(cls):
+        cls.cache.set("ORMItems", cls._items, cls.CACHE_LIFETIME_HOURS)
         
         
 class JoinedORMItem(ORMAttributes):
@@ -1141,124 +1142,32 @@ class JoinedORMItem(ORMAttributes):
             self._merge()
         return iter(self._merged_nodes)
 
-    def update(self, column_name, column_value, ready=False, **pk):
+    def update(self, data: dict, ready=False, **pk) -> bool:
         """
-        :param column_name: изменяемый столбец
-        :param column_value: значение
+        :param data: словарь вида столбец: значение
         :param ready: готовность к отправке в бд (от валидатора с ui) ко всем нодам в рамках экземпляра!
         :param pk: model_name: Optional[{primary_key: primary_key_value}]
 
         Определить к какой таблице принадлежит обновляемый столбец, обновить ноду в очереди, сохранить очередь,
         запустить таймер
+        :return: bool - статус результата: если ноды уже нет в наборе (надо понимать,что произошёл новый запрос в бд)
+            вернёт False, если всё получилось - True
         """
-        def get_updated_node():
-            nonlocal node
-            for nodes_group in self.merged:
-                if has_repeatable_columns:
-                    table_name, pk_data = itertools.chain(pk.items())
-                    pk_data = tuple(*pk_data.items())
-                    for node_ in nodes_group:
-                        if node_.model.__name__ == table_name:
-                            if pk_data == node_.get_primary_key_and_value(as_tuple=True):
-                                node = node_
-                                return
-                    return
-                pk_data = tuple(*pk.items())
-                for node_ in nodes_group:
-                    if node_.get_primary_key_and_value(as_tuple=True) == pk_data:
-                        node = node_
-                        return
-
-        def update_node():
-            if node is None:
-                return
-            nonlocal nodes
-            nodes = self._adapter.items if nodes is None else nodes
-            new_node_body = node.get_attributes()
-            new_node_body.update({column_name: column_value})
-            nodes.enqueue(**new_node_body)
-
-        def update_ready_status():
-            """ Установить всем нодам в рамках текущего экземпляра
-             атрибут ready. Подменить контейнер в self._merged_nodes."""
-            result = []
-            nonlocal nodes
-            nodes = self._adapter.items if nodes is None else nodes
-            for list_elem in self._merged_nodes:
-                new_container = SpecialOrmContainer()
-                for n in list_elem:
-                    attrs = n.get_attributes()
-                    attrs.update({"_ready": ready})
-                    new_container.append(**attrs)
-                    nodes.enqueue(**attrs)
-                result.append(new_container)
-            self._merged_nodes = result
-
-        def save_items():
-            if not nodes:
-                return
-            self._adapter.replace_items(nodes)
-
-        def validate_attributes():
-            def count_repeatable_columns_in_all_our_tables() -> dict:
-                """ Найти столбцы с одинаковыми названиями, если они есть, то для одной из этих таблиц должен быть указан
-                 именованный атрибут!"""
-                counter = {}
-                for nodes_container in self.merged:
-                    column_names_for_current_raw = [column_name
-                                                    for node in nodes_container
-                                                    for column_name in node.model().column_names]
-                    current_counter = {name: column_names_for_current_raw.count(name)
-                                       for name in column_names_for_current_raw}
-                    current_counter = {name: i for name, i in current_counter.items() if i > 1}
-                    if current_counter:
-                        counter.update(current_counter)
-                return counter
-            if not pk:
-                raise ValueError
-            for val in pk.values():
-                if not isinstance(val, (dict, str, int,)):
-                    raise TypeError
-            if not self._join_select_args or not self._join_select_kwargs:
-                raise AttributeError("Использование метода update для данного экземпляра невозможно, "
-                                     "при инициализации не были переданы необходимые параметры")
-            nonlocal has_repeatable_columns
-            has_repeatable_columns = count_repeatable_columns_in_all_our_tables()
-            if has_repeatable_columns:
-                for table_name_or_primary_key_field_name, pk_data_dict_or_pk_value in pk.items():
-                    if not isinstance(table_name_or_primary_key_field_name, str):
-                        raise TypeError
-                    for value in pk_data_dict_or_pk_value.values():
-                        if not isinstance(value, dict):
-                            raise ValueError("Укажите именованный параметр с именем таблицы, а в его значении словарь,"
-                                             "который содержит наименование поля-первичного ключа и его значение")
-                if set(has_repeatable_columns) - set(pk):
-                    raise ValueError(f"У таблиц {'.'.join(has_repeatable_columns)} "
-                                     f"есть повторящиеся имена столбцов, следует указать в именованном "
-                                     f"параметре on словарь вида: model_name: {{primary_key: primary_key_value}}")
-            else:
-                if len(pk) > 1:
-                    raise ValueError("Только первичный ключ:значение! Для любой таблицы в запросе")
         if not self._adapter:
             raise RuntimeError("Функционал данного метода недоступен")
+        self._validate_attributes_before_update(**pk)
+        joined_orm_item_instance = self._get_new_instance()
+        self._replace_merged_nodes_in_self_instance_from_new_instance(joined_orm_item_instance)
+        nodes = self._get_updated_nodes(data, **pk)
+        if nodes:
+            [self._update_node(node, **data) for node in nodes]
+            self._update_ready_status(status=ready)
+            self._adapter.replace_items(self._adapter.items)
+            return True
+        return False
 
-        def get_new_instance():
-            nonlocal joined_orm_item_instance
-            joined_orm_item_instance = self._adapter.join_select(*self._join_select_args, **self._join_select_kwargs)
-
-        def replace_merged_nodes_in_self_instance_from_new_instance():
-            self._merged_nodes = list(joined_orm_item_instance.merged)
-        has_repeatable_columns = None
-        nodes: Optional[ORMItemQueue] = None
-        node: Optional[ORMItem] = None
-        joined_orm_item_instance: Optional[JoinedORMItem] = None
-        validate_attributes()
-        get_new_instance()
-        replace_merged_nodes_in_self_instance_from_new_instance()
-        get_updated_node()
-        update_node()
-        update_ready_status()
-        save_items()
+    def is_actual_composition(self):
+        """  """
 
     def __iter__(self):
         return self.merged
@@ -1323,6 +1232,116 @@ class JoinedORMItem(ORMAttributes):
         all_items.extend(not_intersected_data)
         self._merged_nodes = all_items
 
+    def _update_node(self, node: Optional[SpecialOrmItem], **data):
+        if node is None:
+            return
+        if not data:
+            return
+        new_node_body = node.get_attributes()
+        [new_node_body.update({column_name: value}) for column_name, value in data.items()]
+        self._adapter.items.enqueue(**new_node_body)
+
+    def _replace_merged_nodes_in_self_instance_from_new_instance(self, new_instance: "JoinedORMItem"):
+        self._merged_nodes = list(new_instance.merged)
+
+    def _get_new_instance(self) -> "JoinedORMItem":
+        joined_orm_item_instance = self._adapter.join_select(*self._join_select_args, **self._join_select_kwargs)
+        return joined_orm_item_instance
+
+    def _update_ready_status(self, status: bool = True):
+        """ Установить всем нодам в рамках текущего экземпляра
+         атрибут ready.
+         """
+        for list_elem in self.merged:
+            for n in list_elem:
+                attrs = n.get_attributes()
+                attrs.update({"_ready": status})
+                self._adapter.items.enqueue(**attrs)
+
+    def _validate_attributes_before_update(self, **pk):
+        if not self._join_select_args or not self._join_select_kwargs:
+            raise AttributeError("Использование метода update для данного экземпляра невозможно, "
+                                 "при инициализации не были переданы необходимые параметры")
+        has_repeatable_columns = self._count_repeatable_columns_in_all_our_tables()
+        if max(has_repeatable_columns.values()) > 1:
+            if not pk:
+                raise ValueError
+            for val in pk.values():
+                if not isinstance(val, dict):
+                    raise TypeError("В качестве значения для параметра pk служит двухмерный словарь. "
+                                    "См докстиринг к self.update")
+            for table_name_or_primary_key_field_name, pk_data_dict_or_pk_value in pk.items():
+                if not isinstance(table_name_or_primary_key_field_name, str):
+                    raise TypeError
+                for value in pk_data_dict_or_pk_value.values():
+                    if not isinstance(value, dict):
+                        raise ValueError("Укажите именованный параметр с именем таблицы, а в его значении словарь,"
+                                         "который содержит наименование поля-первичного ключа и его значение")
+            if set(has_repeatable_columns) - set(pk):
+                raise ValueError(f"У таблиц {'.'.join(has_repeatable_columns)} "
+                                 f"есть повторящиеся имена столбцов, следует указать в именованном "
+                                 f"параметре on словарь вида: model_name: {{primary_key: primary_key_value}}")
+        else:
+            if pk:
+                for val in pk.values():
+                    if not isinstance(val, dict):
+                        raise TypeError("В качестве значения для параметра pk служит двухмерный словарь. "
+                                        "См докстиринг к self.update")
+
+    def _count_repeatable_columns_in_all_our_tables(self) -> dict:
+        """ Найти столбцы с одинаковыми названиями, если они есть, то для одной из этих таблиц должен быть указан
+         именованный атрибут!
+         """
+        counter = {}
+        if not tuple(self.merged):
+            return counter
+        random_nodes_container = tuple(self.merged)[0]
+        column_names_for_current_raw = [column_name
+                                        for node in random_nodes_container
+                                        for column_name in node.model().column_names]
+        current_counter = {name: column_names_for_current_raw.count(name)
+                           for name in column_names_for_current_raw}
+        current_counter = {name: i for name, i in current_counter.items()}
+        if current_counter:
+            counter.update(current_counter)
+        return counter
+
+    def _get_updated_nodes(self, data, **pk) -> SpecialOrmContainer:
+        """ 1) Если передан именованный аргумент pk, то будет поиск по данному столбцу со значением
+            2) Если не передан, то производится подсчёт совпадающих имён столбцов (в рамках каждого, отдельно взятого join_select)
+            3) Если есть совпадающие имена, и если не передан pk, то возбуждается исключение,
+            требующее уточнить - для какой именно таблицы мы вносим изменения,
+            если передан, то идёт поиск, как в в 1.
+            """
+        if not data and not pk:
+            raise ValueError
+        result = SpecialOrmContainer()
+        has_repeated_fields = max(self._count_repeatable_columns_in_all_our_tables().values()) > 1
+        for nodes_group in self.merged:
+            if pk:
+                for table_name, inner in pk.items():
+                    for node_ in nodes_group:
+                        if node_.model.__name__ == table_name:
+                            for column_name, column_value in inner.items():
+                                if column_name in node_.value and node_.value[column_name] == column_value:
+                                    result.append(**node_.get_attributes())
+                                else:
+                                    result.remove(node_.model, *node_.get_primary_key_and_value(as_tuple=True))
+            else:
+                if has_repeated_fields:  # Ищем целевую ноду по полю первичного ключа
+                    table_name, pk_data = itertools.chain(pk.items())
+                    pk_data = tuple(*pk_data.items())
+                    for node_ in nodes_group:
+                        if node_.model.__name__ == table_name:
+                            if pk_data == node_.get_primary_key_and_value(as_tuple=True):
+                                result.append(**node_.get_attributes())
+                else:  # Достаточно найти по обновляемому(любому) полю, тк в связке нод нет повторяющихся полей
+                    for node_ in nodes_group:
+                        for update_column_name in data:
+                            if update_column_name in node_.model().column_names:
+                                result.append(**node_.get_attributes())
+        return result
+
 
 if __name__ == "__main__":
     from database.models import Machine, Condition, SearchString
@@ -1330,7 +1349,6 @@ if __name__ == "__main__":
     def test_join_select():
         adapter = ORMHelper
         adapter.set_model(Machine)
-
         #adapter.join_select(Condition, SearchString, on={"SearchString.strid": "Condition.stringid"})
         print(list(adapter.get_items(Condition, _db_only=True)))
         print(list(adapter.get_items(SearchString, _db_only=True)))
