@@ -306,7 +306,8 @@ class ConditionsPage(Constructor, Tools, InputTools):
         self.ui = ui
         self.db_items: orm.ORMHelper = app_instance.db_items_queue
         self.validator: Optional[ConditionsPageValidator] = None
-        self.condition_items = {}  # name: orm.JoinedORMItem() Instance
+        self.join_select_result: Optional[orm.JoinedORMItem] = None
+        self.condition_map = {}  # text: QListWidgetItem index
         self.add_condition_dialog: Optional[AddConditionDialog] = None
         self.field_signals_status = False
 
@@ -321,8 +322,8 @@ class ConditionsPage(Constructor, Tools, InputTools):
         self.reload()
         self.connect_main_signals()
 
-    def reload(self, in_new_qthread: bool = True):
-        def add_(items: orm.JoinedORMItem):
+    def reload(self, in_new_qthread: bool = True, actual_joined_instance=None):
+        def add_(select_result: orm.JoinedORMItem):
             def auto_select_condition_item(index=0) -> Optional[QListWidgetItem]:
                 m = self.ui.conditions_list.takeItem(index)
                 self.ui.conditions_list.addItem(m)
@@ -332,13 +333,18 @@ class ConditionsPage(Constructor, Tools, InputTools):
             self.disconnect_parent_condition_combo_box()
             self.disconnect_field_signals()
             self.reset_fields()
-            [self.add_or_replace_condition_item_to_list_widget(group) for group in items]
+            [self.add_or_replace_condition_item_to_list_widget(group) for group in select_result]
             active_item = auto_select_condition_item()
             self.validator.current_condition = active_item
             self.connect_field_signals()
             self.connect_parent_condition_combo_box()
             if active_item is not None:
                 self.validator.refresh()
+            self.join_select_result = select_result
+            self.condition_map = {value.text(): index
+                                  for index, value in
+                                  enumerate(map(lambda x: self.ui.conditions_list.item(x),
+                                                range(self.ui.conditions_list.count())))}
 
         @QThreadInstanceDecorator(in_new_qthread=in_new_qthread, result_callback=add_)
         def load_():
@@ -346,7 +352,7 @@ class ConditionsPage(Constructor, Tools, InputTools):
                                               on={"Condition.stringid": "SearchString.strid",
                                                   "Condition.hvarid": "HeadVarible.varid"})
             return items
-        load_()
+        load_() if not actual_joined_instance else add_(actual_joined_instance)
 
     def add_or_replace_condition_item_to_list_widget(self, data: orm.SpecialOrmContainer, replace=False):
         """ 1) Найти выбранный QListWidgetItem (со старым именем)
@@ -417,7 +423,6 @@ class ConditionsPage(Constructor, Tools, InputTools):
             return
         self.ui.conditions_list.addItem(QListWidgetItem(name))
         self.connect_field_signals()
-        self.condition_items.update({name: data["Condition"]["cnd"]})
 
     def connect_main_signals(self):
         def open_create_condition_window():
@@ -484,7 +489,7 @@ class ConditionsPage(Constructor, Tools, InputTools):
         def remove():
             @QThreadInstanceDecorator(result_callback=lambda: self.reload(in_new_qthread=False))
             def delete(item_name):
-                self.db_items.set_item(_delete=True, cnd=self.condition_items[item_name], _ready=True)
+                self.db_items.set_item(_delete=True, cnd=self.join_select_result[item_name], _ready=True)
             current_item: QListWidgetItem = self.ui.conditions_list.currentItem()
             if current_item is None:
                 return
@@ -496,7 +501,7 @@ class ConditionsPage(Constructor, Tools, InputTools):
 
     @Slot(str)
     def select_condition_item(self, condition_item: Optional[QListWidgetItem]):
-        def update_fields(data: orm.JoinedORMItem):
+        def update_fields(data: list[orm.SpecialOrmContainer]):
             def filter_radio_button_data():
                 all_radio_buttons_sql_column_names = set(itertools.chain.from_iterable(val.keys() for val in self.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON.values()))
                 res = {key: value for key, value in all_data.items() if key in all_radio_buttons_sql_column_names}
@@ -517,18 +522,20 @@ class ConditionsPage(Constructor, Tools, InputTools):
             self.connect_field_signals()
 
         @QThreadInstanceDecorator(result_callback=update_fields)
-        def load_inner(id_):
-            item_data = self.db_items.join_select(SearchString, Condition, HeadVarible,
-                                                  on={"Condition.stringid": "SearchString.strid",
-                                                      "Condition.hvarid": "HeadVarible.varid"},
-                                                  _where={"Condition": {"cnd": id_}})
-            if not item_data:
-                self.reload(in_new_qthread=False)
-            return item_data
-        if condition_item is None:
+        def check_inner(index: int):
+            changed_data = self.join_select_result.refresh()
+            if changed_data:
+                self.reload(in_new_qthread=False, actual_joined_instance=changed_data)
+                return
+            print(self.join_select_result[index])
+            return self.join_select_result[index]
+        if not condition_item:
             return
-        item_text = condition_item.text()
-        load_inner(self.condition_items[item_text])
+        if condition_item.text() not in self.condition_map:
+            return
+        selected_condition_index = self.condition_map[condition_item.text()]
+        print(selected_condition_index)
+        check_inner(selected_condition_index)
 
     @Slot(str)
     def change_parent_condition(self, item):
@@ -553,12 +560,12 @@ class ConditionsPage(Constructor, Tools, InputTools):
         if not current_condition_item:
             return
         current_condition_name = current_condition_item.text()
-        id_ = self.condition_items[current_condition_name]
+        id_ = self.join_select_result[current_condition_name]
         if item == self.COMBO_BOX_DEFAULT_VALUES["parent_condition_combobox"]:
             set_changes(id_)
             self.validator.refresh()
             return
-        selected_condition_id = self.condition_items[item]
+        selected_condition_id = self.join_select_result[item]
         set_changes(id_, selected_condition_id)
 
     def update_data(self, field_name, **kwargs):
@@ -571,30 +578,20 @@ class ConditionsPage(Constructor, Tools, InputTools):
                 sql_column_name = self.UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]
                 ui_field = getattr(self.ui, field_name)
                 value = ui_field.text()
-                editable_item.update(sql_column_name, value, ready=self.validator.is_valid,
-                                     **{"cnd": self.condition_items[condition_text]})
+                editable_item.update({sql_column_name: value}, ready=self.validator.is_valid, cnd=self.join_select_result[condition_text])
                 return
             if "radio_button" in kwargs:
                 new_values = self.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON[field_name]
-                [editable_item.update(sql_col_name, value, ready=self.validator.is_valid,
-                                      **{"cnd": self.condition_items[condition_text]})
-                 for sql_col_name, value in new_values.items()]
-
-        @QThreadInstanceDecorator(result_callback=update_data)
-        def join_select(name: str):
-            item = self.db_items.join_select(Condition, SearchString, HeadVarible,
-                                             on={"Condition.stringid": "SearchString.strid",
-                                                 "Condition.hvarid": "HeadVarible.varid"},
-                                             _where={"Condition": {"cnd": self.condition_items[name]}})
-            return item
+                editable_item.update(new_values, ready=self.validator.is_valid)
         selected_condition = self.ui.conditions_list.currentItem()
         if not selected_condition:
             return
         condition_text = selected_condition.text()
-        join_select(condition_text)
+        label_index = self.condition_map[condition_text]
+        update_data(self.join_select_result[label_index])
 
     def reset_fields(self):
-        self.condition_items = {}
+        self.join_select_result = {}
         self.ui.conditions_list.clear()
         super().reset_fields_to_default()
 
