@@ -299,6 +299,7 @@ class ConditionsPage(Constructor, Tools, InputTools):
     LINE_EDIT_DEFAULT_VALUES = {"lineEdit_28": ""}
     COMBO_BOX_DEFAULT_VALUES = {"parent_condition_combobox": "Выберите промежуточное условие"}
     RADIO_BUTTON_DEFAULT_VALUES = {"radioButton_26": True, "radioButton_45": True, "radioButton_28": True}
+    SQL_FIELD_NAMES = {model().column_names: model for model in [Condition, SearchString, HeadVarDelegation]}
 
     def __init__(self, app_instance: QMainWindow, ui: Ui):
         super().__init__(app_instance, ui)
@@ -307,7 +308,7 @@ class ConditionsPage(Constructor, Tools, InputTools):
         self.db_items: orm.ORMHelper = app_instance.db_items_queue
         self.validator: Optional[ConditionsPageValidator] = None
         self.join_select_result: Optional[orm.JoinedORMItem] = None
-        self.condition_map = {}  # text: QListWidgetItem index
+        self.condition_map = {}  # text: hash
         self.add_condition_dialog: Optional[AddConditionDialog] = None
         self.field_signals_status = False
 
@@ -341,10 +342,11 @@ class ConditionsPage(Constructor, Tools, InputTools):
             if active_item is not None:
                 self.validator.refresh()
             self.join_select_result = select_result
-            self.condition_map = {value.text(): index
-                                  for index, value in
-                                  enumerate(map(lambda x: self.ui.conditions_list.item(x),
-                                                range(self.ui.conditions_list.count())))}
+            result_items = iter(select_result)
+            self.condition_map = {value.text(): hash(next(result_items))
+                                  for value in
+                                  map(lambda x: self.ui.conditions_list.item(x), range(self.ui.conditions_list.count()))
+                                  }
 
         @QThreadInstanceDecorator(in_new_qthread=in_new_qthread, result_callback=add_)
         def load_():
@@ -568,27 +570,32 @@ class ConditionsPage(Constructor, Tools, InputTools):
         selected_condition_id = self.join_select_result[item]
         set_changes(id_, selected_condition_id)
 
-    def update_data(self, field_name, **kwargs):
-        @QThreadInstanceDecorator(result_callback=self.reload, in_new_qthread=False)
-        def update_data(editable_item: orm.JoinedORMItem):
-            if not editable_item:
+    def update_data(self, field_name, line_edit=False, radio_button=False):
+        def get_value_from_ui() -> dict:  # sql_col_name: val
+            if radio_button:
+                return self.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON[field_name]
+            if line_edit:
+                input_: QLineEdit = getattr(self.ui, field_name)
+                return {self.UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]: input_.text()}
+
+        @QThreadInstanceDecorator(result_callback=lambda: print("UPDATE"))
+        def update(status: bool):
+            if not status:
                 self.reload(in_new_qthread=False)
                 return
-            if "line_edit" in kwargs:
-                sql_column_name = self.UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]
-                ui_field = getattr(self.ui, field_name)
-                value = ui_field.text()
-                editable_item.update({sql_column_name: value}, ready=self.validator.is_valid, cnd=self.join_select_result[condition_text])
-                return
-            if "radio_button" in kwargs:
-                new_values = self.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON[field_name]
-                editable_item.update(new_values, ready=self.validator.is_valid)
+            self.db_items.set_item(_update=True, _ready=True, _model=model, **values)
+
+        @QThreadInstanceDecorator(result_callback=update)
+        def check_exists(hash_):
+            return self.join_select_result.is_actual_nodes(hash_)
         selected_condition = self.ui.conditions_list.currentItem()
         if not selected_condition:
             return
         condition_text = selected_condition.text()
-        label_index = self.condition_map[condition_text]
-        update_data(self.join_select_result[label_index])
+        item_hash = self.condition_map[condition_text]
+        model = [model for fields, model in self.SQL_FIELD_NAMES.items() if field_name in fields][0]
+        values = get_value_from_ui()
+        check_exists(item_hash)
 
     def reset_fields(self):
         self.join_select_result = {}

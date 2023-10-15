@@ -93,7 +93,7 @@ class ORMItem(LinkedListItem, ORMAttributes):
 
     @property
     def value(self) -> dict:
-        return self._value.copy() if self._value else {}
+        return self._value
 
     @property
     def model(self):
@@ -223,7 +223,7 @@ class ORMItem(LinkedListItem, ORMAttributes):
         return str(self.value)
 
     def __hash__(self):
-        str_ = "".join(map(lambda x: str(x), *self.get_primary_key_and_value(as_tuple=True)))
+        str_ = "".join(map(lambda x: str(x), self.get_primary_key_and_value(as_tuple=True)))
         return int.from_bytes(bytes(str_, "utf-8"), "big")
 
     def __getitem__(self, item: str):
@@ -264,10 +264,13 @@ class EmptyOrmItem:
         return False
 
     def __repr__(self):
-        return f"{type(self)}()"
+        return f"{type(self).__name__}()"
 
     def __str__(self):
         return "None"
+
+    def __hash__(self):
+        return 0
 
 
 class ORMItemQueue(LinkedList):
@@ -642,7 +645,7 @@ class SpecialOrmItem(ORMItem):
                 Это нужно для запросов с группировкой.
                 Те ситуации, когда названия столбцов в таблицах совпадают, находясь в рамках одного результата join select.
              """
-            self._values = {f"{self.model.__name__}.{key}": value for key, value in super()._value.items()}
+            self._values = {f"{self.model.__name__}.{key}": value for key, value in super(**kwargs)._value.items()}
         super().__init__(**kwargs)
         change_keys_in_values()
 
@@ -1012,7 +1015,7 @@ class ORMHelper(ORMAttributes):
             return compare_by_matched_fk()
         database_data = collect_db_data()
         local_data = collect_local_data()
-        return JoinedORMItem(list(local_data), list(database_data), reference_table_name, join_select_args=models,
+        return JoinedORMItem(list(local_data), list(database_data), reference_table_name, models=models,
                              join_select_kwargs={"_where": _where, "on": on})
 
     @classmethod
@@ -1126,26 +1129,17 @@ class JoinedORMItem(ORMAttributes):
       1 экземпляр этого класса 1 результат вызова ORMHelper.join_select()
       JoinedORMItem().__getitem__(model_name).__getitem__(node_value_dict_key).
       """
-    _adapter: Optional[ORMHelper] = None
 
     def __init__(self, local_nodes: list[SpecialOrmContainer],
                  nodes_from_database__join_select: list[SpecialOrmContainer], reference_table: str,
-                 join_select_args=None, join_select_kwargs=None):
-        def save_parameters_from_join_select():
-            """ Сохранить все параметры, которые передавались методу cls._adapter.join_select,
-             чтобы при вызове метода self.update уйти в рекурсию, заново вызвать join_select, получить новый экземпляр
-             JoinedORMItem. Оперируя с новым экземпляром в рамках текузего, нужно проверить в результирующей
-             коллеции _merged элементов наличие pk изменяемой ноды."""
-            self._join_select_args = join_select_args
-            self._join_select_kwargs = join_select_kwargs
-        super().__init__()
+                 models=None, join_select_kwargs=None):
+        self._models = models
+        self._join_select_kwargs = join_select_kwargs
         self._main_table_name: str = reference_table
-        self._merged_nodes: Iterator[dict] = {}  # {SpecialOrmContainer.__hash__(): SpecialOrmContainer}
-        self._join_select_args = None
-        self._join_select_kwargs = None
-        save_parameters_from_join_select()
         self._local_nodes = local_nodes
         self._database_nodes = nodes_from_database__join_select
+        self._merged_nodes: tuple = tuple()
+        self._merge()
 
     @classmethod
     def set_adapter(cls, val: ORMHelper):
@@ -1153,64 +1147,29 @@ class JoinedORMItem(ORMAttributes):
             raise TypeError
         cls._adapter = val
 
-    def update(self, model: CustomModel, hash_: int, _ready=False, **data: dict) -> bool:
-        if not self._adapter:
-            raise RuntimeError("Функционал данного метода недоступен")
-        if not self.is_valid_model_instance(model):
-            raise TypeError
-        if not data:
-            return False
-        items_block, node = self._find_node_for_update(model, data)
-        if not node:
-            return False
-        self._refresh_current_instance()
-        self._update_node(node, _ready=_ready, **data)
-        return True
-
-    def drop_iterator(self):
-        list(self._merged_nodes) if self._merged_nodes else None
-
-    @property
-    def merged(self):
-        if not self._merged_nodes:
-            self._merge()
-        return self._merged_nodes
-
-    @property
-    def database_items(self):
-        return self._database_nodes
-
-    @property
-    def local_items(self):
-        return self._local_nodes
-
     def __iter__(self):
-        return self.merged
+        return iter(self._merged_nodes)
 
     def __bool__(self):
         return bool(len(self))
 
     def __len__(self):
-        return sum(1 for _ in self)
-
-    def __getitem__(self, key: int):
-        if not isinstance(key, int):
-            raise TypeError
-        merged_items = dict(self.merged)
-        if key not in merged_items:
-            raise KeyError
-        items = merged_items.pop(key)
-        self._merged_nodes = iter(merged_items.items())
-        return items
+        return sum([1 for _ in self])
 
     def __eq__(self, other):
         if not isinstance(other, self.__class__):
             return False
-        self.drop_iterator()
-        other.drop_iterator()
-        self_hash_counter = sum(map(lambda hash_key: hash_key, self.merged))
-        other_hash_counter = sum(map(lambda hash_key: hash_key, other.merged))
+        self_hash_counter = sum(map(lambda x: hash(x), iter(self)))
+        other_hash_counter = sum(map(lambda x: hash(x), iter(other)))
         return self_hash_counter == other_hash_counter
+
+    def __getitem__(self, item: int):
+        if not isinstance(item, int):
+            raise TypeError
+        for container in self:
+            if hash(container) == item:
+                return container
+        raise KeyError
 
     def __str__(self):
         s = "Локальные: "
@@ -1251,35 +1210,32 @@ class JoinedORMItem(ORMAttributes):
         models = {}
         get_all_merged_entries()
         not_intersected_data = get_all_local_entries()
-        all_items = {hash(item): item for item in merged_data.values()}
-        all_items.update({hash(item): item for item in not_intersected_data})
-        self._merged_nodes = iter(all_items.items())
-        
-    def _refresh_current_instance(self):
-        joined_orm_item_instance = self._adapter.join_select(*self._join_select_args, **self._join_select_kwargs)
-        self._database_nodes = joined_orm_item_instance.database_items
-        self._local_nodes = joined_orm_item_instance.local_items
-        self._merged_nodes = joined_orm_item_instance.merged
+        all_items = list(merged_data.values())
+        all_items.extend(not_intersected_data)  # todo: ordering  ???
+        self._merged_nodes = all_items
 
-    def _update_node(self, node: Optional[SpecialOrmItem], **data):
-        new_node_body = node.get_attributes()
-        [new_node_body.update({column_name: value}) for column_name, value in data.items()]
-        self._adapter.items.enqueue(**new_node_body)
+    def is_actual_nodes(self, hash_: int) -> bool:
+        def collect_where_clause():
+            for node in items:
+                where.update({node.model.__name__: node.get_primary_key_and_value()})
 
-    def _find_node_for_update(self, model: CustomModel, data: dict):
-        for container in dict(self.merged).values():
-            matched_node = None
-            for node in container:
-                if node.model.__name__ == model.__name__:
-                    for field_name in data:
-                        if field_name in node.value:
-                            matched_node = node
-                        else:
-                            matched_node = None
-                            break
-            if matched_node:
-                return container, matched_node
-        return None, None
+        def get_new_join_select_items():
+            return self._adapter.join_select(*self._models, _where=where, on=self._join_select_kwargs["on"])
+
+        items = self[hash_]
+        where = {}
+        collect_where_clause()
+        new_items = get_new_join_select_items()
+        try:
+            new_items[hash_]
+        except KeyError:
+            return False
+        return True
+
+    def refresh_all_items(self) -> Iterator[dict]:
+        new_items = self._adapter.join_select(self._models, on=self._join_select_kwargs["on"])
+        self._merged_nodes = dict(iter(new_items))
+        return iter(self)
 
 
 if __name__ == "__main__":

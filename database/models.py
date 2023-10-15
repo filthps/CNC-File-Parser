@@ -66,6 +66,7 @@ class ModelController:
             for attr_name, value in cls.__dict__.items():
                 if type(value) is InstrumentedAttribute:
                     cls.column_names.append(attr_name)
+            cls.column_names = tuple(cls.column_names)
         check_class_attributes()
         check_db_helper_queue_main_field()
         set_primary_key_field_name_to_cls()
