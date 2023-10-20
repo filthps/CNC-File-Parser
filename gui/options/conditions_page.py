@@ -1,9 +1,9 @@
 import itertools
 import re
 import uuid
-from typing import Optional, Union, Iterator
+from typing import Optional, Union, Iterator, Iterable
 from types import SimpleNamespace
-from PySide2.QtWidgets import QMainWindow, QListWidget, QListWidgetItem, QHBoxLayout, \
+from PySide2.QtWidgets import QButtonGroup, QMainWindow, QListWidget, QListWidgetItem, QHBoxLayout, \
     QVBoxLayout, QGroupBox, QLineEdit, QRadioButton, QDialogButtonBox, QSpacerItem, QTextBrowser, QLabel, QFormLayout
 from PySide2.QtCore import Slot, Qt
 from PySide2.QtGui import QSyntaxHighlighter, QColor
@@ -50,85 +50,151 @@ class AddConditionDialog(MyAbstractDialog, InputTools):
         self.ui.set_varible_button = None
         self.ui.string_help_text = None
         self.ui.sep_input = None
-        self.ui.group_box = None
+        self.ui.ignore_input = None
+        self.ui.ignore_box = None
+        self.ui.sep_box = None
+        self.ui.disable_separating_button = None
+        self.ui.disable_ignore_substring_button = None
+        self.ui.enable_separating_button = None
+        self.ui.enable_ignore_substring_button = None
+        self.ui.main_buttons_group = None
         super().__init__(parent=app.app, close_callback=callback, buttons=(self.ui.accept_button,))
         self.conditions_page: Optional["ConditionsPage"] = app
         self.db = db
         self.create_dialog_ui()
+        self.connect_signals()
         self.show()
 
     def create_dialog_ui(self):
-        def init_ui():
-            self.setWindowTitle("Добавить условие")
-            main_horizontal_layout = QVBoxLayout()
-            horizontal_box_layout = QHBoxLayout()
-            sep_h_layout = QFormLayout()
-            box = QGroupBox()
-            self.ui.group_box = box
-            box.setTitle("Что следует проверять")
-            radio_button_search_string = QRadioButton("Искать подстроку:")
-            condition_string_input = QLineEdit()
-            condition_string_input.setDisabled(True)
-            separator_input = QLineEdit()
-            separator_input.setDisabled(True)
-            separator_input.setMaximumWidth(20)
-            separator_input.setMaxLength(1)
-            separator_label = QLabel("Разделитель:")
-            sep_h_layout.addRow(separator_label, separator_input)
-            desc = QTextBrowser()
-            desc.setHtml(f"<p>Введите строку полностью, а внутри неё, при помощи символов <p style = 'color: #D05932'><ins>*<p style = 'color: #333'>, <p style = 'color: #333'>цель проверки, - то что будет проверяться."
-                         "<p>Например:"
-                         f"<p style = 'color: #074E67'><dfn> G1 X100 Y100 F <p style ='color: #D05932'>*2500*<p style = 'color: #D05932'><br><ins>2500</p><p style = 'color: #333'> - можно с чём-нибудь сравнить, или сопоставить."
-                         )
-            desc.setStyleSheet("p {display: inline-block; font-family: Times, serif; color: #333; word-break: normal;}")  # todo: разобраться здесь
-            desc.setDisabled(True)
-            self.ui.string_help_text = desc
-            vertical_layout_search_string = QVBoxLayout()
-            vertical_layout_search_string.addLayout(sep_h_layout)
-            vertical_layout_search_string.addWidget(radio_button_search_string)
-            vertical_layout_search_string.addWidget(condition_string_input)
-            vertical_layout_search_string.addWidget(desc)
-            vertical_layout_search_string.addSpacerItem(QSpacerItem(0, 200))
-            vertical_layout_set_head_varible = QVBoxLayout()
-            radio_button_set_headvar = QRadioButton("Искать значение переменной:")
-            head_varible_area = QListWidget()
-            head_varible_area.setDisabled(True)
-            vertical_layout_set_head_varible.addWidget(radio_button_set_headvar)
-            vertical_layout_set_head_varible.addWidget(head_varible_area)
-            horizontal_box_layout.addLayout(vertical_layout_search_string)
-            horizontal_box_layout.addLayout(sep_h_layout)
-            horizontal_box_layout.addLayout(vertical_layout_set_head_varible)
-            box.setLayout(horizontal_box_layout)
-            main_horizontal_layout.addWidget(box)
-            self.setLayout(main_horizontal_layout)
-            self.ui.head_varible_area = head_varible_area
-            self.ui.string_input = condition_string_input
-            self.ui.set_string_button = radio_button_search_string
-            self.ui.set_varible_button = radio_button_set_headvar
-            self.ui.sep_input = separator_input
-            buttons_layout = QHBoxLayout()
-            buttons_layout.addSpacerItem(QSpacerItem(300, 0))
-            buttons_layout.addWidget(self.ui.button_box)
-            buttons_layout.addSpacerItem(QSpacerItem(300, 0))
-            main_horizontal_layout.addLayout(buttons_layout)
-        init_ui()
-        self.connect_signals()
+        self.setWindowTitle("Проверяемая строка")
+        main_button_grop = QButtonGroup()
+        self.ui.main_buttons_group = main_button_grop
+        main_horizontal_layout = QVBoxLayout()
+        horizontal_box_layout = QHBoxLayout()
+        separator_form = QFormLayout()
+        separator_input = QLineEdit()
+        separator_input.setDisabled(True)
+        separator_input.setMaximumWidth(20)
+        separator_input.setMaxLength(1)
+        separator_label = QLabel("Разделитель:")
+        separator_form.addRow(separator_label, separator_input)
+        sep_v_layout = QVBoxLayout()
+        radio_button_search_string = QRadioButton("Выделить участок разделителем")
+        sep_v_layout.addWidget(radio_button_search_string)
+        sep_v_layout.addLayout(separator_form)
+        box = QGroupBox()
+        box.setTitle("Что следует проверять")
+        substr_box = QGroupBox()
+        substr_box.setDisabled(True)
+        substr_box.setTitle("Что искать")
+        remove_ignore_items = QRadioButton("Искать строку полностью")
+        remove_ignore_items.setChecked(True)
+        ignore_sep_vertical_layout = QVBoxLayout()
+        set_ignore_items = QRadioButton("Указать игнорируемый участок")
+        ignore_sep_vertical_layout.addWidget(set_ignore_items)
+        ignore_place_form = QFormLayout()
+        ignore_symbols_separator_input = QLineEdit()
+        ignore_symbols_separator_input.setDisabled(True)
+        ignore_symbols_separator_input.setMaximumWidth(20)
+        ignore_symbols_separator_input.setMaxLength(1)
+        ignore_sep_vertical_layout.addLayout(ignore_place_form)
+        ignore_pace_label = QLabel("Разделитель:")
+        ignore_place_form.addRow(ignore_pace_label, ignore_symbols_separator_input)
+        ignore_place_box = QGroupBox()
+        ignore_place_box.setDisabled(True)
+        ignore_place_box.setTitle("Что игнорировать")
+        ignore_place_h_layout = QHBoxLayout()
+        ignore_place_h_layout.addWidget(remove_ignore_items)
+        ignore_place_h_layout.addLayout(ignore_sep_vertical_layout)
+        ignore_place_box.setLayout(ignore_place_h_layout)
+        search_by_string = QRadioButton("По введённой строке")
+        main_button_grop.addButton(search_by_string)
+        choice_sep_layout = QHBoxLayout()
+        radio_button_search_full_text = QRadioButton("Искать строку полностью")
+        radio_button_search_full_text.setChecked(True)
+        choice_sep_layout.addWidget(radio_button_search_full_text)
+        choice_sep_layout.addLayout(sep_v_layout)
+        choice_sep_layout.addLayout(separator_form)
+        substr_box.setLayout(choice_sep_layout)
+        substr_box.setLayout(sep_v_layout)
+        condition_string_input = QLineEdit()
+        condition_string_input.setDisabled(True)
+        desc = QTextBrowser()
+        desc.setHtml(f"<p>Введите строку полностью, а внутри неё, при помощи символов <p style = 'color: #D05932'><ins>*<p style = 'color: #333'>, <p style = 'color: #333'>цель проверки, - то что будет проверяться."
+                     "<p>Например:"
+                     f"<p style = 'color: #074E67'><dfn> G1 X100 Y100 F <p style ='color: #D05932'>*2500*<p style = 'color: #D05932'><br><ins>2500</p><p style = 'color: #333'> - можно с чём-нибудь сравнить, или сопоставить."
+                     )
+        desc.setStyleSheet("p {display: inline-block; font-family: Times, serif; color: #333; word-break: normal;}")  # todo: разобраться здесь
+        desc.setDisabled(True)
+        self.ui.string_help_text = desc
+        vertical_layout_search_string = QVBoxLayout()
+        vertical_layout_search_string.addWidget(search_by_string)
+        vertical_layout_search_string.addWidget(substr_box)
+        vertical_layout_search_string.addWidget(ignore_place_box)
+        vertical_layout_search_string.addWidget(condition_string_input)
+        vertical_layout_search_string.addWidget(desc)
+        vertical_layout_search_string.addSpacerItem(QSpacerItem(0, 200))
+        vertical_layout_set_head_varible = QVBoxLayout()
+        radio_button_set_headvar = QRadioButton("Искать значение переменной:")
+        main_button_grop.addButton(radio_button_set_headvar)
+        head_varible_area = QListWidget()
+        head_varible_area.setDisabled(True)
+        vertical_layout_set_head_varible.addWidget(radio_button_set_headvar)
+        vertical_layout_set_head_varible.addWidget(head_varible_area)
+        horizontal_box_layout.addLayout(vertical_layout_search_string)
+        horizontal_box_layout.addLayout(vertical_layout_set_head_varible)
+        box.setLayout(horizontal_box_layout)
+        main_horizontal_layout.addWidget(box)
+        self.setLayout(main_horizontal_layout)
+        self.ui.head_varible_area = head_varible_area
+        self.ui.string_input = condition_string_input
+        self.ui.set_string_button = search_by_string
+        self.ui.set_varible_button = radio_button_set_headvar
+        self.ui.sep_input = separator_input
+        self.ui.ignore_box = ignore_place_box
+        self.ui.sep_box = substr_box
+        self.ui.ignore_input = ignore_symbols_separator_input
+        self.ui.disable_separating_button = radio_button_search_full_text
+        self.ui.disable_ignore_substring_button = remove_ignore_items
+        self.ui.enable_separating_button = radio_button_search_string
+        self.ui.enable_ignore_substring_button = set_ignore_items
+        buttons_layout = QHBoxLayout()
+        buttons_layout.addSpacerItem(QSpacerItem(300, 0))
+        buttons_layout.addWidget(self.ui.button_box)
+        buttons_layout.addSpacerItem(QSpacerItem(300, 0))
+        main_horizontal_layout.addLayout(buttons_layout)
 
     def connect_signals(self):
-        def toggle_disable_state(current_enabled: Union[QLineEdit, QListWidget]):
+        def toggle_disable_state_for_all(current_enabled: Iterable[Union[QLineEdit, QListWidget]]):
             self.ui.head_varible_area.setDisabled(True)
             self.ui.string_input.setDisabled(True)
-            current_enabled.setEnabled(True)
+            self.ui.sep_box.setDisabled(True)
+            self.ui.string_help_text.setDisabled(True)
+            self.ui.ignore_box.setDisabled(True)
+            self.ui.sep_input.setDisabled(True)
+            self.ui.ignore_input.setDisabled(True)
+            self.ui.disable_separating_button.setChecked(True)
+            self.ui.disable_ignore_substring_button.setChecked(True)
+            [i.setDisabled(False) for i in current_enabled]
         self.ui.set_varible_button.toggled.connect(self.clear_form)
         self.ui.set_string_button.toggled.connect(self.clear_form)
-        self.ui.set_varible_button.toggled.connect(lambda: toggle_disable_state(self.ui.head_varible_area))
-        self.ui.set_string_button.toggled.connect(lambda: toggle_disable_state(self.ui.string_input))
-        self.ui.set_varible_button.toggled.connect(lambda: self.ui.string_help_text.setDisabled(True))
-        self.ui.set_string_button.toggled.connect(lambda: self.ui.string_help_text.setDisabled(False))
-        self.ui.set_varible_button.toggled.connect(lambda: self.ui.sep_input.setDisabled(True))
-        self.ui.set_string_button.toggled.connect(lambda: self.ui.sep_input.setDisabled(False))
-        self.ui.sep_input.textChanged.connect(self._separator_input_validation)
-        self.ui.string_input.textChanged.connect(self._string_input_validation)
+        self.ui.set_varible_button.toggled.connect(lambda: toggle_disable_state_for_all([self.ui.head_varible_area]))
+        self.ui.set_string_button.toggled.connect(lambda: toggle_disable_state_for_all([self.ui.sep_box, self.ui.ignore_box,
+                                                                                        self.ui.string_input, self.ui.string_help_text,
+                                                                                        self.ui.ignore_box, self.ui.sep_box]))
+        self.ui.sep_input.textChanged.connect(self._is_valid_separator_input)
+        self.ui.ignore_input.textChanged.connect(self._is_valid_separator_input)
+        self.ui.disable_separating_button.toggled.connect(self._disable_or_enable_substring_separator_input)
+        self.ui.disable_ignore_substring_button.toggled.connect(self._disable_or_enable_ignore_substring_separator_input)
+        self.ui.disable_separating_button.toggled.connect(self._string_input_validation_by_select_substring_field)
+        self.ui.disable_ignore_substring_button.toggled.connect(self._string_input_validation_by_select_substring_field)
+        self.ui.enable_separating_button.toggled.connect(
+            lambda: self._disable_or_enable_substring_separator_input(hidden=False)
+        )
+        self.ui.enable_ignore_substring_button.toggled.connect(
+            lambda: self._disable_or_enable_ignore_substring_separator_input(hidden=False)
+        )
+        self.ui.string_input.textChanged.connect(self._string_input_validation_by_select_substring_field)
         self.ui.head_varible_area.itemChanged.connect(lambda item: self._head_varible_validation(item))
         self.ui.set_varible_button.toggled.connect(self.load_head_varibles)
         self.ui.button_box.clicked.connect(self.add_new_condition_item)
@@ -136,21 +202,43 @@ class AddConditionDialog(MyAbstractDialog, InputTools):
             self.ui.string_input.textEdited.connect(lambda val: self.to_upper_case(self.ui.string_input, val))
 
     @Slot()
-    def _string_input_validation(self):
+    def _string_input_validation_by_select_substring_field(self):
+        def check_invalid_separators_ordering() -> bool:
+            """ / - ignore_sep, * - sep  st*r/it45g*n/g """
+            if not separator or not ignore_separator:
+                return True
+            string_by_target_separator = self._get_condition_substring(separator)
+            string_by_ignore_separator = self._get_condition_substring(ignore_separator)
+            if ignore_separator in string_by_target_separator:
+                return False
+            if separator in string_by_ignore_separator:
+                return False
+            return True
         inner_text = self.ui.string_input.text()
         separator = self.ui.sep_input.text()
+        ignore_separator = self.ui.ignore_input.text()
         if not inner_text:
             self.ui.button_box.setDisabled(True)
             return
-        if sum(map(lambda s: 1 if s == separator else 0, inner_text)) != 2:
-            self.ui.button_box.setDisabled(True)
-            return
-        condition_target_str = self._get_condition_substring()
-        if not condition_target_str:
-            self.ui.button_box.setDisabled(True)
-            return
-        if self.ui.sep_input.text():
-            self.ui.button_box.setDisabled(False)
+        if self.ui.enable_separating_button.isChecked():
+            if sum(map(lambda s: 1 if s == separator else 0, inner_text)) != 2:
+                self.ui.button_box.setDisabled(True)
+                return
+            if not self._is_valid_separator_input(separator, from_signal=False):
+                self.ui.button_box.setDisabled(True)
+                return
+        if self.ui.enable_ignore_substring_button.isChecked():
+            if sum(map(lambda x: 1 if x == ignore_separator else 0, inner_text)) != 2:
+                self.ui.button_box.setDisabled(True)
+                return
+            if not self._is_valid_separator_input(ignore_separator, from_signal=False):
+                self.ui.button_box.setDisabled(True)
+                return
+        if self.ui.enable_separating_button.isChecked() and self.ui.enable_ignore_substring_button.isChecked():
+            if not check_invalid_separators_ordering():
+                self.ui.button_box.setDisabled(True)
+                return
+        self.ui.button_box.setDisabled(False)
 
     @Slot()
     def _head_varible_validation(self, item: Optional[QListWidgetItem]):
@@ -167,20 +255,34 @@ class AddConditionDialog(MyAbstractDialog, InputTools):
         self.ui.button_box.setDisabled(False)
 
     @Slot()
-    def _separator_input_validation(self, value):
+    def _is_valid_separator_input(self, value, from_signal=True) -> bool:
+        if from_signal and not value:
+            return True
         if not value:
             self.ui.button_box.setDisabled(True)
-            return
+            return False
         if len(value) != 1:
             self.ui.button_box.setDisabled(True)
-            return
+            return False
         if not bool(re.match(r"^\W$", value, flags=re.S)):
             self.ui.button_box.setDisabled(True)
             self.ui.sep_input.clear()
-            return
-        if self.ui.string_input.text():
-            self.ui.button_box.setDisabled(False)
-            self._string_input_validation()
+            return False
+        if from_signal:
+            self._string_input_validation_by_select_substring_field()
+        return True
+
+    @Slot()
+    def _disable_or_enable_substring_separator_input(self, hidden=True):
+        self.ui.sep_input.setDisabled(hidden)
+        self._remove_separator_from_main_field_if_toggle_off(self.ui.sep_input.text())
+        self.ui.sep_input.clear()
+
+    @Slot()
+    def _disable_or_enable_ignore_substring_separator_input(self, hidden=True):
+        self.ui.ignore_input.setDisabled(hidden)
+        self._remove_separator_from_main_field_if_toggle_off(self.ui.ignore_input.text())
+        self.ui.ignore_input.clear()
 
     @Slot()
     def load_head_varibles(self):
@@ -257,18 +359,19 @@ class AddConditionDialog(MyAbstractDialog, InputTools):
     def _unlock_dialog(self):
         self.setEnabled(True)
 
-    def _get_cond_string(self) -> str:
+    def _get_cond_string(self, sep_symbol: str) -> str:
         """ Убрать символы разделителя """
-        sep_symbol: str = self.ui.sep_input.text()
         inner: str = self.ui.string_input.text()
         return inner.replace(sep_symbol, "")
 
-    def _get_condition_substring(self) -> str:
-        sep_symbol = self.ui.sep_input.text()
+    def _get_condition_substring(self, sep_symbol) -> str:
         str_ = self.ui.string_input.text()
         left_sep_index = str_.index(sep_symbol)
         right_sep_index = str_.rindex(sep_symbol)
         return str_[left_sep_index + 1:right_sep_index]
+
+    def _remove_separator_from_main_field_if_toggle_off(self, sep: str):
+        self.ui.string_input.setText(self._get_cond_string(sep))
 
 
 class ConditionsPage(Constructor, Tools, InputTools):
