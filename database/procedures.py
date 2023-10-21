@@ -669,7 +669,10 @@ def init_searchstring_table_triggers():
             WHERE inner_=NEW.inner_ AND
             ignorecase=NEW.ignorecase AND
             lindex=NEW.lindex AND
-            rindex=NEW.rindex)
+            rindex=NEW.rindex AND
+            lignoreindex=NEW.lignoreindex AND
+            rignoreindex=NEW.rignoreindex
+            )
             THEN 
                 RAISE EXCEPTION 'Данный экземпляр сущности уже существует';
             ELSE
@@ -684,6 +687,37 @@ def init_searchstring_table_triggers():
         BEFORE INSERT OR UPDATE
         ON sstring FOR EACH ROW
         EXECUTE PROCEDURE search_other_item();
+    """)
+
+    db.engine.execute("""
+        CREATE FUNCTION check_separators() RETURNS trigger
+        AS $body$
+        BEGIN
+            IF NEW.lindex=0 AND NEW.rindex=-1 THEN
+                RETURN NEW;
+            END IF;
+            IF NEW.lignoreindex IS NULL AND NEW.rignoreindex IS NULL THEN
+                RETURN NEW;
+            END IF;
+            IF NEW.lignoreindex<NEW.lindex<NEW.rignoreindex THEN
+                RAISE EXCEPTION 'Невалидное расположение разделителей';
+            ELSE
+                RETURN NEW;
+            END IF;
+            IF NEW.lignoreindex<NEW.rindex<NEW.rignoreindex THEN
+                RAISE EXCEPTION 'Невалидное расположение разделителей';
+            ELSE
+                RETURN NEW;
+            END IF;
+        END; $body$
+        LANGUAGE PLPGSQL
+    """)
+
+    db.engine.execute("""
+        CREATE TRIGGER check_valid_separators_position
+        BEFORE INSERT OR UPDATE
+        ON sstring FOR EACH ROW
+        EXECUTE PROCEDURE check_separators();
     """)
 
 

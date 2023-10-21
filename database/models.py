@@ -314,10 +314,16 @@ class SearchString(db.Model, ModelController):
     ignorecase = Column(Boolean, default=True, nullable=False)
     lindex = Column(SmallInteger, default=0, nullable=False)
     rindex = Column(SmallInteger, default=-1, nullable=False)
+    lignoreindex = Column(SmallInteger, default=0, nullable=True)
+    rignoreindex = Column(SmallInteger, default=-1, nullable=True)
     __table_args = (
         CheckConstraint("inner_!=''", name="required_inner"),
-        CheckConstraint("rindex=-1 OR LENGTH(inner) < rindex", name="valid_rindex"),
-        CheckConstraint("lindex>=0 AND lindex<LENGTH(inner)", name="valid_lindex"),
+        CheckConstraint("rindex=-1 OR rindex<LENGTH(inner_) AND rindex>0", name="invalid_rindex"),
+        CheckConstraint("lindex>=0 AND lindex<LENGTH(inner_)", name="invalid_lindex"),
+        CheckConstraint("lignoreindex>=0 AND lignoreindex<LENGTH(inner_)", name="invalid_lignindex"),
+        CheckConstraint("rignoreindex=-1 OR rignoreindex<LENGTH(inner_) AND rignoreindex>0", name="invalid_rignindex"),
+        CheckConstraint("lindex>rindex", name="invalid_index_ordering"),
+        CheckConstraint("lignoreindex>rignoreindex", name="invalid_ign_index_ordering"),
     )
 
 
