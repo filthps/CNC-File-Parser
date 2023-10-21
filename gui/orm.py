@@ -26,32 +26,6 @@ class ORMAttributes:
                             "Используйте только кастомный класс - 'CustomModel', смотри models.")
 
 
-class NodeValueDict(dict):
-    def __setitem__(self, *args, **kwargs):
-        return self._immutable(*args, **kwargs)
-
-    def __delitem__(self, *args, **kwargs):
-        return self._immutable(*args, **kwargs)
-
-    def clear(self, *args, **kwargs):
-        return self._immutable(*args, **kwargs)
-
-    def update(self, *args, **kwargs):
-        return self._immutable(*args, **kwargs)
-
-    def setdefault(self, *args, **kwargs):
-        return self._immutable(*args, **kwargs)
-
-    def pop(self, *args, **kwargs):
-        return self._immutable(*args, **kwargs)
-
-    def popitem(self, *args, **kwargs):
-        return self._immutable(*args, **kwargs)
-
-    def _immutable(self, *args, **k):
-        raise AttributeError("Данный объект иммутабелен")
-
-
 class ORMItem(LinkedListItem, ORMAttributes):
     """ Иммутабельный класс ноды для ORMItemQueue. """
     def __init__(self, **kw):
@@ -77,7 +51,8 @@ class ORMItem(LinkedListItem, ORMAttributes):
         # Подразумевая тем самым, что это попытка сделать транзакцию в базу
         if not kw:
             raise ValueError("Нет полей, нода пуста")
-        self._value = NodeValueDict(**kw)  # Содержимое - пары ключ-значение: поле таблицы бд: значение
+        self._value = {}  # Содержимое - пары ключ-значение: поле таблицы бд: значение
+        self._value.update(kw)
         self.__foreign_key_fields = tuple(self.__model.__table__.foreign_keys)
 
         def check_queue_and_database_pk():
@@ -92,8 +67,8 @@ class ORMItem(LinkedListItem, ORMAttributes):
         check_queue_and_database_pk()
 
     @property
-    def value(self) -> dict:
-        return self._value
+    def value(self):
+        return self._value.copy()
 
     @property
     def model(self):
@@ -637,21 +612,27 @@ class SQLAlchemyQueryManager:
 
 
 class SpecialOrmItem(ORMItem):
-    def __init__(self, **kwargs):
-        self._values = {}
-
-        def change_keys_in_values():
-            """ Добавить в виде префикса в каждый ключ словаря values название таблицы через точку.
-                Это нужно для запросов с группировкой.
-                Те ситуации, когда названия столбцов в таблицах совпадают, находясь в рамках одного результата join select.
-             """
-            self._values = {f"{self.model.__name__}.{key}": value for key, value in super(**kwargs)._value.items()}
-        super().__init__(**kwargs)
-        change_keys_in_values()
+    pass
 
 
 class SpecialOrmContainer(ORMItemQueue):
     LinkedListItem = SpecialOrmItem
+
+    def get(self, key, default=None):
+        try:
+            val = self.__getitem__(key)
+        except KeyError:
+            return default
+        else:
+            return val
+
+    def __getitem__(self, item: str):  # get by model name
+        if not isinstance(item, str):
+            raise TypeError
+        for node in self:
+            if node.model.__name__ == item:
+                return node
+        raise KeyError
 
 
 class ORMHelper(ORMAttributes):
@@ -1247,7 +1228,7 @@ if __name__ == "__main__":
         #adapter.join_select(Condition, SearchString, on={"SearchString.strid": "Condition.stringid"})
         print(list(adapter.get_items(Condition, _db_only=True)))
         print(list(adapter.get_items(SearchString, _db_only=True)))
-    #test_join_select()
+    #  test_join_select()
 
     def hash_test():
         container = ORMItemQueue()
@@ -1258,4 +1239,4 @@ if __name__ == "__main__":
         print(hash(container[0]) == hash(container1[0]))
         print(container1 == container)
         print(container1.__hash__())
-    hash_test()
+    #  hash_test()
