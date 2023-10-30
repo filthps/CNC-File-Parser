@@ -198,7 +198,7 @@ class ORMItem(LinkedListItem, ORMAttributes):
         return str(self.value)
 
     def __hash__(self):
-        str_ = "".join(map(lambda x: str(x), self.get_primary_key_and_value(as_tuple=True)))
+        str_ = "".join(map(lambda x: str(x), itertools.chain(*self.value.items())))
         return int.from_bytes(bytes(str_, "utf-8"), "big")
 
     def __getitem__(self, item: str):
@@ -612,15 +612,40 @@ class SQLAlchemyQueryManager:
 
 
 class SpecialOrmItem(ORMItem):
-    pass
+    def get(self, name, default_val=None):
+        try:
+            result = self.__getitem__(name)
+        except KeyError:
+            return default_val
+        return result
+
+    @property
+    def hash_by_pk(self):
+        str_ = map(lambda i: str(i), self.get_primary_key_and_value(as_tuple=True))
+        return int.from_bytes(bytes("".join(str_), "utf-8"), "big")
+
+    @property
+    def hash_by_value(self):
+        value = self.value
+        del value[self.get_primary_key_and_value(only_key=True)]
+        str_ = "".join(map(lambda g: str(g), itertools.chain(*value.items())))
+        return int.from_bytes(bytes(str_, "utf-8"), "big")
 
 
 class SpecialOrmContainer(ORMItemQueue):
     LinkedListItem = SpecialOrmItem
 
-    def get(self, key, default=None):
+    @property
+    def hash_by_pk(self):
+        return sum(map(lambda x: x.hash_by_pk, self))
+
+    @property
+    def hash_by_value(self):
+        return sum(map(lambda x: x.hash_by_value, self))
+
+    def get(self, model_name, default=None):
         try:
-            val = self.__getitem__(key)
+            val = self.__getitem__(model_name)
         except KeyError:
             return default
         else:
@@ -932,10 +957,10 @@ class ORMHelper(ORMAttributes):
                     for table_name, column_and_value in _where.items():
                         for left_table_and_column, right_table_and_column in column_and_value.items():  # O(t)
                             s += f"{table_name}.{left_table_and_column} == '{right_table_and_column}'"
-                            if on_keys_counter < len(column_and_value) - 1:  # O(1)
+                            if on_keys_counter < len(_where) - 1:  # O(1)
                                 s += ", "
                             on_keys_counter += 1
-                        s += ")"
+                        s += ")" if on_keys_counter == _where.__len__() else ""
                 return s
 
             def add_items_to_orm_queue() -> Iterator[SpecialOrmContainer]:  # O(i) * O(k) * O(m) * O(n) * O(j) * O(l)
@@ -1140,17 +1165,28 @@ class JoinedORMItem(ORMAttributes):
     def __eq__(self, other):
         if not isinstance(other, self.__class__):
             return False
-        self_hash_counter = sum(map(lambda x: hash(x), iter(self)))
-        other_hash_counter = sum(map(lambda x: hash(x), iter(other)))
+        self_hash_counter = sum(map(lambda x: hash(x), self))
+        other_hash_counter = sum(map(lambda x: hash(x), other))
         return self_hash_counter == other_hash_counter
 
-    def __getitem__(self, item: int):
+    def __getitem__(self, item: int) -> SpecialOrmContainer:
+        def search_group_by_hash(multipurpose_hash_value) -> Optional[SpecialOrmContainer]:
+            """ Замысловатый алгоритм поиска:
+            1) Собираем коллекцию с хешем от значений (без PK) от всех контейнеров
+            2) От входящего значения вычитаем каждое значение из п1
+            3) Одно из результирующих значений будет указывать на контейнер с PK, на тот, который ищем
+             """
+            values_hash = tuple(map(lambda x: x.hash_by_value, self))
+            pk_hash = map(lambda x: x.hash_by_pk, self)
+            for index, value in enumerate(pk_hash):
+                if multipurpose_hash_value - values_hash[index] == value:
+                    return tuple(self)[index]
         if not isinstance(item, int):
             raise TypeError
-        for container in self:
-            if hash(container) == item:
-                return container
-        raise KeyError
+        nodes_ = search_group_by_hash(item)
+        if not nodes_:
+            raise KeyError
+        return nodes_
 
     def __str__(self):
         s = "Локальные: "
@@ -1195,23 +1231,34 @@ class JoinedORMItem(ORMAttributes):
         all_items.extend(not_intersected_data)  # todo: ordering  ???
         self._merged_nodes = all_items
 
-    def is_actual_nodes(self, hash_: int) -> bool:
+    def is_actual_entry(self, all_inclusive_hash: int) -> Union[SpecialOrmContainer, bool]:
+        """ Проверить наличие ноды в базе и в очереди
+        :arg all_inclusive_hash: результат вызова SpecialOrmContainer.__hash__()
+        :returns:
+         Если не изменилось нчиего - True
+         Если изменения в содержимом нод - SpecialOrmContainer
+         Если изменились сами ноды(по pk) - False
+         """
         def collect_where_clause():
-            for node in items:
+            for node in old_item:
                 where.update({node.model.__name__: node.get_primary_key_and_value()})
 
         def get_new_join_select_items():
             return self._adapter.join_select(*self._models, _where=where, on=self._join_select_kwargs["on"])
-
-        items = self[hash_]
+        old_item = self[all_inclusive_hash]
         where = {}
         collect_where_clause()
         new_items = get_new_join_select_items()
         try:
-            new_items[hash_]
+            item = new_items[all_inclusive_hash]
         except KeyError:
             return False
-        return True
+        if item.hash_by_pk != old_item.hash_by_pk:
+            return False
+        if item.__hash__() == hash(old_item):
+            return True
+        self._merged_nodes = new_items
+        return item
 
     def refresh_all_items(self) -> Iterator[dict]:
         new_items = self._adapter.join_select(self._models, on=self._join_select_kwargs["on"])
