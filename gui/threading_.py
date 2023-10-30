@@ -65,9 +65,11 @@ class QThreadInstanceDecorator:
                 return
             result = call_f(*a, **k)
             if result is None:
-                return self.end_f()
+                if self.end_f:
+                    return self.end_f()
             if type(result) is tuple:
                 self.end_f(*result)
                 return
-            self.end_f(result)
+            if self.end_f:
+                self.end_f(result)
         return outer
