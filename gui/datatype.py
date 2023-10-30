@@ -71,66 +71,7 @@ class LinkedListItem:
         return str(self.val)
 
 
-class LinkedListAbstraction(ABC):
-    LinkedListItem = LinkedListItem
-
-    def __len__(self):
-        return sum(tuple(1 for _ in self))
-
-    @abstractmethod
-    def __iter__(self):
-        pass
-
-    def __bool__(self):
-        if len(self):
-            return True
-        return False
-
-    def __contains__(self, item):
-        if type(item) is not self.LinkedListItem:
-            return False
-        if not item:
-            return False
-        for node in self:
-            if node == item:
-                return True
-        return False
-
-    def _is_valid_index(self, index):
-        if not isinstance(index, int):
-            raise TypeError
-        if index >= len(self):
-            raise IndexError
-
-    @staticmethod
-    def _set_next(left_item: Union[LinkedListItem, weakref.ref], right_item: Union[LinkedListItem, weakref.ref]):
-        left_item = left_item() if hasattr(left_item, "__call__") else left_item  # Check item is WeakRef
-        right_item = right_item() if hasattr(right_item, "__call__") else right_item  # Check item is WeakRef
-        right_item.index = left_item.index + 1
-        left_item.next = right_item
-
-    @staticmethod
-    def _set_prev(right_item: Union[LinkedListItem, weakref.ref], left_item: Union[LinkedListItem, weakref.ref]):
-        left_item = left_item() if hasattr(left_item, "__call__") else left_item  # Check item is WeakRef
-        right_item = right_item() if hasattr(right_item, "__call__") else right_item  # Check item is WeakRef
-        right_item.prev = left_item
-
-    @staticmethod
-    def _forward_move(start_item: LinkedListItem, index):
-        element = start_item
-        for _ in range(index):
-            element = element.next
-        return element
-
-    @staticmethod
-    def _gen(start_item: Optional[LinkedListItem] = None) -> Iterator:
-        current_item = start_item
-        while current_item is not None:
-            yield current_item
-            current_item = current_item.next
-
-
-class LinkedList(LinkedListAbstraction):
+class LinkedList:
     LinkedListItem = LinkedListItem
 
     def __init__(self, items: Optional[Iterable[Any]] = None):
@@ -154,7 +95,7 @@ class LinkedList(LinkedListAbstraction):
         new_element = self.LinkedListItem(**kwargs)
         if self:
             last_elem = self._tail
-            self._set_next(last_elem, new_element)
+            self.__set_next(last_elem, new_element)
             self._tail = new_element
         else:
             self._head = self._tail = new_element
@@ -192,7 +133,7 @@ class LinkedList(LinkedListAbstraction):
     def __getitem__(self, index):
         index = self.__support_negative_index(index)
         self._is_valid_index(index)
-        return self._forward_move(index)
+        return self.__forward_move(index)
 
     def __support_negative_index(self, index: int):
         if index < 0:
@@ -204,8 +145,8 @@ class LinkedList(LinkedListAbstraction):
         self._is_valid_index(index)
         new_element = self.LinkedListItem(value)
         if self:
-            last_element = self._forward_move(index)
-            self._set_next(last_element, new_element)
+            last_element = self.__forward_move(index)
+            self.__set_next(last_element, new_element)
         else:
             self._head = self._tail = new_element
 
@@ -217,14 +158,14 @@ class LinkedList(LinkedListAbstraction):
         index = self.__support_negative_index(index)
         self._is_valid_index(index)
         if not index:
-            item = self._forward_move(index)
+            item = self.__forward_move(index)
             next_item = item.next
             item.next = None
             if next_item is not None:
                 next_item.index = 0
             self._head = next_item
             return item
-        item_prev = self._forward_move(index - 1)
+        item_prev = self.__forward_move(index - 1)
         if index == len(self) - 1:
             item = item_prev.next
             item_prev.next = None
@@ -238,16 +179,13 @@ class LinkedList(LinkedListAbstraction):
         return current_item
 
     def __iter__(self):
-        return self._gen(self._head)
+        return self.__gen(self._head)
 
     def __repr__(self):
         return f"{self.__class__}({tuple(self)})"
 
     def __str__(self):
         return str([str(x) for x in self])
-
-    def _forward_move(self, index: int):
-        return super()._forward_move(self._head, index)
 
     def _replace_inner(self, new_head: LinkedListItem, new_tail: LinkedListItem):
         """
@@ -258,72 +196,55 @@ class LinkedList(LinkedListAbstraction):
         self._head = new_head
         self._tail = new_tail
 
+    def __len__(self):
+        return sum(tuple(1 for _ in self))
 
-class LinkedDict(LinkedListAbstraction):
-    LinkedListItem = LinkedListItem
+    def __bool__(self):
+        if len(self):
+            return True
+        return False
 
-    def __init__(self, items: Optional[Iterable[Union[tuple[Any, Any], list[Any, Any]]]] = None):
-        self.__keys = LinkedList()
-        self.__values = LinkedList()
-        super().__init__()
-        if items is not None:
-            for item in items:
-                if len(item) != 2:
-                    raise ValueError
-                self.update(*item)
+    def __contains__(self, item):
+        if type(item) is not self.LinkedListItem:
+            return False
+        if not item:
+            return False
+        for node in self:
+            if node == item:
+                return True
+        return False
 
-    def update(self, key, value):
-        self.__keys.append(key)
-        self.__values.append(value)
+    def _is_valid_index(self, index):
+        if not isinstance(index, int):
+            raise TypeError
+        if index >= len(self):
+            raise IndexError
 
-    def __iter__(self):
-        return self._gen(self.__keys[0] if len(self.__keys) else None)
+    @staticmethod
+    def __set_next(left_item: Union[LinkedListItem, weakref.ref], right_item: Union[LinkedListItem, weakref.ref]):
+        left_item = left_item() if hasattr(left_item, "__call__") else left_item  # Check item is WeakRef
+        right_item = right_item() if hasattr(right_item, "__call__") else right_item  # Check item is WeakRef
+        right_item.index = left_item.index + 1
+        left_item.next = right_item
 
-    def keys(self):
-        return iter(self)
+    @staticmethod
+    def __set_prev(right_item: Union[LinkedListItem, weakref.ref], left_item: Union[LinkedListItem, weakref.ref]):
+        left_item = left_item() if hasattr(left_item, "__call__") else left_item  # Check item is WeakRef
+        right_item = right_item() if hasattr(right_item, "__call__") else right_item  # Check item is WeakRef
+        right_item.prev = left_item
 
-    def values(self):
-        return self._gen(self.__values[0] if len(self.__values) else None)
+    def __forward_move(self, index=-1):
+        element = self._head
+        for _ in range(len(self) - 1 if index == -1 else index):
+            element = element.next
+        return element
 
-    def items(self):
-        return zip(self.keys(), self.values())
-
-    def get(self, key, default_value=None):
-        value, i = self.__get_value(key)
-        return value or default_value
-
-    def __getitem__(self, key: Any):
-        value, index = self.__get_value(key)
-        if value is None:
-            raise KeyError
-        return value
-
-    def __get_value(self, key) -> Optional[tuple[Any, int]]:
-        index = 0
-        for k, value in self.items():
-            if k == key:
-                return value, index
-            index += 1
-
-    def __setitem__(self, key, value):
-        value = self.__get_value(key)
-        if value is not None:
-            self.__keys.append(key)
-            self.__values.append(value)
-
-    def __delitem__(self, item):
-        value, index = self.__get_value(item)
-        if value is not None:
-            del self.__keys[index]
-            del self.__values[index]
-            return value
-        raise KeyError
-
-    def __repr__(self):
-        return list(self)
-
-    def __str__(self):
-        return str(tuple(self.items()))
+    @staticmethod
+    def __gen(start_item: Optional[LinkedListItem] = None) -> Iterator:
+        current_item = start_item
+        while current_item is not None:
+            yield current_item
+            current_item = current_item.next
 
 
 if __name__ == "__main__":
