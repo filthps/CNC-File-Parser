@@ -182,8 +182,8 @@ class AddConditionDialog(MyAbstractDialog, InputTools):
         self.ui.set_string_button.toggled.connect(lambda: toggle_disable_state_for_all([self.ui.sep_box, self.ui.ignore_box,
                                                                                         self.ui.string_input, self.ui.string_help_text,
                                                                                         self.ui.ignore_box, self.ui.sep_box]))
-        self.ui.sep_input.textChanged.connect(self._is_valid_separator_input)
-        self.ui.ignore_input.textChanged.connect(self._is_valid_separator_input)
+        self.ui.sep_input.textChanged.connect(lambda val: self._is_valid_separator_input(val, self.ui.ignore_input.text()))
+        self.ui.ignore_input.textChanged.connect(lambda v: self._is_valid_separator_input(v, self.ui.sep_input.text()))
         self.ui.disable_separating_button.toggled.connect(self._disable_or_enable_substring_separator_input)
         self.ui.disable_ignore_substring_button.toggled.connect(self._disable_or_enable_ignore_substring_separator_input)
         self.ui.disable_separating_button.toggled.connect(self._string_input_validation_by_select_substring_field)
@@ -224,14 +224,14 @@ class AddConditionDialog(MyAbstractDialog, InputTools):
             if sum(map(lambda s: 1 if s == separator else 0, inner_text)) != 2:
                 self.ui.button_box.setDisabled(True)
                 return
-            if not self._is_valid_separator_input(separator, from_signal=False):
+            if not self._is_valid_separator_input(separator, ignore_separator, from_signal=False):
                 self.ui.button_box.setDisabled(True)
                 return
         if self.ui.enable_ignore_substring_button.isChecked():
             if sum(map(lambda x: 1 if x == ignore_separator else 0, inner_text)) != 2:
                 self.ui.button_box.setDisabled(True)
                 return
-            if not self._is_valid_separator_input(ignore_separator, from_signal=False):
+            if not self._is_valid_separator_input(ignore_separator, separator, from_signal=False):
                 self.ui.button_box.setDisabled(True)
                 return
         if self.ui.enable_separating_button.isChecked() and self.ui.enable_ignore_substring_button.isChecked():
@@ -255,7 +255,7 @@ class AddConditionDialog(MyAbstractDialog, InputTools):
         self.ui.button_box.setDisabled(False)
 
     @Slot()
-    def _is_valid_separator_input(self, value, from_signal=True) -> bool:
+    def _is_valid_separator_input(self, value, other_sep_input_value, from_signal=True) -> bool:
         if from_signal and not value:
             return True
         if not value:
@@ -267,6 +267,9 @@ class AddConditionDialog(MyAbstractDialog, InputTools):
         if not bool(re.match(r"^\W$", value, flags=re.S)):
             self.ui.button_box.setDisabled(True)
             self.ui.sep_input.clear()
+            return False
+        if other_sep_input_value and other_sep_input_value == value:
+            self.ui.button_box.setDisabled(True)
             return False
         if from_signal:
             self._string_input_validation_by_select_substring_field()
@@ -311,37 +314,62 @@ class AddConditionDialog(MyAbstractDialog, InputTools):
             self.close()
             self.conditions_page.reload()
 
+        def get_index_from_separator(main_string: str, separator: str) -> tuple:
+            return main_string.index(separator), main_string.rindex(separator) - 1,
+
         @QThreadInstanceDecorator(result_callback=success_add)
         def set_to_database__head_varible(headvar_name: str):
             """ Выбор 'переменной из шапки' в кач-ве условия. Создание записи в табице 'HeadVarDelegation'"""
             pass
 
         @QThreadInstanceDecorator(result_callback=success_add)
-        def set_to_database__search_string(left_index: int, right_index: int, inner: str):
+        def set_to_database__search_string(left_index, right_index,
+                                           left_ignore_index, right_ignore_index, inner):
             """Создание условия на основе поисковой строки. Без создание записи в таблице 'HeadVarDelegation'"""
             def add_initial_values_radio_buttons_condition_table() -> dict:
                 d, condition_table_columns = {}, ("conditionbooleanvalue",)
-                [d.update(self.conditions_page.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON[k]) if k in self.conditions_page.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON else None
-                 for k in self.conditions_page.RADIO_BUTTON_DEFAULT_VALUES.keys()]
+                [d.update(self.conditions_page.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON[k])
+                 if k in self.conditions_page.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON else None
+                 for k in self.conditions_page.RADIO_BUTTON_DEFAULT_VALUES]
                 return {column_name: value for column_name, value in d.items() if column_name in condition_table_columns}
 
             def add_initial_values_radio_buttons_search_string_table():
                 d, search_string_table_columns = {}, ("ignorecase",)
                 [d.update(self.conditions_page.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON[button])
-                 for button in self.conditions_page.RADIO_BUTTON_DEFAULT_VALUES.keys()
-                 if button in self.conditions_page.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON]
+                 if button in self.conditions_page.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON else None
+                 for button in self.conditions_page.RADIO_BUTTON_DEFAULT_VALUES]
                 return {col: val for col, val in d.items() if col in search_string_table_columns}
             search_str_id = str(uuid.uuid4())
             self.db.set_item(_model=SearchString, inner_=inner, lindex=left_index, rindex=right_index, strid=search_str_id,
+                             lignoreindex=left_ignore_index, rignoreindex=right_ignore_index,
                              _insert=True, **add_initial_values_radio_buttons_search_string_table())
             self.db.set_item(_model=Condition, stringid=search_str_id, cnd=str(uuid.uuid4()), _insert=True,
                              **add_initial_values_radio_buttons_condition_table())
 
         if self.ui.set_string_button.isChecked():
-            condition_string = self._get_cond_string()
-            substring = self._get_condition_substring()
-            start_index = condition_string.index(substring)
-            set_to_database__search_string(start_index, start_index + len(substring), condition_string)
+            is_rotate = False
+            sep = self.ui.sep_input.text()
+            ignore_sep = self.ui.ignore_input.text()
+            condition_string: str = self.ui.string_input.text()
+            if sep and ignore_sep:
+                if condition_string.index(sep) > condition_string.index(ignore_sep):  # Этот блок ради того, чтобы начать с разделителей, которые слева
+                    sep, ignore_sep = ignore_sep, sep
+                    is_rotate = True
+            if not sep:
+                if not is_rotate:
+                    index_by_sep = (0, len(condition_string) - 1,)
+                else:
+                    index_by_sep = None
+            else:
+                index_by_sep = get_index_from_separator(condition_string, sep)
+                condition_string = condition_string.replace(sep, "")
+            if not ignore_sep:
+                index_by_ignore_sep = (None, None,)
+            else:
+                index_by_ignore_sep = get_index_from_separator(condition_string, ignore_sep)
+            if is_rotate:
+                index_by_sep, index_by_ignore_sep = index_by_ignore_sep, index_by_sep
+            set_to_database__search_string(*index_by_sep, *index_by_ignore_sep, self._get_cond_string([sep, ignore_sep]))
         if self.ui.set_varible_button.isChecked():
             head_var_area_selected_item = self.ui.head_varible_area.currentItem()
             if head_var_area_selected_item is None:
@@ -359,10 +387,12 @@ class AddConditionDialog(MyAbstractDialog, InputTools):
     def _unlock_dialog(self):
         self.setEnabled(True)
 
-    def _get_cond_string(self, sep_symbol: str) -> str:
+    def _get_cond_string(self, sep_symbols: Iterable[str]) -> str:
         """ Убрать символы разделителя """
         inner: str = self.ui.string_input.text()
-        return inner.replace(sep_symbol, "")
+        for sep in sep_symbols:
+            inner = inner.replace(sep, "")
+        return inner
 
     def _get_condition_substring(self, sep_symbol) -> str:
         str_ = self.ui.string_input.text()
@@ -371,7 +401,7 @@ class AddConditionDialog(MyAbstractDialog, InputTools):
         return str_[left_sep_index + 1:right_sep_index]
 
     def _remove_separator_from_main_field_if_toggle_off(self, sep: str):
-        self.ui.string_input.setText(self._get_cond_string(sep))
+        self.ui.string_input.setText(self._get_cond_string([sep]))
 
 
 class ConditionsPage(Constructor, Tools, InputTools):
@@ -411,6 +441,7 @@ class ConditionsPage(Constructor, Tools, InputTools):
         self.db_items: orm.ORMHelper = app_instance.db_items_queue
         self.validator: Optional[ConditionsPageValidator] = None
         self.join_select_result: Optional[orm.JoinedORMItem] = None
+        self.current_item_hash = None
         self.condition_map = {}  # text: hash
         self.add_condition_dialog: Optional[AddConditionDialog] = None
         self.field_signals_status = False
@@ -426,7 +457,7 @@ class ConditionsPage(Constructor, Tools, InputTools):
         self.reload()
         self.connect_main_signals()
 
-    def reload(self, in_new_qthread: bool = True, actual_joined_instance=None):
+    def reload(self, in_new_qthread: bool = True):
         def add_(select_result: orm.JoinedORMItem):
             def auto_select_condition_item(index=0) -> Optional[QListWidgetItem]:
                 m = self.ui.conditions_list.takeItem(index)
@@ -438,18 +469,18 @@ class ConditionsPage(Constructor, Tools, InputTools):
             self.disconnect_field_signals()
             self.reset_fields()
             [self.add_or_replace_condition_item_to_list_widget(group) for group in select_result]
-            active_item = auto_select_condition_item()
-            self.validator.current_condition = active_item
-            self.connect_field_signals()
-            self.connect_parent_condition_combo_box()
-            if active_item is not None:
-                self.validator.refresh()
-            self.join_select_result = select_result
             result_items = iter(select_result)
             self.condition_map = {value.text(): hash(next(result_items))
                                   for value in
                                   map(lambda x: self.ui.conditions_list.item(x), range(self.ui.conditions_list.count()))
                                   }
+            self.join_select_result = select_result
+            self.connect_field_signals()
+            self.connect_parent_condition_combo_box()
+            active_item = auto_select_condition_item()
+            self.validator.current_condition = active_item
+            if active_item is not None:
+                self.validator.refresh()
 
         @QThreadInstanceDecorator(in_new_qthread=in_new_qthread, result_callback=add_)
         def load_():
@@ -457,7 +488,7 @@ class ConditionsPage(Constructor, Tools, InputTools):
                                               on={"Condition.stringid": "SearchString.strid",
                                                   "Condition.hvarid": "HeadVarible.varid"})
             return items
-        load_() if not actual_joined_instance else add_(actual_joined_instance)
+        load_()
 
     def add_or_replace_condition_item_to_list_widget(self, data: orm.SpecialOrmContainer, replace=False):
         """ 1) Найти выбранный QListWidgetItem (со старым именем)
@@ -476,16 +507,25 @@ class ConditionsPage(Constructor, Tools, InputTools):
                                     yield string_or_anonimous_function
                                 else:
                                     yield string_or_anonimous_function(value)
-
-            def get_substring(main_string):
-                return main_string[l_index:r_index]
             search_string_table = data["SearchString"]
             l_index, r_index = search_string_table.get("lindex", ""), search_string_table.get("rindex", "")
+            default_inner = search_string_table.get("inner_", "")
             search_str_inner = search_string_table.get("inner_", "")
-            separated_inner = f"{search_str_inner[0:l_index]}>{search_str_inner[l_index:r_index]}<{search_str_inner[r_index:]}"
-            search_str_target = get_substring(search_str_inner) if "varid" not in data.get("HeadVarible", "") else ""
-            parent_cond_bool_value = data["Condition"].get('parentconditionbooleanvalue', "")
-            condition_bool_val = data["Condition"].get("conditionbooleanvalue", "")
+            left_ignore_separator = search_string_table.get("lignoreindex")
+            right_ignore_separator = search_string_table.get("rignoreindex")
+            m_lindex, m_rindex = search_string_table["lindex"], search_string_table["rindex"]
+            if left_ignore_separator is not None and right_ignore_separator is not None:
+                ignore_block = f"<ИГНОРИРОВАТЬ>[{(right_ignore_separator - left_ignore_separator) - 1}]"
+                search_str_inner = search_str_inner.replace(
+                    search_str_inner[left_ignore_separator:right_ignore_separator],
+                    ignore_block)
+                if left_ignore_separator < l_index:
+                    m_lindex += (len(ignore_block) - 1) - left_ignore_separator
+                    m_rindex += (len(ignore_block) - 1) - left_ignore_separator
+            separated_inner = f"{search_str_inner[:m_lindex]}>{default_inner[l_index:r_index]}<{search_str_inner[m_rindex:]}"
+            parent_cond_bool_value = search_string_table.get('parentconditionbooleanvalue', "")
+            condition_bool_val = search_string_table.get("conditionbooleanvalue",
+                                                         self.RADIO_BUTTON_DEFAULT_VALUES["radioButton_45"])
             condition_bool_val = "Истинно если" if condition_bool_val else "Ложно если"
             condition_empty_details = data["Condition"].get(
                 "findfull",
@@ -504,7 +544,7 @@ class ConditionsPage(Constructor, Tools, InputTools):
             map_ = {"Condition.conditionbooleanvalue": condition_bool_val,
                     "Condition.parentconditionbooleanvalue": lambda t: f"родительское условие {'верно' if parent_cond_bool_value else 'ложно'}",
                     "Condition.parent": "и ",
-                    "Condition.stringid": f"подстрока >>{search_str_target}<<",
+                    "Condition.stringid": f"подстрока >>{default_inner[l_index:r_index]}<<",
                     "SearchString.inner_": f"в строке {separated_inner} {'...' if condition_empty_details is None else ''}",
                     "Condition.findfull": lambda y: "совпадает c" if y else None,
                     "Condition.findpart": lambda y: "содержит" if y else None,
@@ -520,6 +560,7 @@ class ConditionsPage(Constructor, Tools, InputTools):
                     }
             return " ".join([string for string in string_gen() if string is not None])
         name = create_condition_name()
+        self.current_item_hash = hash(data)
         self.disconnect_field_signals()
         if replace:
             list_item = self.ui.conditions_list.currentItem()
@@ -527,7 +568,6 @@ class ConditionsPage(Constructor, Tools, InputTools):
             self.connect_field_signals()
             return
         self.ui.conditions_list.addItem(QListWidgetItem(name))
-        self.connect_field_signals()
 
     def connect_main_signals(self):
         def open_create_condition_window():
@@ -606,12 +646,15 @@ class ConditionsPage(Constructor, Tools, InputTools):
 
     @Slot(str)
     def select_condition_item(self, condition_item: Optional[QListWidgetItem]):
-        def update_fields(data: list[orm.SpecialOrmContainer]):
+        def update_fields(item_hash: int, status: Optional[bool]):
+            if not status:
+                return
+
             def filter_radio_button_data():
                 all_radio_buttons_sql_column_names = set(itertools.chain.from_iterable(val.keys() for val in self.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON.values()))
                 res = {key: value for key, value in all_data.items() if key in all_radio_buttons_sql_column_names}
                 return res
-            data = data[0]
+            data = self.join_select_result[item_hash]
             all_data = {}
             [all_data.update(node.value) for node in data]
             line_edit_data = {"conditionvalue": all_data.pop("conditionvalue", None),
@@ -625,22 +668,19 @@ class ConditionsPage(Constructor, Tools, InputTools):
             self.validator.refresh()
             self.connect_parent_condition_combo_box()
             self.connect_field_signals()
+            self.current_item_hash = item_hash
 
-        @QThreadInstanceDecorator(result_callback=update_fields)
+        @QThreadInstanceDecorator(result_callback=lambda status: update_fields(selected_condition_hash, status))
         def check_inner(index: int):
-            changed_data = self.join_select_result.refresh()
-            if changed_data:
-                self.reload(in_new_qthread=False, actual_joined_instance=changed_data)
+            is_actual = self.join_select_result.is_actual_entry(index)
+            if not is_actual:
+                self.reload(in_new_qthread=False)
                 return
-            print(self.join_select_result[index])
-            return self.join_select_result[index]
+            return True
         if not condition_item:
             return
-        if condition_item.text() not in self.condition_map:
-            return
-        selected_condition_index = self.condition_map[condition_item.text()]
-        print(selected_condition_index)
-        check_inner(selected_condition_index)
+        selected_condition_hash = self.condition_map[condition_item.text()]
+        check_inner(selected_condition_hash)
 
     @Slot(str)
     def change_parent_condition(self, item):
@@ -675,30 +715,49 @@ class ConditionsPage(Constructor, Tools, InputTools):
 
     def update_data(self, field_name, line_edit=False, radio_button=False):
         def get_value_from_ui() -> dict:  # sql_col_name: val
+            def set_pk_to_values():
+                """ Требует orm """
+                nonlocal pk
+                nodes = self.join_select_result[self.current_item_hash]
+                node = nodes[model.__name__]
+                pk = node.get_primary_key_and_value()
+                val.update(pk)
+            val = {}
+            set_pk_to_values()
             if radio_button:
-                return self.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON[field_name]
+                val.update(self.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON[field_name])
             if line_edit:
                 input_: QLineEdit = getattr(self.ui, field_name)
-                return {self.UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]: input_.text()}
+                val.update({self.UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]: input_.text()})
+            return val
 
-        @QThreadInstanceDecorator(result_callback=lambda: print("UPDATE"))
-        def update(status: bool):
-            if not status:
-                self.reload(in_new_qthread=False)
-                return
-            self.db_items.set_item(_update=True, _ready=True, _model=model, **values)
-
-        @QThreadInstanceDecorator(result_callback=update)
-        def check_exists(hash_):
-            return self.join_select_result.is_actual_nodes(hash_)
+        @QThreadInstanceDecorator(
+            result_callback=lambda x:
+            self.add_or_replace_condition_item_to_list_widget(x, replace=True) if x and x is not True else None
+        )
+        def check_exists_and_update(hash_, val):
+            data = self.join_select_result.is_actual_entry(hash_)
+            if not data:
+                return False
+            self.db_items.set_item(_update=True, _ready=is_valid, _model=model, **val)
+            test = self.join_select_result.is_actual_entry(hash_)
+            print(test)
+            return test
         selected_condition = self.ui.conditions_list.currentItem()
         if not selected_condition:
             return
         condition_text = selected_condition.text()
         item_hash = self.condition_map[condition_text]
-        model = [model for fields, model in self.SQL_FIELD_NAMES.items() if field_name in fields][0]
+        sql_field_name = None
+        if radio_button:
+            sql_field_name = list(self.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON[field_name].keys())[0]
+        if line_edit:
+            sql_field_name = self.UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]
+        pk: Optional[dict] = None
+        model = [model for fields, model in self.SQL_FIELD_NAMES.items() if sql_field_name in fields][0]
         values = get_value_from_ui()
-        check_exists(item_hash)
+        is_valid = self.validator.refresh()
+        check_exists_and_update(item_hash, values)
 
     def reset_fields(self):
         self.join_select_result = {}
@@ -709,7 +768,9 @@ class ConditionsPage(Constructor, Tools, InputTools):
 class ConditionsPageValidator(Validator):
     REQUIRED_TEXT_FIELD_VALUES = ("lineEdit_28",)
     REQUIRED_RADIO_BUTTONS = {"groupBox_19": ("radioButton_24", "radioButton_25", "radioButton_38",
-                                              "radioButton_35", "radioButton_36", "radioButton_37", "radioButton_47")}
+                                              "radioButton_35", "radioButton_36", "radioButton_37", "radioButton_47"),
+                              "boolvalbox": ("radioButton_45", "radioButton_46"),
+                              "regsensitivebox": ("radioButton_28", "radioButton_48")}
 
     def __init__(self, ui):
         super().__init__(ui)
