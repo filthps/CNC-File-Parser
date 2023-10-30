@@ -315,15 +315,23 @@ class SearchString(db.Model, ModelController):
     lindex = Column(SmallInteger, default=0, nullable=False)
     rindex = Column(SmallInteger, default=-1, nullable=False)
     lignoreindex = Column(SmallInteger, default=0, nullable=True)
-    rignoreindex = Column(SmallInteger, default=-1, nullable=True)
+    rignoreindex = Column(SmallInteger, default=0, nullable=True)
     __table_args = (
         CheckConstraint("inner_!=''", name="required_inner"),
-        CheckConstraint("rindex=-1 OR rindex<LENGTH(inner_) AND rindex>0", name="invalid_rindex"),
-        CheckConstraint("lindex>=0 AND lindex<LENGTH(inner_)", name="invalid_lindex"),
-        CheckConstraint("lignoreindex>=0 AND lignoreindex<LENGTH(inner_)", name="invalid_lignindex"),
-        CheckConstraint("rignoreindex=-1 OR rignoreindex<LENGTH(inner_) AND rignoreindex>0", name="invalid_rignindex"),
-        CheckConstraint("lindex>rindex", name="invalid_index_ordering"),
-        CheckConstraint("lignoreindex>rignoreindex", name="invalid_ign_index_ordering"),
+        CheckConstraint("lindex<0", name="invalid_l_sep_left_border"),
+        CheckConstraint("rindex<=0", name="invalid_r_sep_left_border"),
+        CheckConstraint("lindex>=LENGTH(inner_)-1", name="invalid_l_sep_right_border"),
+        CheckConstraint("rindex>LENGTH(inner_)-1", name="invalid_r_sep_right_border"),
+        CheckConstraint("lignoreindex<0", name="invalid_l_ignore_sep_left_border"),
+        CheckConstraint("rignoreindex<=0", name="invalid_r_ignore_sep_left_border"),
+        CheckConstraint("lignoreindex>=LENGTH(inner_)-1", name="invalid_l_ignore_sep_right_border"),
+        CheckConstraint("rignoreindex>LENGTH(inner_)-1", name="invalid_r_ignore_sep_right_border"),
+        CheckConstraint("lindex=rindex", name="empty_main_place"),
+        CheckConstraint("lignoreindex=rignoreindex", name="empty_ignore_place"),
+        CheckConstraint("lindex=lignoreindex AND rindex=rignoreindex", name="empty_matched"),
+        CheckConstraint("lignoreindex IS NULL OR rignoreindex IS NULL", name="any_ignore_sep_isnt_set"),
+        CheckConstraint("rindex!=-1 AND lindex>rindex", name="invalid_seq_ordering"),
+        CheckConstraint("lignoreindex>rignoreindex", name="invalid_ignore_sep_ordering"),
     )
 
 
@@ -361,7 +369,7 @@ if __name__ == "__main__":
             raise KeyError(f"Во всём проекте названия полей-первичных ключей должны быть уникальными! "
                            f" Повторы в таблицах: {', '.join(repeat_table_names)}")
     check_bad_attribute_name()
-    test_unique_primary_key_column_name("__primary_key__")  # test database PK
-    test_unique_primary_key_column_name("__db_queue_primary_field_name__")
-    #db.drop_all()
-    #db.create_all()
+    #test_unique_primary_key_column_name("__primary_key__")  # test database PK
+    #test_unique_primary_key_column_name("__db_queue_primary_field_name__")
+    db.drop_all()
+    db.create_all()

@@ -1,3 +1,4 @@
+""" Postgres диалект! """
 from sqlalchemy import DDL
 from models import db
 
@@ -689,23 +690,13 @@ def init_searchstring_table_triggers():
         EXECUTE PROCEDURE search_other_item();
     """)
 
+    #  Если диапазон выборки и диапазон игнорирования пересекаются, то это полное говно
     db.engine.execute("""
-        CREATE FUNCTION check_separators() RETURNS trigger
+        CREATE OR REPLACE FUNCTION count_inner() RETURNS trigger
         AS $body$
         BEGIN
-            IF NEW.lindex=0 AND NEW.rindex=-1 THEN
-                RETURN NEW;
-            END IF;
-            IF NEW.lignoreindex IS NULL AND NEW.rignoreindex IS NULL THEN
-                RETURN NEW;
-            END IF;
-            IF NEW.lignoreindex<NEW.lindex<NEW.rignoreindex THEN
-                RAISE EXCEPTION 'Невалидное расположение разделителей';
-            ELSE
-                RETURN NEW;
-            END IF;
-            IF NEW.lignoreindex<NEW.rindex<NEW.rignoreindex THEN
-                RAISE EXCEPTION 'Невалидное расположение разделителей';
+            IF int4range(NEW.lindex,NEW.rindex, '[]') && int4range(NEW.lignoreindex,NEW.rignoreindex, '[]') THEN
+                RAISE EXCEPTION 'Пересечение содержимого разделителей разного типа';
             ELSE
                 RETURN NEW;
             END IF;
@@ -714,10 +705,34 @@ def init_searchstring_table_triggers():
     """)
 
     db.engine.execute("""
-        CREATE TRIGGER check_valid_separators_position
+        CREATE TRIGGER check_selected_place
         BEFORE INSERT OR UPDATE
         ON sstring FOR EACH ROW
-        EXECUTE PROCEDURE check_separators();
+        EXECUTE PROCEDURE count_inner();
+    """)
+
+    #  Если Диапазон с игнорируемыми символами находится правее диапазона выборки, то он не имеет смысла,
+    #  заменим значения на NULL
+    db.engine.execute("""
+        CREATE OR REPLACE FUNCTION replace_ignore_separators() RETURNS trigger
+        AS $body$
+        BEGIN
+            IF int4range(NEW.lindex,NEW.rindex, '[]') >> int4range(NEW.lignoreindex,NEW.rignoreindex, '[]') THEN
+                NEW.lignoreindex := NULL;
+                NEW.rignoreindex := NULL;
+                RETURN NEW;
+            ELSE
+                RETURN NEW;
+            END IF;
+        END; $body$
+        LANGUAGE PLPGSQL
+    """)
+
+    db.engine.execute("""
+        CREATE TRIGGER check_separators_to_replace
+        BEFORE INSERT OR UPDATE
+        ON sstring FOR EACH ROW
+        EXECUTE PROCEDURE replace_ignore_separators();
     """)
 
 
