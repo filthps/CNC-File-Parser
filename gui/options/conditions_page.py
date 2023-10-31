@@ -508,6 +508,7 @@ class ConditionsPage(Constructor, Tools, InputTools):
                                 else:
                                     yield string_or_anonimous_function(value)
             search_string_table = data["SearchString"]
+            condition_table = data["Condition"]
             l_index, r_index = search_string_table.get("lindex", ""), search_string_table.get("rindex", "")
             default_inner = search_string_table.get("inner_", "")
             search_str_inner = search_string_table.get("inner_", "")
@@ -522,24 +523,24 @@ class ConditionsPage(Constructor, Tools, InputTools):
                 if left_ignore_separator < l_index:
                     m_lindex += (len(ignore_block) - 1) - left_ignore_separator
                     m_rindex += (len(ignore_block) - 1) - left_ignore_separator
-            separated_inner = f"{search_str_inner[:m_lindex]}>{default_inner[l_index:r_index]}<{search_str_inner[m_rindex:]}"
+            separated_inner = f"{search_str_inner[:m_lindex]}>{default_inner[l_index:r_index]}<{search_str_inner[m_rindex + 1:]}"
             parent_cond_bool_value = search_string_table.get('parentconditionbooleanvalue', "")
             condition_bool_val = search_string_table.get("conditionbooleanvalue",
                                                          self.RADIO_BUTTON_DEFAULT_VALUES["radioButton_45"])
             condition_bool_val = "Истинно если" if condition_bool_val else "Ложно если"
-            condition_empty_details = data["Condition"].get(
+            condition_empty_details = condition_table.get(
                 "findfull",
-                data["Condition"].get("findpart",
-                                      data["Condition"].get("isntfindfull",
-                                                            data["Condition"].get("isntfindpart",
-                                                                                  data["Condition"].get("equal",
-                                                                                                        data["Condition"].get("less",
-                                                                                                                              data["Condition"].get("larger", None)
-                                                                                                                              )
-                                                                                                        )
-                                                                                  )
-                                                            )
-                                      )
+                condition_table.get("findpart",
+                                    condition_table.get("isntfindfull",
+                                                        condition_table.get("isntfindpart",
+                                                                            condition_table.get("equal",
+                                                                                                condition_table.get("less",
+                                                                                                                    condition_table.get("larger", None)
+                                                                                                                    )
+                                                                                                )
+                                                                            )
+                                                        )
+                                    )
             )
             map_ = {"Condition.conditionbooleanvalue": condition_bool_val,
                     "Condition.parentconditionbooleanvalue": lambda t: f"родительское условие {'верно' if parent_cond_bool_value else 'ложно'}",
@@ -553,7 +554,7 @@ class ConditionsPage(Constructor, Tools, InputTools):
                     "Condition.equal": lambda u: "равно" if u else "",
                     "Condition.less": lambda i: "меньше чем" if i else "",
                     "Condition.larger": lambda i: "больше чем" if i else "",
-                    "Condition.condinner": lambda x: x,
+                    "Condition.condinner": None,
                     "SearchString.lindex": None,
                     "SearchString.rindex": None,
                     "Condition.cnd": None
