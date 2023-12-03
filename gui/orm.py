@@ -1088,7 +1088,7 @@ class ORMHelper(ORMAttributes):
                 raise KeyError("Нельзя удалить поле, которое является первичным ключом")
             if field_or_fields in node_data:
                 del node_data[field_or_fields]
-        cls.items.replace(old_node, ORMItemQueue.LinkedListItem(**node_data))
+        cls.items.enqueue(**node_data)
         cls.__set_cache()
 
     @classmethod
