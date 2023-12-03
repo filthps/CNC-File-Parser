@@ -1,4 +1,5 @@
 import itertools
+import hashlib
 import sys
 import copy
 import threading
@@ -199,7 +200,7 @@ class ORMItem(LinkedListItem, ORMAttributes):
 
     def __hash__(self):
         str_ = "".join(map(lambda x: str(x), itertools.chain(*self.value.items())))
-        return int.from_bytes(bytes(str_, "utf-8"), "big")
+        return hashlib.sha1(str_.encode("utf-8")).hexdigest()
 
     def __getitem__(self, item: str):
         if type(item) is not str:
@@ -621,15 +622,15 @@ class SpecialOrmItem(ORMItem):
 
     @property
     def hash_by_pk(self):
-        str_ = map(lambda i: str(i), self.get_primary_key_and_value(as_tuple=True))
-        return int.from_bytes(bytes("".join(str_), "utf-8"), "big")
+        str_ = "".join(map(lambda i: str(i), self.get_primary_key_and_value(as_tuple=True)))
+        return hashlib.sha1(str_.encode("utf-8")).hexdigest()
 
     @property
     def hash_by_value(self):
         value = self.value
         del value[self.get_primary_key_and_value(only_key=True)]
         str_ = "".join(map(lambda g: str(g), itertools.chain(*value.items())))
-        return int.from_bytes(bytes(str_, "utf-8"), "big")
+        return hashlib.sha1(str_.encode("utf-8")).hexdigest()
 
 
 class SpecialOrmContainer(ORMItemQueue):
@@ -1087,7 +1088,7 @@ class ORMHelper(ORMAttributes):
                 raise KeyError("Нельзя удалить поле, которое является первичным ключом")
             if field_or_fields in node_data:
                 del node_data[field_or_fields]
-        cls.items.replace(old_node, ORMItemQueue.LinkedListItem(**node_data))
+        cls.items.enqueue(**node_data)
         cls.__set_cache()
 
     @classmethod
