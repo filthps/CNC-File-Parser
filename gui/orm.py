@@ -878,12 +878,14 @@ class ORMHelper(ORMAttributes):
 
     @classmethod
     def join_select(cls, *models: Iterable[CustomModel], on: Optional[dict] = None,
-                    _where: Optional[dict] = None) -> "JoinedORMItem":
+                    _where: Optional[dict] = None, _db_only=False, _queue_only=False) -> "JoinedORMItem":
         """
         join_select(model_a, model,b, on={model_b: 'model_a.column_name'})
 
         :param _where: modelName: {column_name: some_val}
         :param on: modelName.column1: modelName2.column2
+        :param _db_only: извлечь только sql inner join
+        :param _queue_only: извлечь только из queue
         :return: специльный итерируемый объект класса JoinedORMItem, который содержит смешанные данные из локального
         хранилища и БД
         """
@@ -1020,8 +1022,8 @@ class ORMHelper(ORMAttributes):
             heap = ORMItemQueue()
             collect_all()
             return compare_by_matched_fk()
-        database_data = collect_db_data()
-        local_data = collect_local_data()
+        database_data = collect_db_data() if not _queue_only else iter([])
+        local_data = collect_local_data() if not _db_only else iter([])
         return JoinedORMItem(list(local_data), list(database_data), reference_table_name, models=models,
                              join_select_kwargs={"_where": _where, "on": on})
 
