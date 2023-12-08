@@ -18,9 +18,10 @@ from gui.threading_ import QThreadInstanceDecorator
 class Highlighter(QSyntaxHighlighter):  # todo: или реализовать пояснения через это, вместо html+css
     def __init__(self, parent=None):
         super().__init__(parent=parent)
+        ...
 
     def rehighlight(self) -> None:
-        pass
+        ...
 
 
 class InputTools:
@@ -432,7 +433,6 @@ class ConditionsPage(Constructor, Tools, InputTools):
     LINE_EDIT_DEFAULT_VALUES = {"lineEdit_28": ""}
     COMBO_BOX_DEFAULT_VALUES = {"parent_condition_combobox": "Выберите промежуточное условие"}
     RADIO_BUTTON_DEFAULT_VALUES = {"radioButton_26": True, "radioButton_45": True, "radioButton_28": True}
-    SQL_FIELD_NAMES = {model().column_names: model for model in [Condition, SearchString, HeadVarDelegation]}
 
     def __init__(self, app_instance: QMainWindow, ui: Ui):
         super().__init__(app_instance, ui)
@@ -442,7 +442,6 @@ class ConditionsPage(Constructor, Tools, InputTools):
         self.validator: Optional[ConditionsPageValidator] = None
         self.join_select_result: Optional[orm.JoinedORMItem] = None
         self.current_item_hash = None
-        self.condition_map = {}  # text: hash
         self.add_condition_dialog: Optional[AddConditionDialog] = None
         self.field_signals_status = False
 
@@ -469,11 +468,7 @@ class ConditionsPage(Constructor, Tools, InputTools):
             self.disconnect_field_signals()
             self.reset_fields()
             [self.add_or_replace_condition_item_to_list_widget(group) for group in select_result]
-            result_items = iter(select_result)
-            self.condition_map = {value.text(): hash(next(result_items))
-                                  for value in
-                                  map(lambda x: self.ui.conditions_list.item(x), range(self.ui.conditions_list.count()))
-                                  }
+            select_result.mapping = [self.ui.conditions_list.item(x).text() for x in range(self.ui.conditions_list.count())]
             self.join_select_result = select_result
             self.connect_field_signals()
             self.connect_parent_condition_combo_box()
@@ -647,41 +642,23 @@ class ConditionsPage(Constructor, Tools, InputTools):
 
     @Slot(str)
     def select_condition_item(self, condition_item: Optional[QListWidgetItem]):
-        def update_fields(item_hash: int, status: Optional[bool]):
-            if not status:
+        def update_fields(is_exists):
+            if not is_exists:
                 return
 
-            def filter_radio_button_data():
-                all_radio_buttons_sql_column_names = set(itertools.chain.from_iterable(val.keys() for val in self.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON.values()))
-                res = {key: value for key, value in all_data.items() if key in all_radio_buttons_sql_column_names}
-                return res
-            data = self.join_select_result[item_hash]
-            all_data = {}
-            [all_data.update(node.value) for node in data]
-            line_edit_data = {"conditionvalue": all_data.pop("conditionvalue", None),
-                              "condinner": all_data.pop("condinner", None)}
-            combo_box_data = {"parent": all_data.pop("parent", None)}
-            self.disconnect_field_signals()
-            self.disconnect_parent_condition_combo_box()
-            self.update_fields(line_edit_values=line_edit_data, combo_box_values=combo_box_data,
-                               radio_button_values=filter_radio_button_data())
-            self.validator.set_condition_item(condition_item)
-            self.validator.refresh()
-            self.connect_parent_condition_combo_box()
-            self.connect_field_signals()
-            self.current_item_hash = item_hash
 
-        @QThreadInstanceDecorator(result_callback=lambda status: update_fields(selected_condition_hash, status))
-        def check_inner(index: int):
-            is_actual = self.join_select_result.is_actual_entry(index)
+
+        @QThreadInstanceDecorator(result_callback=lambda res: update_fields(res))
+        def check_inner(hash_):
+            is_actual = self.join_select_result.is_actual_entry(hash_)
             if not is_actual:
                 self.reload(in_new_qthread=False)
                 return
             return True
         if not condition_item:
             return
-        selected_condition_hash = self.condition_map[condition_item.text()]
-        check_inner(selected_condition_hash)
+        selected_condition_item = self.join_select_result.mapping[condition_item.text()]
+        check_inner(selected_condition_item)
 
     @Slot(str)
     def change_parent_condition(self, item):
@@ -718,7 +695,6 @@ class ConditionsPage(Constructor, Tools, InputTools):
         def get_value_from_ui() -> dict:  # sql_col_name: val
             def set_pk_to_values():
                 """ Требует orm """
-                nonlocal pk
                 nodes = self.join_select_result[self.current_item_hash]
                 node = nodes[model.__name__]
                 pk = node.get_primary_key_and_value()
@@ -732,17 +708,21 @@ class ConditionsPage(Constructor, Tools, InputTools):
                 val.update({self.UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]: input_.text()})
             return val
 
+        def update_hash():
+            """ Если нода изменилась(внесли нвоые значения, то нужно) """
+
         @QThreadInstanceDecorator(
             result_callback=lambda x:
             self.add_or_replace_condition_item_to_list_widget(x, replace=True) if x and x is not True else None
         )
         def check_exists_and_update(hash_, val):
             data = self.join_select_result.is_actual_entry(hash_)
+            print("is_actial", data)
             if not data:
                 return False
+            print("Установка значений", val)
             self.db_items.set_item(_update=True, _ready=is_valid, _model=model, **val)
             test = self.join_select_result.is_actual_entry(hash_)
-            print(test)
             return test
         selected_condition = self.ui.conditions_list.currentItem()
         if not selected_condition:
@@ -754,7 +734,6 @@ class ConditionsPage(Constructor, Tools, InputTools):
             sql_field_name = list(self.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON[field_name].keys())[0]
         if line_edit:
             sql_field_name = self.UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]
-        pk: Optional[dict] = None
         model = [model for fields, model in self.SQL_FIELD_NAMES.items() if sql_field_name in fields][0]
         values = get_value_from_ui()
         is_valid = self.validator.refresh()
