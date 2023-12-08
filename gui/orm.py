@@ -3,7 +3,6 @@ import hashlib
 import sys
 import copy
 import threading
-import weakref
 from typing import Union, Iterator, Iterable, Optional, Literal, Hashable, Sized, Any
 from collections import ChainMap
 from pymemcache.client.base import Client
@@ -222,13 +221,10 @@ class ORMItem(LinkedListItem, ORMAttributes):
             raise ValueError("Неверно установлен SQL-DML")
 
 
-class EmptyOrmItem:
+class EmptyOrmItem(LinkedListItem):
     """
     Пустой класс для возврата пустой "ноды". Заглушка
     """
-    def __init__(self):
-        pass
-
     def __eq__(self, other):
         if type(other) is type(self):
             return True
@@ -635,7 +631,14 @@ class SpecialOrmItem(ORMItem):
 
 
 class SpecialOrmContainer(ORMItemQueue):
+    """ Данный контейнер для использования в JoinedORMItem (результат вызова ORMHelper.join_select) """
     LinkedListItem = SpecialOrmItem
+
+    @property
+    def is_actual(self):
+        if not any(map(lambda x: isinstance(x, EmptyOrmItem), self)):
+            return True
+        return False
 
     def get(self, model_name, default=None):
         try:
@@ -652,49 +655,6 @@ class SpecialOrmContainer(ORMItemQueue):
             if node.model.__name__ == item:
                 return node
         raise KeyError
-
-
-class Pointer:
-    """ Экземпляр данного объекта - оболочка для содержимого, обеспечивающая доступ к данным.
-    Объект этого класса создан для 'слежки' за изменениями с UI."""
-    def __init__(self, result_items_from_select: Union[list[Union[SpecialOrmContainer, ORMItemQueue]],
-                                                       tuple[Union[SpecialOrmContainer, ORMItemQueue]]],
-                 wrappers: Iterable[str]):
-        self._wraps = wrappers
-        self._data = result_items_from_select
-        self._is_valid()
-        self._data = map(lambda i: hash(i), self._data)
-
-    @property
-    def keys(self):
-        return copy.copy(self._wraps)
-
-    @property
-    def values(self):
-        return copy.copy(self._data)
-
-    @property
-    def items(self) -> dict[str, int]:
-        return dict(zip(self._wraps, self._data))
-
-    def __getitem__(self, item: str):
-        if not isinstance(item, str):
-            raise TypeError
-        return self.items[item]
-
-    def _is_valid(self):
-        """ Если длины 2 последовательностей (см init) отличаются, то вызвать исключение """
-        if not isinstance(self._data, (list, tuple,)):
-            raise TypeError
-        if not isinstance(self._wraps, (list, tuple,)):
-            raise TypeError
-        if len(self._wraps) != len(self._data):
-            raise ValueError
-        if not all(map(lambda x: type(x) is str, self._wraps)):
-            raise TypeError("В качестве ключей принимаются только иммутабельные типы")
-        if self._data:
-            if not all((lambda x: isinstance(x, (ORMItemQueue, SpecialOrmContainer,)), self._data)):
-                raise TypeError
 
 
 class ORMHelper(ORMAttributes):
@@ -726,7 +686,6 @@ class ORMHelper(ORMAttributes):
     _items: ORMItemQueue = ORMItemQueue()  # Temp
     _model_obj: Optional[CustomModel] = None  # Текущий класс модели, присваиваемый автоматически всем экземплярам при добавлении в очередь
     _was_initialized = False
-    _joined_item: Optional["JoinedORMItem"] = None
 
     @classmethod
     def initialization(cls):
@@ -1061,11 +1020,8 @@ class ORMHelper(ORMAttributes):
             return compare_by_matched_fk()
         database_data = collect_db_data() if not _queue_only else iter([])
         local_data = collect_local_data() if not _db_only else iter([])
-        joined_item = JoinedORMItem(list(local_data), list(database_data), reference_table_name, models=models,
-                                    join_select_kwargs={"_where": _where, "on": on})
-        joined_item.set_adapter(cls)
-        cls._joined_item = weakref.ref(joined_item)
-        return joined_item
+        return JoinedORMItem(list(local_data), list(database_data), reference_table_name, models=models,
+                             join_select_kwargs={"_where": _where, "on": on})
 
     @classmethod
     def get_node_dml_type(cls, node_pk_value: Union[str, int], model=None) -> Optional[str]:
@@ -1175,10 +1131,57 @@ class ORMHelper(ORMAttributes):
 class JoinedORMItem(ORMAttributes):
     """
     Экземпляр этого класса возвращается функцией ORMHelper.join_select()
-    Внутри него инкапсулированы ноды. Иммутабельный контейнер с контейнером нод.
     1 экземпляр этого класса 1 результат вызова ORMHelper.join_select()
-    JoinedORMItem().__getitem__(model_name).__getitem__(node_value_dict_key).
+    Использовать следующим образом:
+        Делаем join_select
+        Резулбтаты можем вывести в какой-нибудь Q...Widget, этот результат (строки) можно привязать к содержимому,
+        чтобы вносить правки со сторы UI, ни о чём лишнем не думая
+        JoinSelectResultInstance.mapping = ['Некое значение из виджета1', 'Некое значение из виджета2',...]
+        Теперь нужный инстанс SpecialOrmContainer можно найти:
+        JoinSelectResultInstance.mapping['Некое значение из виджета1'] -> SpecialOrmContainer(node_model_a, node_model_b, node_model_c)
+        Если нода потеряла актуальность(удалена), то вместо неё будет заглушка - Экземпляр EmptyORMItem
+        SpecialOrmContainer имеет свойство - is_actual на которое можно опираться
     """
+    class Pointer:
+        """ Экземпляр данного объекта - оболочка для содержимого, обеспечивающая доступ к данным.
+        Объект этого класса создан для 'слежки' за изменениями с UI."""
+        def __init__(self, result_items_from_select: Iterator[SpecialOrmContainer[Union[ORMItem, EmptyOrmItem]]],
+                     wrappers: Iterable[str]):
+            self._wraps = wrappers
+            self._data = result_items_from_select
+            self._is_valid()
+            self._data = map(lambda i: hash(i), self._data)
+
+        @property
+        def keys(self):
+            return copy.copy(self._wraps)
+
+        @property
+        def values(self):
+            return copy.copy(self._data)
+
+        @property
+        def items(self) -> dict[str, int]:
+            return dict(zip(self._wraps, self._data))
+
+        def __getitem__(self, item: str):
+            if not isinstance(item, str):
+                raise TypeError
+            return self.items[item]
+
+        def _is_valid(self):
+            """ Если длины 2 последовательностей (см init) отличаются, то вызвать исключение """
+            if not isinstance(self._data, (list, tuple,)):
+                raise TypeError
+            if not isinstance(self._wraps, (list, tuple,)):
+                raise TypeError
+            if len(self._wraps) != len(self._data):
+                raise ValueError
+            if not all(map(lambda x: type(x) is str, self._wraps)):
+                raise TypeError("В качестве ключей принимаются только иммутабельные типы")
+            if self._data:
+                if not all((lambda x: isinstance(x, (ORMItemQueue, SpecialOrmContainer,)), self._data)):
+                    raise TypeError
     _adapter = None
 
     def __init__(self, local_nodes: list[SpecialOrmContainer],
@@ -1189,7 +1192,7 @@ class JoinedORMItem(ORMAttributes):
         self._main_table_name: str = reference_table
         self._local_nodes = local_nodes
         self._database_nodes = nodes_from_database__join_select
-        self._merged_nodes: Optional[Iterable[SpecialOrmContainer]] = None
+        self._merged_nodes: Optional[Iterable[dict]] = None
         self._wrap_items: Optional[Iterable] = None
         self._merge()
 
@@ -1204,7 +1207,7 @@ class JoinedORMItem(ORMAttributes):
     def mapping(self) -> Pointer:
         if not self._wrap_items:
             raise RuntimeError("Элементы не заданы")
-        return Pointer(tuple(self.__iter__()), tuple(self))
+        return self.Pointer(self.__iter__(), self._wrap_items)
 
     @mapping.setter
     def mapping(self, items):
@@ -1216,9 +1219,7 @@ class JoinedORMItem(ORMAttributes):
         self._wrap_items = items
 
     def __iter__(self):
-        return iter(self._get_fresh_items())
-
-        return iter(self._merged_nodes)
+        return self._get_fresh_items()
 
     def __bool__(self):
         return bool(len(self))
@@ -1258,13 +1259,20 @@ class JoinedORMItem(ORMAttributes):
         return f"{self.__class__.__name__}({[repr(orm_container) for orm_container in self._local_nodes]}, " \
                f"{[repr(node) for node in self._database_nodes]})"
 
-    def _get_fresh_items(self) -> tuple[SpecialOrmContainer]:
+    def _get_fresh_items(self) -> Iterator[SpecialOrmContainer]:
         all_items = self._adapter.items
         for container_dict in self._merged_nodes:
             new_container = SpecialOrmContainer()
             while container_dict:
-                fresh_node = all_items.get_node(...)
-                new_container.add_to_head(...)
+                fresh_node = all_items.get_node(**container_dict)
+                if fresh_node is None or fresh_node.type == "_delete":
+                    SpecialOrmContainer.LinkedListItem = EmptyOrmItem
+                    new_container.add_to_head()
+                    SpecialOrmContainer.LinkedListItem = ORMItem
+                    continue
+                new_container.add_to_head(**fresh_node.get_attributes())
+            if new_container:
+                yield new_container
 
     def _merge(self):
         def get_all_merged_entries():
@@ -1296,7 +1304,10 @@ class JoinedORMItem(ORMAttributes):
         not_intersected_data = get_all_local_entries()
         all_items = list(merged_data.values())
         all_items.extend(not_intersected_data)  # todo: ordering  ???
-        self._merged_nodes = [{item.get_primary_key_and_value()} for container in all_items for item in container]
+        self._merged_nodes = [
+            {**item.get_primary_key_and_value(), "_model": item.model}
+            for container in all_items for item in container
+        ]
 
 
 if __name__ == "__main__":
