@@ -92,7 +92,6 @@ class CustomModel(db.Model, ModelController):
     Абстрактный класс для аннотации типов.
     класс модели SQLAlchemy для использования в классе ORMHelper модуля tools!
     """
-    abstract_field = Column(Integer, primary_key=True)
     __init__ = None
     __call__ = None
 
