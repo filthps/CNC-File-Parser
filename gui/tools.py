@@ -11,6 +11,7 @@ from PySide2.QtWidgets import QMainWindow, QTabWidget, QStackedWidget, QPushButt
     QComboBox, QRadioButton, QSplashScreen
 from PySide2.QtGui import QIcon
 from gui.ui import Ui_main_window as Ui
+from database.models import CustomModel
 
 
 class Tools:
@@ -25,6 +26,19 @@ class Tools:
     STRING_FIELDS = tuple()
     FLOAT_FIELDS = tuple()
     NULLABLE_FIELDS = tuple()
+    models = tuple()  # Указывать только для тех страниц, где join_select
+
+    @classmethod
+    def get_model_by_field_name(cls, field_name: str) -> CustomModel:
+        """ Данный метод призван вернуть класс-модель по названию поля (orm.join_select) """
+        if not cls.models:
+            raise ValueError("Сперва установите значение - кортеж классов-моделей")
+        if not isinstance(field_name, str):
+            raise TypeError
+        items = (model.column_names for model in cls.models)
+        for i, fields in enumerate(items):
+            if field_name in fields:
+                return cls.models[i]
 
     def update_fields(self, line_edit_values: Optional[dict] = None,
                       combo_box_values: Optional[dict] = None, radio_button_values: Optional[dict] = None):
