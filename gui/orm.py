@@ -1193,7 +1193,7 @@ class JoinedORMItem(ORMAttributes):
         self._local_nodes = local_nodes
         self._database_nodes = nodes_from_database__join_select
         self._merged_pk: Optional[list[list[dict]]] = None
-        self._wrap_items: Optional[Iterable] = None
+        self._wrap_items: Optional[list] = None
         self._merge()
 
     @classmethod
@@ -1212,11 +1212,35 @@ class JoinedORMItem(ORMAttributes):
     @mapping.setter
     def mapping(self, items):
         """ Обнулить текущий экземпляр Pointer (если есть), создать новый """
-        if not isinstance(items, (list, tuple,)):
+        if not isinstance(items, list):
             raise TypeError
         if not all(map(lambda val: type(val) is str, items)):
             raise ValueError
         self._wrap_items = items
+
+    def is_actual_entry(self, value: str, hash_value=False, mapping_key_value=False, exists_only=False,
+                        queue_only=False, database_only=False):
+        """
+        Проверить актуальность одного конкретного результата join_select
+        :param value: строка
+        :param hash_value: хэш значение от SpecialOrmContainer
+        :param mapping_key_value: ключ от словаря в объекте Pointer
+        :param exists_only: Проверить только наличие, а не полное совпадение значений
+        :param queue_only:
+        :param database_only:
+        :return:
+        """
+        if hash_value and mapping_key_value or not hash_value and not mapping_key_value:
+            raise ValueError("Данный метод работает 2мя разными способами: "
+                             "в качестве ключа может принять хэш от группы нод,"
+                             "или ключ от словаря в экземпляре Pointer, если таковой инициализирован")
+        if not type(value) is str:
+            raise ValueError
+        if mapping_key_value:
+            if mapping_key_value not in self._wrap_items:
+                raise KeyError
+        if hash_value:
+            ...
 
     def __iter__(self):
         return self._get_fresh_items()
@@ -1261,7 +1285,7 @@ class JoinedORMItem(ORMAttributes):
 
     def _get_fresh_items(self) -> Iterator[SpecialOrmContainer]:
         all_items = self._adapter.items
-        for group_nodes in self._merged_pk:
+        for index, group_nodes in enumerate(self._merged_pk):
             new_container = SpecialOrmContainer()
             while group_nodes:
                 node_data = group_nodes.pop(0)
@@ -1270,6 +1294,7 @@ class JoinedORMItem(ORMAttributes):
                     SpecialOrmContainer.LinkedListItem = EmptyOrmItem
                     new_container.append()
                     SpecialOrmContainer.LinkedListItem = ORMItem
+                    del self._wrap_items[index]
                     continue
                 new_container.append(**fresh_node.get_attributes())
             yield new_container
@@ -1310,25 +1335,6 @@ class JoinedORMItem(ORMAttributes):
             for item in container:
                 current.append({**item.get_primary_key_and_value(), "_model": item.model})
             self._merged_pk.append(current)
-
-    def is_actual_entry(self, value: str, hash_value=False, mapping_key_value=False, exists_only=False,
-                        queue_only=False, database_only=False):
-        """
-        Проверить актуальность одного конкретного результата join_select
-        :param value: строка
-        :param hash_value: хэш значение от SpecialOrmContainer
-        :param mapping_key_value: ключ от словаря в объекте Pointer
-        :param exists_only: Проверить только наличие, а не полное совпадение значений
-        :param queue_only:
-        :param database_only:
-        :return:
-        """
-        if hash_value and mapping_key_value or not hash_value and not mapping_key_value:
-            raise ValueError("Данный метод работает 2мя разными способами: "
-                             "в качестве ключа может принять хэш от группы нод,"
-                             "или ключ от словаря в экземпляре Pointer, если таковой инициализирован")
-        if not type(value) is str:
-            raise ValueError
 
 
 if __name__ == "__main__":
