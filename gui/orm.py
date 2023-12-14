@@ -3,7 +3,8 @@ import hashlib
 import sys
 import copy
 import threading
-from typing import Union, Iterator, Iterable, Optional, Literal, Hashable, Sized, Any
+import operator
+from typing import Union, Iterator, Iterable, Optional, Literal, Callable
 from collections import ChainMap
 from pymemcache.client.base import Client
 from pymemcache.exceptions import MemcacheError
@@ -640,6 +641,15 @@ class SpecialOrmContainer(ORMItemQueue):
             return True
         return False
 
+    def is_containing_the_same_nodes(self, other_items: "SpecialOrmContainer"):
+        """ Содержит ли данный экземпляр те же самые ноды, что и в other_items (по первичному ключу и значению) """
+        if not isinstance(other_items, type(self)):
+            raise TypeError
+        if len(self) != other_items.__len__():
+            return False
+        return all(map(lambda y: y[0] == y[1],
+                       map(zip(map(lambda x: x.hash_by_pk, self), map(lambda x: x.hash_by_pk, other_items)))))
+
     def get(self, model_name, default=None):
         try:
             val = self.__getitem__(model_name)
@@ -929,20 +939,6 @@ class ORMHelper(ORMAttributes):
         name_and_model_dict = {m.__name__: m for m in models}
         valid_params()
 
-        def count_ref_table():
-            """ Опорная модель, - к которой, условно, применяется конструкция FROM (она встретится в словаре on 2 раза) """
-            def get_reference_table() -> str:
-                max_match_counter_index = list(models_repeat_counter.values()).index(max_repeat_counter)
-                table_name_with_max_retries = tuple(models_repeat_counter.keys())[max_match_counter_index]
-                return table_name_with_max_retries
-            left_tables = [str_.split(".")[0] for str_ in on.keys()]
-            right_tables = [str_.split(".")[0] for str_ in on.values()]
-            all_tables = list(itertools.chain(left_tables, right_tables))
-            models_repeat_counter = {model_name: all_tables.count(model_name) for model_name in all_tables}
-            max_repeat_counter = max(models_repeat_counter.values())
-            return get_reference_table()
-        reference_table_name = count_ref_table()
-
         def collect_db_data():
             def create_request() -> str:  # O(n) * O(m)
                 s = f"dirty_data = db.database.query({tuple(name_and_model_dict.keys())[0]})"  # O(l) * O(1)
@@ -1011,17 +1007,16 @@ class ORMHelper(ORMAttributes):
                             if left_model_name == left_table_name_in_on and right_model_name == right_table_name_in_on:  # O(c * v) + O(c1 * v1)
                                 if left_node.value.get(left_table_field_in_on, None) == \
                                         right_node.value.get(right_table_field_in_on, None):  # O(1) + O(m1) * O(1) + O(m2) = O(m1 * m2)
-                                    raw.append(**left_node.get_attributes())  # O(1) todo: протестировать этот момент, возможна замена на enqueue
-                                    raw.append(**right_node.get_attributes())  # O(1) todo: протестировать этот момент, возможна замена на enqueue
+                                    raw.enqueue(**left_node.get_attributes())  # todo fixit O(n ** 2)
+                                    raw.enqueue(**right_node.get_attributes())  # todo fixit O(n ** 2)
                         if raw:
                             yield raw
             heap = ORMItemQueue()
             collect_all()
             return compare_by_matched_fk()
-        database_data = collect_db_data() if not _queue_only else iter([])
-        local_data = collect_local_data() if not _db_only else iter([])
-        return JoinedORMItem(list(local_data), list(database_data), reference_table_name, models=models,
-                             join_select_kwargs={"_where": _where, "on": on})
+        JoinedORMItem.get_nodes_from_database = collect_db_data
+        JoinedORMItem.get_local_nodes = collect_local_data
+        return JoinedORMItem()
 
     @classmethod
     def get_node_dml_type(cls, node_pk_value: Union[str, int], model=None) -> Optional[str]:
@@ -1182,26 +1177,15 @@ class JoinedORMItem(ORMAttributes):
             if self._data:
                 if not all((lambda x: isinstance(x, (ORMItemQueue, SpecialOrmContainer,)), self._data)):
                     raise TypeError
-    _adapter = None
+    get_local_nodes: Optional[Callable] = None
+    get_nodes_from_database: Optional[Callable] = None
 
-    def __init__(self, local_nodes: list[SpecialOrmContainer],
-                 nodes_from_database__join_select: list[SpecialOrmContainer], reference_table: str,
-                 models=None, join_select_kwargs=None):
-        self._models = models
-        self._join_select_kwargs = join_select_kwargs
-        self._main_table_name: str = reference_table
-        self._local_nodes = local_nodes
-        self._database_nodes = nodes_from_database__join_select
-        self._merged_pk: Optional[list[list[dict]]] = None
-        self._wrap_items: Optional[list] = None
-        self._merge()
-
-    @classmethod
-    def set_adapter(cls, val: ORMHelper):
-        """ Добавить ссылку на ORMHelper (для автообновления join_select) """
-        if val is not ORMHelper:
+    def __init__(self):
+        if not self.get_local_nodes or not self.get_nodes_from_database:
+            raise ValueError
+        if not callable(self.get_nodes_from_database) or not callable(self.get_local_nodes):
             raise TypeError
-        cls._adapter = val
+        self._wrap_items: Optional[list] = None
 
     @property
     def mapping(self) -> Pointer:
@@ -1216,37 +1200,46 @@ class JoinedORMItem(ORMAttributes):
             raise TypeError
         if not all(map(lambda val: type(val) is str, items)):
             raise ValueError
-        self._wrap_items = items
+        try:
+            self.Pointer(iter(self), items)
+        except ValueError:
+            raise ValueError("Не удалось иницилизировать объект класса Pointer")
+        except TypeError:
+            raise TypeError("Не удалось иницилизировать объект класса Pointer")
+        else:
+            self._wrap_items = items
 
-    def is_actual_entry(self, value: str, hash_value=False, mapping_key_value=False, exists_only=False,
-                        queue_only=False, database_only=False):
+    def is_actual_entry(self, value: str, hash_value=False, mapping_key_value=True, exists_only=True,
+                        queue_only=False, database_only=False) -> bool:
         """
         Проверить актуальность одного конкретного результата join_select
         :param value: строка
         :param hash_value: хэш значение от SpecialOrmContainer
         :param mapping_key_value: ключ от словаря в объекте Pointer
         :param exists_only: Проверить только наличие, а не полное совпадение значений
-        :param queue_only:
-        :param database_only:
-        :return:
+        :param queue_only: Извлекать только из очереди локальных элементов
+        :param database_only: Извлекать только из базы данных
+        :return: bool
         """
         if hash_value and mapping_key_value or not hash_value and not mapping_key_value:
             raise ValueError("Данный метод работает 2мя разными способами: "
                              "в качестве ключа может принять хэш от группы нод,"
                              "или ключ от словаря в экземпляре Pointer, если таковой инициализирован")
+        if all((queue_only, database_only,)) or not all((queue_only, database_only,)):
+            raise ValueError
         if not type(value) is str:
             raise ValueError
         if mapping_key_value:
             if mapping_key_value not in self._wrap_items:
-                raise KeyError
+                return False
         if hash_value:
-            ...
+            if hash_value not in map(lambda i: hash(i), self):
+                return False
+            if queue_only:
+                pass
 
     def __iter__(self):
-        return self._get_fresh_items()
-
-    def __bool__(self):
-        return bool(len(self))
+        return self._merge()
 
     def __len__(self):
         return sum([1 for _ in self])
@@ -1283,58 +1276,19 @@ class JoinedORMItem(ORMAttributes):
         return f"{self.__class__.__name__}({[repr(orm_container) for orm_container in self._local_nodes]}, " \
                f"{[repr(node) for node in self._database_nodes]})"
 
-    def _get_fresh_items(self) -> Iterator[SpecialOrmContainer]:
-        all_items = self._adapter.items
-        for index, group_nodes in enumerate(self._merged_pk):
-            new_container = SpecialOrmContainer()
-            while group_nodes:
-                node_data = group_nodes.pop(0)
-                fresh_node = all_items.get_node(**node_data)
-                if fresh_node is None or fresh_node.type == "_delete":
-                    SpecialOrmContainer.LinkedListItem = EmptyOrmItem
-                    new_container.append()
-                    SpecialOrmContainer.LinkedListItem = ORMItem
-                    del self._wrap_items[index]
-                    continue
-                new_container.append(**fresh_node.get_attributes())
-            yield new_container
-
-    def _merge(self):
-        def get_all_merged_entries():
-            for nodes_group_from_db in self._database_nodes:
-                node, ref_node = None, None
-                for node in nodes_group_from_db:
-                    if node.model.__name__ == self._main_table_name:
-                        ref_node = node
-                        break
-                for nodes_group_from_local_queue in self._database_nodes:
-                    local_node = nodes_group_from_local_queue.get_node(ref_node.model,
-                                                                       **ref_node.get_primary_key_and_value())
-                    if local_node:
-                        merged_data.update({local_node.get_primary_key_and_value(as_tuple=True):
-                                            nodes_group_from_db + nodes_group_from_local_queue})
-                        models.update({local_node.get_primary_key_and_value(as_tuple=True): node.model.__name__})
-
-        def get_all_local_entries() -> list[SpecialOrmContainer]:
-            local_items = copy.deepcopy(self._local_nodes)
-            for index, container in enumerate(self._local_nodes):
-                for pk_tuple in merged_data.keys():
-                    find_node = container.get_node(models[pk_tuple], **dict(zip(*(tuple(x) for x in pk_tuple))))
-                    if find_node:
-                        del local_items[index]
-            return local_items
-        merged_data = {}
-        models = {}
-        get_all_merged_entries()
-        not_intersected_data = get_all_local_entries()
-        all_items = list(merged_data.values())
-        all_items.extend(not_intersected_data)  # todo: ordering  ???
-        self._merged_pk = []
-        for container in all_items:
-            current = []
-            for item in container:
-                current.append({**item.get_primary_key_and_value(), "_model": item.model})
-            self._merged_pk.append(current)
+    def _merge(self) -> Iterator[SpecialOrmContainer]:
+        db: list[SpecialOrmContainer] = list(self.get_nodes_from_database())
+        locals_: list[SpecialOrmContainer] = list(self.get_local_nodes())
+        for db_group_index, db_nodes_group in enumerate(db):
+            for local_nodes_group_index, local_nodes_group in enumerate(locals_):
+                if db_nodes_group.is_containing_the_same_nodes(local_nodes_group):
+                    db_nodes_group += local_nodes_group
+                    yield db_nodes_group
+                    del db[db_group_index]
+                    del locals_[local_nodes_group_index]
+        if db:
+            while db:
+                yield db.pop(0)
 
 
 if __name__ == "__main__":
