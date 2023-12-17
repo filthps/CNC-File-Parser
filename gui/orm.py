@@ -4,7 +4,8 @@ import sys
 import copy
 import threading
 import operator
-from typing import Union, Iterator, Iterable, Optional, Literal, Callable
+import warnings
+from typing import Union, Iterator, Iterable, Optional, Literal, Callable, Sized
 from collections import ChainMap
 from pymemcache.client.base import Client
 from pymemcache.exceptions import MemcacheError
@@ -618,37 +619,10 @@ class SpecialOrmItem(ORMItem):
             return default_val
         return result
 
-    @property
-    def hash_by_pk(self):
-        str_ = "".join(map(lambda i: str(i), self.get_primary_key_and_value(as_tuple=True)))
-        return int.from_bytes(hashlib.md5(str_.encode("utf-8")).digest(), "big")
-
-    @property
-    def hash_by_value(self):
-        value = self.value
-        del value[self.get_primary_key_and_value(only_key=True)]
-        str_ = "".join(map(lambda g: str(g), itertools.chain(*value.items())))
-        return int.from_bytes(hashlib.md5(str_.encode("utf-8")).digest(), "big")
-
 
 class SpecialOrmContainer(ORMItemQueue):
     """ Данный контейнер для использования в JoinedORMItem (результат вызова ORMHelper.join_select) """
     LinkedListItem = SpecialOrmItem
-
-    @property
-    def is_actual(self):
-        if not any(map(lambda x: isinstance(x, EmptyOrmItem), self)):
-            return True
-        return False
-
-    def is_containing_the_same_nodes(self, other_items: "SpecialOrmContainer"):
-        """ Содержит ли данный экземпляр те же самые ноды, что и в other_items (по первичному ключу и значению) """
-        if not isinstance(other_items, type(self)):
-            raise TypeError
-        if len(self) != other_items.__len__():
-            return False
-        return all(map(lambda y: y[0] == y[1],
-                       map(zip(map(lambda x: x.hash_by_pk, self), map(lambda x: x.hash_by_pk, other_items)))))
 
     def get(self, model_name, default=None):
         try:
@@ -1123,7 +1097,7 @@ class ORMHelper(ORMAttributes):
         cls.cache.set("ORMItems", cls._items, cls.CACHE_LIFETIME_HOURS)
 
         
-class JoinedORMItem(ORMAttributes):
+class JoinedORMItem:
     """
     Экземпляр этого класса возвращается функцией ORMHelper.join_select()
     1 экземпляр этого класса 1 результат вызова ORMHelper.join_select()
@@ -1131,25 +1105,45 @@ class JoinedORMItem(ORMAttributes):
         Делаем join_select
         Резулбтаты можем вывести в какой-нибудь Q...Widget, этот результат (строки) можно привязать к содержимому,
         чтобы вносить правки со сторы UI, ни о чём лишнем не думая
-        JoinSelectResultInstance.mapping = ['Некое значение из виджета1', 'Некое значение из виджета2',...]
+        JoinSelectResultInstance.pointer = ['Некое значение из виджета1', 'Некое значение из виджета2',...]
         Теперь нужный инстанс SpecialOrmContainer можно найти:
-        JoinSelectResultInstance.mapping['Некое значение из виджета1'] -> SpecialOrmContainer(node_model_a, node_model_b, node_model_c)
+        JoinSelectResultInstance.pointer['Некое значение из виджета1'] -> SpecialOrmContainer(node_model_a, node_model_b, node_model_c)
         Если нода потеряла актуальность(удалена), то вместо неё будет заглушка - Экземпляр EmptyORMItem
         SpecialOrmContainer имеет свойство - is_actual на которое можно опираться
     """
     class Pointer:
         """ Экземпляр данного объекта - оболочка для содержимого, обеспечивающая доступ к данным.
         Объект этого класса создан для 'слежки' за изменениями с UI."""
-        def __init__(self, result_items_from_select: Iterator[SpecialOrmContainer[Union[ORMItem, EmptyOrmItem]]],
-                     wrappers: Iterable[str]):
-            self._wraps = wrappers
+        _wrap_items: Optional[Sized[str]] = None
+        _size = tuple()
+        
+        def __init__(self, result_items_from_select: Union[list[SpecialOrmContainer], tuple[SpecialOrmContainer]]):
             self._data = result_items_from_select
             self._is_valid()
-            self._data = map(lambda i: hash(i), self._data)
+            self._size = tuple([hash(container) for container in self._data])
+
+        def is_actual(self, list_name: str = None):
+            if type(list_name) is not str:
+                raise TypeError
+            if not list_name:
+                if self.has_new_entries:
+                    return False
+                return all(map())
 
         @property
-        def keys(self):
-            return copy.copy(self._wraps)
+        def has_new_entries(self):
+            return not len(self._size) == len(self.__class__._size)
+
+        @property
+        def wrapper(self):
+            return copy.copy(self._wrap_items)
+        
+        @wrapper.setter
+        def wrapper(self, val):
+            if type(val) is not list or type(val) is not tuple:
+                raise TypeError
+            if not all(map(lambda x: isinstance(x, str), val)):
+                raise TypeError
 
         @property
         def values(self):
@@ -1157,7 +1151,7 @@ class JoinedORMItem(ORMAttributes):
 
         @property
         def items(self) -> dict[str, int]:
-            return dict(zip(self._wraps, self._data))
+            return dict(zip(self._wrap_items, self._data))
 
         def __getitem__(self, item: str):
             if not isinstance(item, str):
@@ -1168,15 +1162,20 @@ class JoinedORMItem(ORMAttributes):
             """ Если длины 2 последовательностей (см init) отличаются, то вызвать исключение """
             if not isinstance(self._data, (list, tuple,)):
                 raise TypeError
-            if not isinstance(self._wraps, (list, tuple,)):
-                raise TypeError
-            if len(self._wraps) != len(self._data):
-                raise ValueError
-            if not all(map(lambda x: type(x) is str, self._wraps)):
-                raise TypeError("В качестве ключей принимаются только иммутабельные типы")
+            if len(self._wrap_items) < len(self._data):
+                raise warnings.warn("Появились новые записи")
             if self._data:
-                if not all((lambda x: isinstance(x, (ORMItemQueue, SpecialOrmContainer,)), self._data)):
+                if not all(map(lambda x: isinstance(x, (ORMItemQueue, SpecialOrmContainer,)), self._data)):
                     raise TypeError
+
+        @classmethod
+        @property
+        def _last_result_size(cls):
+            return cls._size
+
+        @classmethod
+        def set_new_last_result_size(cls, value_items: Iterable[SpecialOrmContainer]):
+            cls._size = tuple([ for container in value_items])
     get_local_nodes: Optional[Callable] = None
     get_nodes_from_database: Optional[Callable] = None
 
@@ -1188,68 +1187,23 @@ class JoinedORMItem(ORMAttributes):
         self._wrap_items: Optional[list] = None
 
     @property
-    def mapping(self) -> Pointer:
-        if not self._wrap_items:
-            raise RuntimeError("Элементы не заданы")
-        return self.Pointer(self.__iter__(), self._wrap_items)
+    def pointer(self) -> Pointer:
+        return self.Pointer(tuple(self.__iter__()))
 
-    @mapping.setter
-    def mapping(self, items):
+    @pointer.setter
+    def pointer(self, items):
         """ Обнулить текущий экземпляр Pointer (если есть), создать новый """
         if not isinstance(items, list):
             raise TypeError
         if not all(map(lambda val: type(val) is str, items)):
             raise ValueError
-        try:
-            self.Pointer(iter(self), items)
-        except ValueError:
-            raise ValueError("Не удалось иницилизировать объект класса Pointer")
-        except TypeError:
-            raise TypeError("Не удалось иницилизировать объект класса Pointer")
-        else:
-            self._wrap_items = items
-
-    def is_actual_entry(self, value: str, hash_value=False, mapping_key_value=True, exists_only=True,
-                        queue_only=False, database_only=False) -> bool:
-        """
-        Проверить актуальность одного конкретного результата join_select
-        :param value: строка
-        :param hash_value: хэш значение от SpecialOrmContainer
-        :param mapping_key_value: ключ от словаря в объекте Pointer
-        :param exists_only: Проверить только наличие, а не полное совпадение значений
-        :param queue_only: Извлекать только из очереди локальных элементов
-        :param database_only: Извлекать только из базы данных
-        :return: bool
-        """
-        if hash_value and mapping_key_value or not hash_value and not mapping_key_value:
-            raise ValueError("Данный метод работает 2мя разными способами: "
-                             "в качестве ключа может принять хэш от группы нод,"
-                             "или ключ от словаря в экземпляре Pointer, если таковой инициализирован")
-        if all((queue_only, database_only,)) or not all((queue_only, database_only,)):
-            raise ValueError
-        if not type(value) is str:
-            raise ValueError
-        if mapping_key_value:
-            if mapping_key_value not in self._wrap_items:
-                return False
-        if hash_value:
-            if hash_value not in map(lambda i: hash(i), self):
-                return False
-            if queue_only:
-                pass
+        self.Pointer.wrapper = items
 
     def __iter__(self):
         return self._merge()
 
     def __len__(self):
         return sum([1 for _ in self])
-
-    def __eq__(self, other):
-        if not isinstance(other, self.__class__):
-            return False
-        self_hash_counter = sum(map(lambda x: hash(x), self))
-        other_hash_counter = sum(map(lambda x: hash(x), other))
-        return self_hash_counter == other_hash_counter
 
     def __getitem__(self, item: int) -> SpecialOrmContainer:
         if not isinstance(item, str):

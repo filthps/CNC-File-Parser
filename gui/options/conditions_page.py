@@ -468,7 +468,7 @@ class ConditionsPage(Constructor, Tools, InputTools):
             self.disconnect_field_signals()
             self.reset_fields()
             [self.add_or_replace_condition_item_to_list_widget(group) for group in select_result]
-            select_result.mapping = [self.ui.conditions_list.item(x).text() for x in range(self.ui.conditions_list.count())]
+            select_result.pointer = [self.ui.conditions_list.item(x).text() for x in range(self.ui.conditions_list.count())]
             self.join_select_result = select_result
             self.connect_field_signals()
             self.connect_parent_condition_combo_box()
@@ -646,8 +646,6 @@ class ConditionsPage(Constructor, Tools, InputTools):
             if not is_exists:
                 return
 
-
-
         @QThreadInstanceDecorator(result_callback=lambda res: update_fields(res))
         def check_inner(hash_):
             is_actual = self.join_select_result.is_actual_entry(hash_)
@@ -657,7 +655,7 @@ class ConditionsPage(Constructor, Tools, InputTools):
             return True
         if not condition_item:
             return
-        selected_condition_item = self.join_select_result.mapping[condition_item.text()]
+        selected_condition_item = self.join_select_result.pointer[condition_item.text()]
         check_inner(selected_condition_item)
 
     @Slot(str)
