@@ -40,13 +40,19 @@ class QThreadInstanceDecorator:
     threadpool.setMaxThreadCount(32)
     threadpool.setExpiryTimeout(5000)
 
-    def __init__(self, result_callback=None, in_new_qthread=True):
+    def __init__(self, result_callback: Optional[Callable] = None, in_new_qthread: bool = True):
+        if not callable(result_callback):
+            raise TypeError
+        if not isinstance(in_new_qthread, bool):
+            raise TypeError
         self.task = None
         self.end_f = result_callback
         self.create_new_task = in_new_qthread
 
     def __call__(self, call_f):
-        def outer(*a, create_thread: Optional[bool] = None, **k):
+        def outer(*a, create_thread: bool = True, **k):
+            if type(create_thread) is not bool:
+                raise TypeError
             self.create_new_task = create_thread if create_thread is not None else self.create_new_task
             if self.create_new_task:
                 self.task = Task(call_f, *a, **k)
