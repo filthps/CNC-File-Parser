@@ -29,7 +29,7 @@ class Task(QRunnable):
         if not isinstance(result, tuple):
             result = (result,)
         try:
-            tuple_ = dill.dumps(result)
+            tuple_ = dill.dumps(result, dill.HIGHEST_PROTOCOL)
         except dill.PicklingError as err:
             print("Не удалось вернуть данные главному потоку!")
         self.connection.data_transmission_signal.emit(tuple_)
