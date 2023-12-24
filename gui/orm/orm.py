@@ -3,9 +3,8 @@ import hashlib
 import sys
 import copy
 import threading
-import operator
 import warnings
-from typing import Union, Iterator, Iterable, Optional, Literal, Callable, Sized
+from typing import Union, Iterator, Iterable, Optional, Literal, Callable
 from collections import ChainMap
 from pymemcache.client.base import Client
 from pymemcache.exceptions import MemcacheError
@@ -619,6 +618,11 @@ class SpecialOrmItem(ORMItem):
             return default_val
         return result
 
+    @property
+    def hash_by_pk(self):
+        str_ = "".join(map(lambda i: str(i), self.get_primary_key_and_value(as_tuple=True)))
+        return int.from_bytes(hashlib.md5(str_.encode("utf-8")).digest(), "big")
+
 
 class SpecialOrmContainer(ORMItemQueue):
     """ Данный контейнер для использования в JoinedORMItem (результат вызова ORMHelper.join_select) """
@@ -631,6 +635,11 @@ class SpecialOrmContainer(ORMItemQueue):
             return default
         else:
             return val
+
+    def is_containing_the_same_nodes(self, other_items: "SpecialOrmContainer"):
+        if not isinstance(other_items, type(self)):
+            raise TypeError
+        return sum([n.hash_by_pk() for n in self]) == sum(map(lambda i: i.hash_by_pk(), other_items))
 
     def __getitem__(self, item: str):  # get by model name
         if not isinstance(item, str):
@@ -678,7 +687,6 @@ class ORMHelper(ORMAttributes):
                             "чем интервал отправки объектов в базу данных.")
         cls._was_initialized = True
         #  cls.drop_cache()
-        JoinedORMItem.set_adapter(cls)
         return cls
 
     @classmethod
@@ -913,7 +921,7 @@ class ORMHelper(ORMAttributes):
         name_and_model_dict = {m.__name__: m for m in models}
         valid_params()
 
-        def collect_db_data():
+        def collect_db_data(self_instance=None):
             def create_request() -> str:  # O(n) * O(m)
                 s = f"dirty_data = db.database.query({tuple(name_and_model_dict.keys())[0]})"  # O(l) * O(1)
                 for left_table_dot_field, right_table_dot_field in on.items():  # O(n)
@@ -946,7 +954,7 @@ class ORMHelper(ORMAttributes):
             exec(sql_text, {"db": cls}, ChainMap(*list(map(lambda x: {x.__name__: x}, models))))
             return add_items_to_orm_queue()
 
-        def collect_local_data() -> Iterator[SpecialOrmContainer]:
+        def collect_local_data(self_instance=None) -> Iterator[SpecialOrmContainer]:
             def collect_all():  # n**2!
                 nonlocal heap
                 for model in models:  # O(n)
@@ -1114,36 +1122,24 @@ class JoinedORMItem:
     class Pointer:
         """ Экземпляр данного объекта - оболочка для содержимого, обеспечивающая доступ к данным.
         Объект этого класса создан для 'слежки' за изменениями с UI."""
-        _wrap_items: Optional[Sized[str]] = None
-        _size = tuple()
+        _wrap_items = []
+        _joined_item: Optional["JoinedORMItem"] = None
         
         def __init__(self, result_items_from_select: Union[list[SpecialOrmContainer], tuple[SpecialOrmContainer]]):
             self._data = result_items_from_select
             self._is_valid()
-            self._size = tuple([hash(container) for container in self._data])
-
-        def is_actual(self, list_name: str = None):
-            if type(list_name) is not str:
-                raise TypeError
-            if not list_name:
-                if self.has_new_entries:
-                    return False
-                return all(map())
-
-        @property
-        def has_new_entries(self):
-            return not len(self._size) == len(self.__class__._size)
 
         @property
         def wrapper(self):
             return copy.copy(self._wrap_items)
-        
-        @wrapper.setter
-        def wrapper(self, val):
-            if type(val) is not list or type(val) is not tuple:
+
+        @classmethod
+        def set_wrapper(cls, val):
+            if type(val) is not list and type(val) is not tuple:
                 raise TypeError
             if not all(map(lambda x: isinstance(x, str), val)):
                 raise TypeError
+            cls._wrap_items = list(val)
 
         @property
         def values(self):
@@ -1153,54 +1149,84 @@ class JoinedORMItem:
         def items(self) -> dict[str, int]:
             return dict(zip(self._wrap_items, self._data))
 
+        def has_changes(self, item_name: str) -> bool:
+            if not self._joined_item:
+                raise ValueError
+            if type(item_name) is not str:
+                raise TypeError
+            if not self._wrap_items:
+                raise ValueError
+            if item_name not in self._wrap_items:
+                raise ValueError("Элемент не найден")
+            old_items_container = self._wrap_items[self._wrap_items.index(item_name)]
+            self._joined_item.refresh()
+            return old_items_container.__hash__() not in map(lambda x: hash(x), self._joined_item)
+
         def __getitem__(self, item: str):
             if not isinstance(item, str):
                 raise TypeError
             return self.items[item]
 
+        def __iter__(self):
+            return iter(self._wrap_items)
+
         def _is_valid(self):
             """ Если длины 2 последовательностей (см init) отличаются, то вызвать исключение """
+            if not self._wrap_items:
+                raise ValueError
             if not isinstance(self._data, (list, tuple,)):
                 raise TypeError
-            if len(self._wrap_items) < len(self._data):
+            if len(self._wrap_items) != len(self._data):
                 raise warnings.warn("Появились новые записи")
             if self._data:
                 if not all(map(lambda x: isinstance(x, (ORMItemQueue, SpecialOrmContainer,)), self._data)):
                     raise TypeError
-
-        @classmethod
-        @property
-        def _last_result_size(cls):
-            return cls._size
-
-        @classmethod
-        def set_new_last_result_size(cls, value_items: Iterable[SpecialOrmContainer]):
-            cls._size = tuple([ for container in value_items])
     get_local_nodes: Optional[Callable] = None
     get_nodes_from_database: Optional[Callable] = None
 
     def __init__(self):
-        if not self.get_local_nodes or not self.get_nodes_from_database:
-            raise ValueError
         if not callable(self.get_nodes_from_database) or not callable(self.get_local_nodes):
             raise TypeError
-        self._wrap_items: Optional[list] = None
+        self._merged: Optional[tuple] = tuple(self._merge())
 
     @property
     def pointer(self) -> Pointer:
-        return self.Pointer(tuple(self.__iter__()))
+        self.Pointer._joined_item = self
+        return self.Pointer(tuple(self))
 
     @pointer.setter
-    def pointer(self, items):
-        """ Обнулить текущий экземпляр Pointer (если есть), создать новый """
-        if not isinstance(items, list):
+    def pointer(self, items: list):
+        if not isinstance(items, (list, tuple,)):
             raise TypeError
         if not all(map(lambda val: type(val) is str, items)):
             raise ValueError
-        self.Pointer.wrapper = items
+        self.Pointer.set_wrapper(items)
+
+    @property
+    def has_new_items(self) -> bool:
+        fresh_values = self._merge()
+        result = not tuple((items.hash_by_pk for items in self)) == tuple(map(lambda x: x.hash_by_pk, fresh_values))
+        self._merged = tuple(fresh_values)
+        return result
+
+    def has_changes(self, hash_=None) -> bool:
+        if hash_ is not None and not isinstance(hash_, int):
+            raise TypeError
+        new_values = self._merge()
+        if hash_:
+            result = hash_ in map(lambda x: x, new_values)
+            self._merged = tuple(new_values)
+            return not result
+        return not tuple([hash(container) for container in self]) == tuple(map(lambda i: hash(i), self._merge()))
+
+    def refresh(self):
+        self._merged = tuple(self._merge())
 
     def __iter__(self):
-        return self._merge()
+        if self._merged is not None:
+            return iter(self._merged)
+        self._merged = tuple(self._merge())
+        return iter(self._merged)
 
     def __len__(self):
         return sum([1 for _ in self])
@@ -1219,50 +1245,21 @@ class JoinedORMItem:
             return False
         return item in map(lambda x: hash(x), self)
 
-    def __str__(self):
-        s = "Локальные: "
-        s += ", ".join([str(nodes) for nodes in self._local_nodes])
-        s += " из базы данных "
-        s += ", ".join([str(nodes) for nodes in self._database_nodes])
-        return s
-
-    def __repr__(self):
-        return f"{self.__class__.__name__}({[repr(orm_container) for orm_container in self._local_nodes]}, " \
-               f"{[repr(node) for node in self._database_nodes]})"
-
     def _merge(self) -> Iterator[SpecialOrmContainer]:
-        db: list[SpecialOrmContainer] = list(self.get_nodes_from_database())
-        locals_: list[SpecialOrmContainer] = list(self.get_local_nodes())
-        for db_group_index, db_nodes_group in enumerate(db):
-            for local_nodes_group_index, local_nodes_group in enumerate(locals_):
+        db_items = list(self.get_nodes_from_database())
+        local_items = list(self.get_local_nodes())
+        result = []
+        for db_group_index, db_nodes_group in enumerate(db_items):
+            for local_nodes_group_index, local_nodes_group in enumerate(local_items):
                 if db_nodes_group.is_containing_the_same_nodes(local_nodes_group):
                     db_nodes_group += local_nodes_group
-                    yield db_nodes_group
-                    del db[db_group_index]
-                    del locals_[local_nodes_group_index]
-        if db:
-            while db:
-                yield db.pop(0)
-
-
-if __name__ == "__main__":
-    from database.models import Machine, Condition, SearchString
-
-    def test_join_select():
-        adapter = ORMHelper
-        adapter.set_model(Machine)
-        #adapter.join_select(Condition, SearchString, on={"SearchString.strid": "Condition.stringid"})
-        print(list(adapter.get_items(Condition, _db_only=True)))
-        print(list(adapter.get_items(SearchString, _db_only=True)))
-    #  test_join_select()
-
-    def hash_test():
-        container = ORMItemQueue()
-        container.enqueue(_model=Machine, testval="123", testval2=435, _insert=True, machine_name="Heller")
-
-        container1 = ORMItemQueue()
-        container1.enqueue(_model=Machine, testval="123", testval2=45, _insert=True, machine_name="Helle")
-        print(hash(container[0]) == hash(container1[0]))
-        print(container1 == container)
-        print(container1.__hash__())
-    #  hash_test()
+                    result.append(db_nodes_group)
+                    del db_items[db_group_index]
+                    del local_items[local_nodes_group_index]
+        if db_items:
+            while db_items:
+                result.append(db_items.pop(0))
+        if local_items:
+            while local_items:
+                result.append(local_items.pop(0))
+        return iter(result)
