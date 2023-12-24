@@ -476,7 +476,7 @@ class ORMItemQueue(LinkedList):
 class SQLAlchemyQueryManager:
     MAX_RETRIES: Union[int, Literal["no-limit"]] = "no-limit"
     
-    def __init__(self, connection_path: str, nodes: "ORMItemQueue"):
+    def __init__(self, connection_path: str, nodes: "ORMItemQueue", testing=False):
         def valid_node_type():
             if type(nodes) is not ORMItemQueue:
                 raise ValueError
@@ -490,6 +490,7 @@ class SQLAlchemyQueryManager:
         self.remaining_nodes = ORMItemQueue()  # Отложенные для следующей попытки
         self._sorted: list[ORMItemQueue] = []  # [[save_point_group {pk: val,}], [save_point_group]...]
         self._query_objects: dict[Union[Insert, Update, Delete]] = {}  # {node_index: obj}
+        self._testing = testing
         
     def start(self):
         self._sort_nodes()  # Упорядочить, разбить по savepoint
@@ -505,6 +506,9 @@ class SQLAlchemyQueryManager:
         return self._query_objects
 
     def _open_connection_and_push(self):
+        if self._testing:
+            self.remaining_nodes = self._node_items
+            return
         sorted_data = self._sort_nodes()
         if not sorted_data:
             return
@@ -671,6 +675,7 @@ class ORMHelper(ORMAttributes):
     """
     MEMCACHED_PATH = "127.0.0.1:11211"
     DATABASE_PATH = DATABASE_PATH
+    TESTING = True  # Блокировка откравки в бд, блокировка dequeue с пролонгированием кеша очереди нод
     _memcache_connection: Optional[Client] = None
     _database_session = None
     RELEASE_INTERVAL_SECONDS = 5.0
@@ -1084,7 +1089,7 @@ class ORMHelper(ORMAttributes):
         путём итерации по ним, и попыткой сохранить в базу данных.
         :return: None
         """
-        database_adapter = SQLAlchemyQueryManager(DATABASE_PATH, cls.items)
+        database_adapter = SQLAlchemyQueryManager(DATABASE_PATH, cls.items, testing=cls.TESTING)
         database_adapter.start()
         cls._items = database_adapter.remaining_nodes or None
         cls.__set_cache()
