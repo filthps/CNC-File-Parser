@@ -1,15 +1,14 @@
-import itertools
 import re
 import uuid
-from typing import Optional, Union, Iterator, Iterable
+from typing import Optional, Union, Iterable
 from types import SimpleNamespace
 from PySide2.QtWidgets import QButtonGroup, QMainWindow, QListWidget, QListWidgetItem, QHBoxLayout, \
     QVBoxLayout, QGroupBox, QLineEdit, QRadioButton, QDialogButtonBox, QSpacerItem, QTextBrowser, QLabel, QFormLayout
 from PySide2.QtCore import Slot, Qt
-from PySide2.QtGui import QSyntaxHighlighter, QColor
+from PySide2.QtGui import QSyntaxHighlighter
 from gui.tools import Tools, Constructor, MyAbstractDialog
 from database.models import Condition, HeadVarible, HeadVarDelegation, SearchString
-from gui import orm
+from gui.orm.orm import JoinedORMItem, ORMHelper
 from gui.ui import Ui_main_window as Ui
 from gui.validation import Validator
 from gui.threading_ import QThreadInstanceDecorator
@@ -40,7 +39,7 @@ class AddConditionDialog(MyAbstractDialog, InputTools):
     """
     EMPTY_VARIBLES_TEXT = "<Переменные не найдены>"
 
-    def __init__(self, db: orm.ORMHelper, app: Optional["ConditionsPage"] = None, callback=None):
+    def __init__(self, db: ORMHelper, app: Optional["ConditionsPage"] = None, callback=None):
         self.ui = SimpleNamespace()
         self.ui.accept_button = QDialogButtonBox.Apply
         self.ui.button_box = QDialogButtonBox(self.ui.accept_button, orientation=Qt.Orientation.Horizontal)
@@ -433,14 +432,15 @@ class ConditionsPage(Constructor, Tools, InputTools):
     LINE_EDIT_DEFAULT_VALUES = {"lineEdit_28": ""}
     COMBO_BOX_DEFAULT_VALUES = {"parent_condition_combobox": "Выберите промежуточное условие"}
     RADIO_BUTTON_DEFAULT_VALUES = {"radioButton_26": True, "radioButton_45": True, "radioButton_28": True}
+    models = (SearchString, Condition, HeadVarDelegation)
 
     def __init__(self, app_instance: QMainWindow, ui: Ui):
         super().__init__(app_instance, ui)
         self.app = app_instance
         self.ui = ui
-        self.db_items: orm.ORMHelper = app_instance.db_items_queue
+        self.db_items: ORMHelper = app_instance.db_items_queue
         self.validator: Optional[ConditionsPageValidator] = None
-        self.join_select_result: Optional[orm.JoinedORMItem] = None
+        self.join_select_result: Optional[JoinedORMItem] = None
         self.current_item_hash = None
         self.add_condition_dialog: Optional[AddConditionDialog] = None
         self.field_signals_status = False
@@ -457,7 +457,7 @@ class ConditionsPage(Constructor, Tools, InputTools):
         self.connect_main_signals()
 
     def reload(self, in_new_qthread: bool = True):
-        def add_(select_result: orm.JoinedORMItem):
+        def add_(select_result: JoinedORMItem):
             def auto_select_condition_item(index=0) -> Optional[QListWidgetItem]:
                 m = self.ui.conditions_list.takeItem(index)
                 self.ui.conditions_list.addItem(m)
@@ -470,8 +470,8 @@ class ConditionsPage(Constructor, Tools, InputTools):
             [self.add_or_replace_condition_item_to_list_widget(group) for group in select_result]
             select_result.pointer = [self.ui.conditions_list.item(x).text() for x in range(self.ui.conditions_list.count())]
             self.join_select_result = select_result
-            self.connect_field_signals()
             self.connect_parent_condition_combo_box()
+            self.connect_field_signals()
             active_item = auto_select_condition_item()
             self.validator.current_condition = active_item
             if active_item is not None:
@@ -485,7 +485,7 @@ class ConditionsPage(Constructor, Tools, InputTools):
             return items
         load_()
 
-    def add_or_replace_condition_item_to_list_widget(self, data: orm.SpecialOrmContainer, replace=False):
+    def add_or_replace_condition_item_to_list_widget(self, data, replace=False):
         """ 1) Найти выбранный QListWidgetItem (со старым именем)
             2) Сгененировать новое имя
             3) Вставить новый QListWidgetItem (с новым именем) в индекс или в default_index """
@@ -647,16 +647,17 @@ class ConditionsPage(Constructor, Tools, InputTools):
                 return
 
         @QThreadInstanceDecorator(result_callback=lambda res: update_fields(res))
-        def check_inner(hash_):
-            is_actual = self.join_select_result.is_actual_entry(hash_)
-            if not is_actual:
+        def check_inner(name):
+            self.join_select_result.refresh()
+            is_not_actual = self.join_select_result.pointer.has_changes(name) or self.join_select_result.has_new_items
+            print(self.join_select_result.pointer.has_changes(name))
+            if is_not_actual:
                 self.reload(in_new_qthread=False)
                 return
-            return True
+            return self.join_select_result.pointer[name]
         if not condition_item:
             return
-        selected_condition_item = self.join_select_result.pointer[condition_item.text()]
-        check_inner(selected_condition_item)
+        check_inner(condition_item.text())
 
     @Slot(str)
     def change_parent_condition(self, item):
@@ -690,52 +691,26 @@ class ConditionsPage(Constructor, Tools, InputTools):
         set_changes(id_, selected_condition_id)
 
     def update_data(self, field_name, line_edit=False, radio_button=False):
-        def get_value_from_ui() -> dict:  # sql_col_name: val
-            def set_pk_to_values():
-                """ Требует orm """
-                nodes = self.join_select_result[self.current_item_hash]
-                node = nodes[model.__name__]
-                pk = node.get_primary_key_and_value()
-                val.update(pk)
-            val = {}
-            set_pk_to_values()
-            if radio_button:
-                val.update(self.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON[field_name])
-            if line_edit:
-                input_: QLineEdit = getattr(self.ui, field_name)
-                val.update({self.UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]: input_.text()})
-            return val
+        @QThreadInstanceDecorator(result_callback=lambda x: self.add_or_replace_condition_item_to_list_widget(x, replace=True))
+        def check_exists_and_update(item_name, data: dict, valid=False):
+            if self.join_select_result.pointer.has_changes(item_name):
+                return self.reload(in_new_qthread=False)
+            model = self.get_model_by_field_name(field_name)
+            self.db_items.set_item(_update=True, _ready=valid, _model=model, **data)
+            return self.join_select_result.pointer[item_name]
 
-        def update_hash():
-            """ Если нода изменилась(внесли нвоые значения, то нужно) """
-
-        @QThreadInstanceDecorator(
-            result_callback=lambda x:
-            self.add_or_replace_condition_item_to_list_widget(x, replace=True) if x and x is not True else None
-        )
-        def check_exists_and_update(hash_, val):
-            data = self.join_select_result.is_actual_entry(hash_)
-            print("is_actial", data)
-            if not data:
-                return False
-            print("Установка значений", val)
-            self.db_items.set_item(_update=True, _ready=is_valid, _model=model, **val)
-            test = self.join_select_result.is_actual_entry(hash_)
-            return test
         selected_condition = self.ui.conditions_list.currentItem()
         if not selected_condition:
             return
         condition_text = selected_condition.text()
-        item_hash = self.condition_map[condition_text]
-        sql_field_name = None
         if radio_button:
-            sql_field_name = list(self.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON[field_name].keys())[0]
+            data = list(self.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON[field_name].keys())[0]
+            check_exists_and_update(condition_text, data, valid=self.validator.refresh())
         if line_edit:
             sql_field_name = self.UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]
-        model = [model for fields, model in self.SQL_FIELD_NAMES.items() if sql_field_name in fields][0]
-        values = get_value_from_ui()
-        is_valid = self.validator.refresh()
-        check_exists_and_update(item_hash, values)
+            check_exists_and_update(condition_text,
+                                    {sql_field_name: getattr(self.ui, sql_field_name)},
+                                    valid=self.validator.refresh())
 
     def reset_fields(self):
         self.join_select_result = {}
