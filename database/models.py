@@ -3,6 +3,7 @@
 """
 import itertools
 from uuid import uuid4
+from abc import ABC, abstractmethod
 from sqlalchemy import String, Integer, Column, ForeignKey, Boolean, SmallInteger, Text, CheckConstraint
 from sqlalchemy.orm import relationship, InstrumentedAttribute
 from flask_sqlalchemy import SQLAlchemy as FlaskSQLAlchemy
@@ -94,6 +95,7 @@ class CustomModel(db.Model, ModelController):
     """
     __init__ = None
     __call__ = None
+    some_column = abstractmethod(Column(Integer, primary_key=True))
 
 
 class TaskDelegation(db.Model, ModelController):

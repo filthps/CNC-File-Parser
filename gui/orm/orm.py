@@ -661,7 +661,7 @@ class ORMHelper(ORMAttributes):
     при добавлении элемента в очередь таймер обнуляется.
     свойство items (инкапсулирован в _items) - ссылка на экземпляр ORMItemQueue.
     1) Инициализация
-        LinkToObj = ORMHelper.set_up(db.session)
+        LinkToObj = ORMHelper
     2) Установка ссылки на класс модели Flask-SqlAlchemy
         LinkToObj.set_model(CustomModel)
     3) Использование
@@ -676,23 +676,14 @@ class ORMHelper(ORMAttributes):
     MEMCACHED_PATH = "127.0.0.1:11211"
     DATABASE_PATH = DATABASE_PATH
     TESTING = True  # Блокировка откравки в бд, блокировка dequeue с пролонгированием кеша очереди нод
-    _memcache_connection: Optional[Client] = None
-    _database_session = None
     RELEASE_INTERVAL_SECONDS = 5.0
     CACHE_LIFETIME_HOURS = 6 * 60 * 60
+    _memcache_connection: Optional[Client] = None
+    _database_session = None
     _timer: Optional[threading.Timer] = None
     _items: ORMItemQueue = ORMItemQueue()  # Temp
     _model_obj: Optional[CustomModel] = None  # Текущий класс модели, присваиваемый автоматически всем экземплярам при добавлении в очередь
     _was_initialized = False
-
-    @classmethod
-    def initialization(cls):
-        if cls.CACHE_LIFETIME_HOURS <= cls.RELEASE_INTERVAL_SECONDS:
-            raise Exception("Срок жизни кеша, который хранит очередь сохраняемых объектов не может быть меньше, "
-                            "чем интервал отправки объектов в базу данных.")
-        cls._was_initialized = True
-        #  cls.drop_cache()
-        return cls
 
     @classmethod
     def set_model(cls, obj):
@@ -701,6 +692,8 @@ class ORMHelper(ORMAttributes):
         """
         cls.is_valid_model_instance(obj)
         cls._model_obj = obj
+        cls._is_valid_config()
+        return cls
 
     @classmethod
     @property
@@ -1098,12 +1091,26 @@ class ORMHelper(ORMAttributes):
 
     @classmethod
     def __getattribute__(cls, item):
-        if not cls._was_initialized and not item == "initialization":
-            raise AttributeError("В первую очередь заупскается метод 'initialization'")
+        if not cls._was_initialized and not item == "__new__":
+            raise AttributeError("В первую очередь заупскается метод '__new__'")
         if not item == "set_model":
             if cls._model_obj is None:
                 raise AttributeError("Сначала нужно установить модель Flask-SQLAlchemy, используя метод set_model")
         super().__getattribute__(item)
+
+    @classmethod
+    def _is_valid_config(cls):
+        if type(cls.TESTING) is not bool:
+            raise TypeError
+        if type(cls.CACHE_LIFETIME_HOURS) is not int and type(cls.CACHE_LIFETIME_HOURS) is not bool:
+            raise TypeError
+        if not isinstance(cls.RELEASE_INTERVAL_SECONDS, (int, float,)):
+            raise TypeError
+        if cls.CACHE_LIFETIME_HOURS <= cls.RELEASE_INTERVAL_SECONDS:
+            raise Exception("Срок жизни кеша, который хранит очередь сохраняемых объектов не может быть меньше, "
+                            "чем интервал отправки объектов в базу данных.")
+        cls._was_initialized = True
+        #  cls.drop_cache()
 
     @classmethod
     def __set_cache(cls):
