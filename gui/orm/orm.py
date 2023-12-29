@@ -16,6 +16,7 @@ from sqlalchemy.orm import Query, sessionmaker as session_factory, Session
 from sqlalchemy.exc import DisconnectionError, OperationalError, SQLAlchemyError
 from gui.datatype import LinkedList, LinkedListItem
 from database.models import CustomModel, DATABASE_PATH
+from gui.orm.exceptions import *
 
 
 class ORMAttributes:
@@ -24,8 +25,7 @@ class ORMAttributes:
         item = item()  # __new__
         if not hasattr(item, "__db_queue_primary_field_name__") or \
                 not hasattr(item, "__remove_pk__") or not hasattr(item, "column_names"):
-            raise TypeError("Значение атрибута model - неподходящего типа."
-                            "Используйте только кастомный класс - 'CustomModel', смотри models.")
+            raise InvalidModel
 
 
 class ORMItem(LinkedListItem, ORMAttributes):
@@ -52,7 +52,7 @@ class ORMItem(LinkedListItem, ORMAttributes):
         self.__transaction_counter = kw.pop('_count_retries', 0)  # Инкрементируется при вызове self.make_query()
         # Подразумевая тем самым, что это попытка сделать транзакцию в базу
         if not kw:
-            raise ValueError("Нет полей, нода пуста")
+            raise NodeEmptyData
         self._value = {}  # Содержимое - пары ключ-значение: поле таблицы бд: значение
         self._value.update(kw)
         self.__foreign_key_fields = tuple(self.__model.__table__.foreign_keys)
@@ -64,8 +64,7 @@ class ORMItem(LinkedListItem, ORMAttributes):
             db_primary_key = getattr(self.model(), "__primary_key__")
             local_primary_key = getattr(self.model(), "__db_queue_primary_field_name__")
             if db_primary_key not in self.value and local_primary_key not in self.value:
-                raise ValueError("Любая нода, будь то insert, update или delete,"
-                                 "должна иметь в значении поле первичного ключа (для базы данных) со значением!")
+                raise NodePrimaryKeyError
         check_queue_and_database_pk()
 
     @property
@@ -113,8 +112,7 @@ class ORMItem(LinkedListItem, ORMAttributes):
         try:
             value = self._value[key]
         except KeyError:
-            raise ValueError("Любая нода, будь то insert, update или delete,"
-                  "должна иметь в значении поле первичного ключа (для нод) со значением!")
+            raise NodePrimaryKeyError
         if only_value:
             return value
         return {key: value} if not as_tuple else (key, value,)
@@ -130,7 +128,7 @@ class ORMItem(LinkedListItem, ORMAttributes):
     @ready.setter
     def ready(self, status: bool):
         if not isinstance(status, bool):
-            raise TypeError("Статус готовности - это тип данных boolean")
+            raise NodeAttributeError("Статус готовности - это тип данных boolean")
         self.__is_ready = status
 
     @property
@@ -219,7 +217,7 @@ class ORMItem(LinkedListItem, ORMAttributes):
         if not isinstance(is_insert, bool) or not isinstance(is_update, bool) or not isinstance(is_delete, bool):
             raise TypeError
         if sum((is_insert, is_update, is_delete,)) != 1:
-            raise ValueError("Неверно установлен SQL-DML")
+            raise NodeDMLTypeError
 
 
 class EmptyOrmItem(LinkedListItem):
@@ -355,8 +353,7 @@ class ORMItemQueue(LinkedList):
         """
         ORMItem.is_valid_model_instance(model)
         if len(primary_key_data) != 1:
-            raise ValueError("Параметр primary_key_data содержит название поля, которое является первичным ключом модели"
-                             "и значение для этого поля")
+            raise NodePrimaryKeyError
         nodes = iter(self)
         while nodes:  # O(n) * O(k)
             try:
@@ -645,13 +642,13 @@ class SpecialOrmContainer(ORMItemQueue):
             raise TypeError
         return sum([n.hash_by_pk() for n in self]) == sum(map(lambda i: i.hash_by_pk(), other_items))
 
-    def __getitem__(self, item: str):  # get by model name
-        if not isinstance(item, str):
+    def __getitem__(self, model_name: str):
+        if not isinstance(model_name, str):
             raise TypeError
         for node in self:
-            if node.model.__name__ == item:
+            if node.model.__name__ == model_name:
                 return node
-        raise KeyError
+        raise DoesNotExists
 
 
 class ORMHelper(ORMAttributes):
@@ -834,7 +831,7 @@ class ORMHelper(ORMAttributes):
         for db_item in items_db:  # O(n)
             db_data: dict = db_item.__dict__
             if pk_name not in db_data:
-                raise Exception("Несогласованность данных в кэше и базе данных. ""Возможно, кэш сильно устарел.")
+                raise ORMExternalDataError
             left_node: ORMItem = cls.items.get_node(model, **{pk_name: db_data[pk_name]})
             if left_node:
                 nodes_implements_db.enqueue(**left_node.get_attributes())
@@ -886,13 +883,13 @@ class ORMHelper(ORMAttributes):
                 raise ValueError
             if _where:
                 if type(_where) is not dict:
-                    raise ValueError
+                    raise TypeError
                 for v in _where.values():
                     if not isinstance(v, dict):
                         raise TypeError
                     for key, value in v.items():
                         if type(key) is not str:
-                            raise TypeError("Наиенование столбца может быть только строкой")
+                            raise TypeError("Наименование столбца может быть только строкой")
                         if not isinstance(value, (str, int,)):
                             raise TypeError
             if len(on) != len(models) - 1:
@@ -1052,13 +1049,13 @@ class ORMHelper(ORMAttributes):
             raise TypeError
         if isinstance(field_or_fields, (tuple, list, set, frozenset,)):
             if primary_key_field_name in field_or_fields:
-                raise KeyError("Нельзя удалить поле, которое является первичным ключом")
+                raise NodePrimaryKeyError("Нельзя удалить поле, которое является первичным ключом")
             for field in field_or_fields:
                 if field in node_data:
                     del node_data[field]
         if type(field_or_fields) is str:
             if primary_key_field_name == field_or_fields:
-                raise KeyError("Нельзя удалить поле, которое является первичным ключом")
+                raise NodePrimaryKeyError("Нельзя удалить поле, которое является первичным ключом")
             if field_or_fields in node_data:
                 del node_data[field_or_fields]
         cls.items.enqueue(**node_data)
@@ -1070,7 +1067,7 @@ class ORMHelper(ORMAttributes):
         cls.is_valid_model_instance(model)
         items = cls.items.search_nodes(model, **attrs)
         if len(items) > 1:
-            raise ValueError(f"В очреди больше одной ноды с данными параметрами: {attrs}")
+            warnings.warn(f"В очреди больше одной ноды/нод, - {len(items)}: {items}")
         if len(items):
             return True
         return False
@@ -1092,10 +1089,10 @@ class ORMHelper(ORMAttributes):
     @classmethod
     def __getattribute__(cls, item):
         if not cls._was_initialized and not item == "__new__":
-            raise AttributeError("В первую очередь заупскается метод '__new__'")
+            raise ORMInitializationError("В первую очередь заупскается метод '__new__'")
         if not item == "set_model":
             if cls._model_obj is None:
-                raise AttributeError("Сначала нужно установить модель Flask-SQLAlchemy, используя метод set_model")
+                raise ORMInitializationError("Сначала нужно установить модель Flask-SQLAlchemy, используя метод set_model")
         super().__getattribute__(item)
 
     @classmethod
@@ -1107,7 +1104,7 @@ class ORMHelper(ORMAttributes):
         if not isinstance(cls.RELEASE_INTERVAL_SECONDS, (int, float,)):
             raise TypeError
         if cls.CACHE_LIFETIME_HOURS <= cls.RELEASE_INTERVAL_SECONDS:
-            raise Exception("Срок жизни кеша, который хранит очередь сохраняемых объектов не может быть меньше, "
+            raise ORMInitializationError("Срок жизни кеша, который хранит очередь сохраняемых объектов не может быть меньше, "
                             "чем интервал отправки объектов в базу данных.")
         cls._was_initialized = True
         #  cls.drop_cache()
@@ -1134,7 +1131,7 @@ class JoinedORMItem:
     class Pointer:
         """ Экземпляр данного объекта - оболочка для содержимого, обеспечивающая доступ к данным.
         Объект этого класса создан для 'слежки' за изменениями с UI."""
-        _wrap_items = []
+        _wrap_items: Optional[list[str]] = None
         _joined_item: Optional["JoinedORMItem"] = None
         
         def __init__(self, result_items_from_select: Union[list[SpecialOrmContainer], tuple[SpecialOrmContainer]]):
@@ -1162,8 +1159,7 @@ class JoinedORMItem:
             return dict(zip(self._wrap_items, self._data))
 
         def has_changes(self, item_name: str) -> bool:
-            if not self._joined_item:
-                raise ValueError
+            self._is_valid()
             if type(item_name) is not str:
                 raise TypeError
             if not self._wrap_items:
@@ -1182,9 +1178,21 @@ class JoinedORMItem:
         def __iter__(self):
             return iter(self._wrap_items)
 
+        def __repr__(self):
+            return f"{self.__class__.__name__}({self._data})"
+
+        def __str__(self):
+            return "".join(map(lambda x: str(x), self._data))
+
         def _is_valid(self):
             """ Если длины 2 последовательностей (см init) отличаются, то вызвать исключение """
-            if not self._wrap_items:
+            if self._joined_item is None:
+                raise JoinedItemPointerError(
+                    "Экземпляр класса JoinedItemResult не установлен в атрибут класса _joined_item"
+                )
+            if type(self._joined_item) is not JoinedORMItem:
+                raise TypeError
+            if self._wrap_items is None:
                 raise ValueError
             if not isinstance(self._data, (list, tuple,)):
                 raise TypeError
@@ -1247,7 +1255,7 @@ class JoinedORMItem:
         if not isinstance(item, str):
             raise TypeError
         if item not in self:
-            raise KeyError
+            raise DoesNotExists
         for group in self:
             if hash(group) == item:
                 return group
