@@ -1,37 +1,78 @@
+""" Тесты рассчитаны под PostreSQL диалект! """
 import time
 import unittest
+import sys
+from sqlalchemy.engine import create_engine
+from sqlalchemy.orm.session import sessionmaker
 from sqlalchemy.exc import InternalError, IntegrityError, PendingRollbackError
+from database.procedures import init_all_triggers
 from .models import db, Cnc, Machine, Comment, Insert, Uncomment, Rename, Condition, Replace, Numeration, Remove, \
-    Operation, HeadVarible, HeadVarDelegation, TaskDelegation
+    OperationDelegation, HeadVarible, HeadVarDelegation, TaskDelegation, ModelController, DATABASE_PATH_FOR_TESTS
+
+
+def is_database_empty(s_factory: sessionmaker, is_empty=True, tables_count=15) -> bool:
+    time.sleep(1)  # Параллелизм будет?! На всякий случай подожду, если СУБД не успеет
+
+    session = s_factory()
+    exists_tables_counter = session.execute('SELECT COUNT(table_name) '
+                                            'FROM information_schema."tables" '
+                                            'WHERE table_type=\'BASE TABLE\' AND table_schema=\'public\';').scalar()
+    if exists_tables_counter and is_empty:
+        return is_database_empty(s_factory)
+    if not is_empty:
+        if tables_count != exists_tables_counter:
+            return is_database_empty(s_factory, is_empty=is_empty, tables_count=tables_count)
+    return True
+
+
+def truncate_all(f):
+    def w(self: "TestCncModel"):
+        db.drop_all()
+        if is_database_empty(self.session_factory):
+            db.create_all()
+            init_all_triggers()
+            if is_database_empty(self.session_factory, is_empty=False):
+                return f(self)
+    return w
 
 
 class TestCncModel(unittest.TestCase):
-
     def setUp(self) -> None:
-        self.test_session = db.session
+        self.engine = create_engine(DATABASE_PATH_FOR_TESTS)
+        self.session_factory = sessionmaker(bind=self.engine)
 
     def test_create_valid_orm_cnc_object(self):
         valid_orm_obj = Cnc(name="Fidia", comment_symbol=",")
+        self.assertTrue(isinstance(valid_orm_obj, ModelController))
         self.assertTrue(isinstance(valid_orm_obj, db.Model))
 
+    @truncate_all
     def test_save_valid_instance(self):
+        session = self.session_factory()
         valid_orm_obj = Cnc(name="Fidia", comment_symbol=",")
-        self.test_session.add(valid_orm_obj)
+        session.add(valid_orm_obj)
         exists_status = False
-        for instance in self.test_session:
+        for instance in session:
             if valid_orm_obj == instance:
                 exists_status = True
                 break
         self.assertTrue(exists_status, msg="Объект не добавился в сессию")
-        self.test_session.commit()
+        session.commit()
+
+    def test_exists_new_instance(self):
+        self.assertEqual(self.session_factory().execute("SELECT COUNT(*) "
+                                                        "FROM cnc "
+                                                        "WHERE name='Fidia'").scalar(), 1)
 
     def test_save_invalid__case_empty_name(self):
         invalid_orm_obj = Cnc(name="", comment_symbol=",")
-        self.test_session.add(invalid_orm_obj)
+        session = self.session_factory()
+        session.add(invalid_orm_obj)
         with self.assertRaises((PendingRollbackError, IntegrityError,)):
-            self.test_session.commit()
+            session.commit()
 
     def test_save_invalid__case_empty_comment_symbol(self):
+        session = self.session_factory()
         invalid_orm_obj = Cnc(name="Ram", comment_symbol="")
         self.test_session.add(invalid_orm_obj)
         with self.assertRaises((PendingRollbackError, IntegrityError,)):
@@ -41,6 +82,7 @@ class TestCncModel(unittest.TestCase):
         """
         Этот экзмеляр сущности уже создан
         """
+        session = self.session_factory()
         valid_orm_obj = Cnc(name="NC200", comment_symbol=",")
         self.test_session.add(valid_orm_obj)
         self.test_session.commit()
@@ -56,28 +98,29 @@ class TestModelMachine(unittest.TestCase):
     Запускать тесты по одному
     """
     def setUp(self) -> None:
-        self.test_session = db.session
-        self.cnc_name = "NC210"
-        self.machine_name = "Heller"
+        self.engine = create_engine(DATABASE_PATH_FOR_TESTS)
+        self.session_factory = sessionmaker(bind=self.engine)
 
-    def get_or_create_cnc(self):
-        instance = Cnc.query.filter_by(name=self.cnc_name).first()
+    def get_or_create_cnc(self, session):
+        instance = Cnc.query.filter_by(name="NC210").first()
         if instance is None:
-            obj = Cnc(name=self.cnc_name, comment_symbol="/")
+            obj = Cnc(name="NC210", comment_symbol="/")
             self.test_session.add(obj)
             self.test_session.commit()
-            instance = Cnc.query.filter_by(name=self.cnc_name).first()
+            instance = Cnc.query.filter_by(name="NC210").first()
         return instance
 
     def test_create_valid_orm_machine_object(self):
-        cnc_instance = self.get_or_create_cnc()
-        valid_orm_obj = Machine(cncid=cnc_instance.cncid, machine_name=self.machine_name,
+        session = self.session_factory()
+        cnc_instance = self.get_or_create_cnc(session)
+        valid_orm_obj = Machine(cncid=cnc_instance.cncid, machine_name="Heller",
                                 input_catalog="C://Heller", output_catalog="D://Heller")
         self.assertTrue(isinstance(valid_orm_obj, db.Model))
 
     def test_save_valid_instance(self):
+        session = self.session_factory()
         cnc_instance = self.get_or_create_cnc()
-        valid_orm_obj = Machine(cncid=cnc_instance.cncid, machine_name=self.machine_name,
+        valid_orm_obj = Machine(cncid=cnc_instance.cncid, machine_name="Heller",
                                 input_catalog="C://Heller", output_catalog="D://Heller")
         self.test_session.add(valid_orm_obj)
         exists_status = False
@@ -88,9 +131,15 @@ class TestModelMachine(unittest.TestCase):
         self.assertTrue(exists_status, msg="Объект не добавился в сессию")
         self.test_session.commit()
 
+    def test_exists_new_instance(self):
+        session = self.session_factory()
+        # todo
+        ...
+
     def test_update_machine_instance(self):
+        session = self.session_factory()
         cnc_instance = self.get_or_create_cnc()
-        valid_orm_obj = Machine(cncid=cnc_instance.cncid, machine_name=self.machine_name,
+        valid_orm_obj = Machine(cncid=cnc_instance.cncid, machine_name="Heller",
                                 x_over=4000,
                                 input_catalog="C://Heller", output_catalog="D://Heller")
         self.test_session.add(valid_orm_obj)
@@ -101,15 +150,21 @@ class TestModelMachine(unittest.TestCase):
                 break
         self.assertTrue(exists_status, msg="Объект не добавился в сессию")
         self.test_session.commit()
-        saved_instance = Machine.query.filter_by(machine_name=self.machine_name).first()
+        saved_instance = Machine.query.filter_by(machine_name="Heller").first()
         setattr(saved_instance, "x_over", 200)
         setattr(saved_instance, "y_over", 200)
         self.test_session.add(saved_instance)
         self.test_session.commit()
 
+    def test_updated_instance(self):
+        session = self.session_factory()
+        ...
+        # todo
+
     def test_save_invalid_instance___case_empty_input_catalog_value(self):
+        session = self.session_factory()
         cnc_instance = self.get_or_create_cnc()
-        invalid_orm_obj = Machine(cncid=cnc_instance.cncid, machine_name=self.machine_name,
+        invalid_orm_obj = Machine(cncid=cnc_instance.cncid, machine_name="Heller",
                                 input_catalog="", output_catalog="D://Heller")
         self.test_session.add(invalid_orm_obj)
         exists_status = False
@@ -122,8 +177,9 @@ class TestModelMachine(unittest.TestCase):
             self.test_session.commit()
 
     def test_save_invalid_instance___case_empty_output_catalog_value(self):
+        session = self.session_factory()
         cnc_instance = self.get_or_create_cnc()
-        invalid_orm_obj = Machine(cncid=cnc_instance.cncid, machine_name=self.machine_name,
+        invalid_orm_obj = Machine(cncid=cnc_instance.cncid, machine_name="Heller",
                                 input_catalog="C://Heller", output_catalog="")
         self.test_session.add(invalid_orm_obj)
         exists_status = False
@@ -136,6 +192,7 @@ class TestModelMachine(unittest.TestCase):
             self.test_session.commit()
 
     def test_save_invalid_instance__case_empty_machine_name_value(self):
+        session = self.session_factory()
         cnc_instance = self.get_or_create_cnc()
         invalid_orm_obj = Machine(cncid=cnc_instance.cncid, machine_name="",
                                   input_catalog="C://Heller", output_catalog="D://Heller")
@@ -153,13 +210,14 @@ class TestModelMachine(unittest.TestCase):
         """
         Этот экзмеляр сущности уже создан
         """
+        session = self.session_factory()
         cnc_instance = self.get_or_create_cnc()
-        valid_orm_obj = Machine(cncid=cnc_instance.cncid, machine_name=self.machine_name,
+        valid_orm_obj = Machine(cncid=cnc_instance.cncid, machine_name="Heller",
                                 input_catalog="C://Heller", output_catalog="D://Heller")
         self.test_session.add(valid_orm_obj)
         self.test_session.commit()
         time.sleep(1)
-        other_valid_same_object = Machine(cncid=cnc_instance.cncid, machine_name=self.machine_name,
+        other_valid_same_object = Machine(cncid=cnc_instance.cncid, machine_name="Heller",
                                           input_catalog="C://Heller", output_catalog="D://Heller")
         self.test_session.add(other_valid_same_object)
         with self.assertRaises((InternalError, IntegrityError,)):
@@ -167,12 +225,9 @@ class TestModelMachine(unittest.TestCase):
 
 
 class TestModelComment(unittest.TestCase):
-    """
-    Запускать тесты по одному
-    """
-
     def setUp(self) -> None:
-        self.test_session = db.session
+        self.engine = create_engine(DATABASE_PATH_FOR_TESTS)
+        self.session_factory = sessionmaker(bind=self.engine)
 
     def test_create_valid_orm_object(self):
         valid_orm_obj = Comment(findstr="r", iffullmatch=False, ifcontains=True)
@@ -240,11 +295,9 @@ class TestModelComment(unittest.TestCase):
 
 
 class TestModelUncomment(unittest.TestCase):
-    """
-    Запускать тесты по одному
-    """
     def setUp(self) -> None:
-        self.test_session = db.session
+        self.engine = create_engine(DATABASE_PATH_FOR_TESTS)
+        self.session_factory = sessionmaker(bind=self.engine)
 
     def test_create_valid_orm_object(self):
         valid_orm_obj = Uncomment(findstr="r", iffullmatch=False, ifcontains=True)
@@ -312,11 +365,9 @@ class TestModelUncomment(unittest.TestCase):
 
 
 class TestModelRename(unittest.TestCase):
-    """
-    Запускать тесты по одному
-    """
     def setUp(self) -> None:
-        self.test_session = db.session
+        self.engine = create_engine(DATABASE_PATH_FOR_TESTS)
+        self.session_factory = sessionmaker(bind=self.engine)
 
     def test_create_valid_orm_rename_object(self):
         valid_orm_obj = Rename(uppercase=True, lowercase=False,
@@ -380,11 +431,9 @@ class TestModelRename(unittest.TestCase):
 
 
 class TestModelCondition(unittest.TestCase):
-    """
-        Запускать тесты по одному
-        """
     def setUp(self) -> None:
-        self.test_session = db.session
+        self.engine = create_engine(DATABASE_PATH_FOR_TESTS)
+        self.session_factory = sessionmaker(bind=self.engine)
 
     def test_create_valid_orm_condition_object(self):
         valid_orm_obj = Condition(targetstr="xyz", isntfind=True)
@@ -464,12 +513,9 @@ class TestModelCondition(unittest.TestCase):
 
 
 class TestModelInsert(unittest.TestCase):
-    """
-    Запускать тесты по одному
-    """
-
     def setUp(self) -> None:
-        self.test_session = db.session
+        self.engine = create_engine(DATABASE_PATH_FOR_TESTS)
+        self.session_factory = sessionmaker(bind=self.engine)
 
     def test_create_valid_orm_comment_object(self):
         valid_orm_obj = Insert(target="G0", item="G1", after=True)
@@ -561,11 +607,9 @@ class TestModelInsert(unittest.TestCase):
 
 
 class TestModelReplace(unittest.TestCase):
-    """
-    Запускать тесты по одному
-    """
     def setUp(self) -> None:
-        self.test_session = db.session
+        self.engine = create_engine(DATABASE_PATH_FOR_TESTS)
+        self.session_factory = sessionmaker(bind=self.engine)
 
     def test_create_valid_orm_rename_object(self):
         valid_orm_obj = Replace(findstr="G0", item="G1", ifcontains=True)
@@ -621,11 +665,9 @@ class TestModelReplace(unittest.TestCase):
 
 
 class TestModelNumeration(unittest.TestCase):
-    """
-    Запускать тесты по одному
-    """
     def setUp(self) -> None:
-        self.test_session = db.session
+        self.engine = create_engine(DATABASE_PATH_FOR_TESTS)
+        self.session_factory = sessionmaker(bind=self.engine)
 
     def test_create_valid_orm_object(self):
         valid_orm_obj = Numeration()
@@ -708,11 +750,9 @@ class TestModelNumeration(unittest.TestCase):
 
 
 class TestModelRemove(unittest.TestCase):
-    """
-    Запускать тесты по одному
-    """
     def setUp(self) -> None:
-        self.test_session = db.session
+        self.engine = create_engine(DATABASE_PATH_FOR_TESTS)
+        self.session_factory = sessionmaker(bind=self.engine)
 
     def test_create_valid_orm_object(self):
         valid_orm_obj = Remove(findstr="G0", ifcontains=True)
@@ -768,12 +808,9 @@ class TestModelRemove(unittest.TestCase):
 
 
 class TestModelOperation(unittest.TestCase):
-    """
-    Запускать тесты по одному
-    """
-
     def setUp(self) -> None:
-        self.test_session = db.session
+        self.engine = create_engine(DATABASE_PATH_FOR_TESTS)
+        self.session_factory = sessionmaker(bind=self.engine)
 
     def get_or_create_insert(self):
         instance = Insert.query.first()
@@ -803,11 +840,11 @@ class TestModelOperation(unittest.TestCase):
         return instance
 
     def test_create_valid_orm_object(self):
-        valid_orm_obj = Operation(insertid=self.get_or_create_insert().insid)
+        valid_orm_obj = OperationDelegation(insertid=self.get_or_create_insert().insid)
         self.assertTrue(isinstance(valid_orm_obj, db.Model))
 
     def test_save_valid_instance(self):
-        valid_orm_obj = Operation(insertid=self.get_or_create_insert().insid)
+        valid_orm_obj = OperationDelegation(insertid=self.get_or_create_insert().insid)
         self.test_session.add(valid_orm_obj)
         exists_status = False
         for instance in self.test_session:
@@ -822,11 +859,11 @@ class TestModelOperation(unittest.TestCase):
         Этот экзмеляр сущности уже создан
         """
         insert_id = self.get_or_create_insert().insid
-        valid_orm_obj = Operation(insertid=insert_id)
+        valid_orm_obj = OperationDelegation(insertid=insert_id)
         self.test_session.add(valid_orm_obj)
         self.test_session.commit()
         time.sleep(1)
-        other_valid_same_object = Operation(insertid=insert_id)
+        other_valid_same_object = OperationDelegation(insertid=insert_id)
         self.test_session.add(other_valid_same_object)
         with self.assertRaises((InternalError, IntegrityError,)):
             self.test_session.commit()
@@ -837,7 +874,7 @@ class TestModelOperation(unittest.TestCase):
         """
         insert_id = self.get_or_create_insert().insid
         comment_id = self.get_or_create_comment().commentid
-        valid_orm_obj = Operation(insertid=insert_id, commentid=comment_id)
+        valid_orm_obj = OperationDelegation(insertid=insert_id, commentid=comment_id)
         self.test_session.add(valid_orm_obj)
         with self.assertRaises((InternalError, IntegrityError,)):
             self.test_session.commit()
@@ -846,19 +883,16 @@ class TestModelOperation(unittest.TestCase):
         """
         Этот экзмеляр сущности уже создан
         """
-        valid_orm_obj = Operation()
+        valid_orm_obj = OperationDelegation()
         self.test_session.add(valid_orm_obj)
         with self.assertRaises((InternalError, IntegrityError,)):
             self.test_session.commit()
 
 
 class TestModelHeadVarible(unittest.TestCase):
-    """
-    Запускать тесты по одному
-    """
-
     def setUp(self) -> None:
-        self.test_session = db.session
+        self.engine = create_engine(DATABASE_PATH_FOR_TESTS)
+        self.session_factory = sessionmaker(bind=self.engine)
 
     def test_create_valid_orm_object(self):
         valid_orm_obj = HeadVarible(name="tool", separator=":", select_all=True)
@@ -953,12 +987,9 @@ class TestModelHeadVarible(unittest.TestCase):
 
 
 class TestModelHeadVarDelegation(unittest.TestCase):
-    """
-    Запускать тесты по одному
-    """
-
     def setUp(self) -> None:
-        self.test_session = db.session
+        self.engine = create_engine(DATABASE_PATH_FOR_TESTS)
+        self.session_factory = sessionmaker(bind=self.engine)
 
     def get_or_create_headvar(self):
         instance = HeadVarible.query.first()
@@ -1071,12 +1102,9 @@ class TestModelHeadVarDelegation(unittest.TestCase):
 
 
 class TestModelTaskDelegation(unittest.TestCase):
-    """
-        Запускать тесты по одному
-        """
-
     def setUp(self) -> None:
-        self.test_session = db.session
+        self.engine = create_engine(DATABASE_PATH_FOR_TESTS)
+        self.session_factory = sessionmaker(bind=self.engine)
 
     def get_or_create_rename(self):
         instance = Rename.query.first()
@@ -1088,12 +1116,12 @@ class TestModelTaskDelegation(unittest.TestCase):
         return instance
 
     def get_or_create_operation(self):
-        instance = Operation.query.first()
+        instance = OperationDelegation.query.first()
         if instance is None:
-            instance = Operation(renameid=self.get_or_create_rename().renameid)
+            instance = OperationDelegation(renameid=self.get_or_create_rename().renameid)
             self.test_session.add(instance)
             self.test_session.commit()
-            instance = Operation.query.first()
+            instance = OperationDelegation.query.first()
         return instance
 
     def get_or_create_cnc(self):
