@@ -4,18 +4,21 @@
 import itertools
 from uuid import uuid4
 from abc import ABC, abstractmethod
+from dotenv import load_dotenv
 from sqlalchemy import String, Integer, Column, ForeignKey, Boolean, SmallInteger, Text, CheckConstraint
 from sqlalchemy.orm import relationship, InstrumentedAttribute
 from flask_sqlalchemy import SQLAlchemy as FlaskSQLAlchemy
 from flask import Flask
 
 
+load_dotenv()
+
 DATABASE_PATH = "postgresql://postgres:g8ln7ze5vm6a@localhost:5432/intex1"
+DATABASE_PATH_FOR_TESTS = "postgresql://testuser:0000@localhost:5432/testdb"
 RESERVED_WORDS = ("__insert", "__update", "__delete", "__ready", "__model", "__primary_key__", "column_names")  # Используются в классе ORMHelper
 
-
 app = Flask(__name__)
-app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_PATH
+app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_PATH_FOR_TESTS
 db = FlaskSQLAlchemy(app)
 
 
@@ -88,14 +91,13 @@ OPERATION_TYPES = (
 )
 
 
-class CustomModel(db.Model, ModelController):
+#  class CustomModel(db.Model, ModelController):
+class CustomModel:
     """
     Абстрактный класс для аннотации типов.
     класс модели SQLAlchemy для использования в классе ORMHelper модуля tools!
     """
-    __init__ = None
-    __call__ = None
-    some_column = abstractmethod(Column(Integer, primary_key=True))
+    some_column = ...  # Column(Integer, primary_key=True))
 
 
 class TaskDelegation(db.Model, ModelController):

@@ -4,18 +4,19 @@ import sys
 import copy
 import threading
 import warnings
-from typing import Union, Iterator, Iterable, Optional, Literal, Callable
+from typing import Union, Iterator, Iterable, Optional, Literal, Callable, Type
 from collections import ChainMap
 from pymemcache.client.base import Client
 from pymemcache.exceptions import MemcacheError
 from pymemcache_dill_serde import DillSerde
+from pymemcache.test.utils import MockMemcacheClient
 from psycopg2.errors import Error as PsycopgError
 from sqlalchemy import create_engine
 from sqlalchemy.sql.dml import Insert, Update, Delete
 from sqlalchemy.orm import Query, sessionmaker as session_factory, Session
 from sqlalchemy.exc import DisconnectionError, OperationalError, SQLAlchemyError
 from gui.datatype import LinkedList, LinkedListItem
-from database.models import CustomModel, DATABASE_PATH
+from database.models import CustomModel, DATABASE_PATH, DATABASE_PATH_FOR_TESTS
 from gui.orm.exceptions import *
 
 
@@ -503,9 +504,6 @@ class SQLAlchemyQueryManager:
         return self._query_objects
 
     def _open_connection_and_push(self):
-        if self._testing:
-            self.remaining_nodes = self._node_items
-            return
         sorted_data = self._sort_nodes()
         if not sorted_data:
             return
@@ -672,14 +670,15 @@ class ORMHelper(ORMAttributes):
     """
     MEMCACHED_PATH = "127.0.0.1:11211"
     DATABASE_PATH = DATABASE_PATH
-    TESTING = True  # Блокировка откравки в бд, блокировка dequeue с пролонгированием кеша очереди нод
+    DATABASE_MOCK_PATH = DATABASE_PATH_FOR_TESTS
+    TESTING = False  # Блокировка откравки в бд, блокировка dequeue с пролонгированием кеша очереди нод
     RELEASE_INTERVAL_SECONDS = 5.0
     CACHE_LIFETIME_HOURS = 6 * 60 * 60
-    _memcache_connection: Optional[Client] = None
+    _memcache_connection: Optional[Union[Client, MockMemcacheClient]] = None
     _database_session = None
     _timer: Optional[threading.Timer] = None
     _items: ORMItemQueue = ORMItemQueue()  # Temp
-    _model_obj: Optional[CustomModel] = None  # Текущий класс модели, присваиваемый автоматически всем экземплярам при добавлении в очередь
+    _model_obj: Optional[Type[CustomModel]] = None  # Текущий класс модели, присваиваемый автоматически всем экземплярам при добавлении в очередь
     _was_initialized = False
 
     @classmethod
@@ -696,6 +695,13 @@ class ORMHelper(ORMAttributes):
     @property
     def cache(cls):
         if cls._memcache_connection is None:
+            if cls.TESTING:
+                try:
+                    cls._memcache_connection = MockMemcacheClient(cls.MEMCACHED_PATH, serde=DillSerde)
+                except MemcacheError:
+                    print("Ошибка инициализации тестового mermcache сервера")
+                    raise MemcacheError
+                return cls._memcache_connection
             try:
                 cls._memcache_connection = Client(cls.MEMCACHED_PATH, serde=DillSerde)
             except MemcacheError:
@@ -714,7 +720,7 @@ class ORMHelper(ORMAttributes):
     def database(cls) -> Session:
         if cls._database_session is None:
             try:
-                engine = create_engine(DATABASE_PATH)
+                engine = create_engine(cls.DATABASE_PATH if not cls.TESTING else cls.DATABASE_MOCK_PATH)
                 session_f = session_factory(bind=engine)
                 cls._database_session = session_f()
             except DisconnectionError:
@@ -756,7 +762,7 @@ class ORMHelper(ORMAttributes):
         cls._timer = cls.init_timer()
 
     @classmethod
-    def get_item(cls, _model: Optional[CustomModel] = None, _only_db=False, _only_queue=False, **filter_) -> dict:
+    def get_item(cls, _model: Optional[Type[CustomModel]] = None, _only_db=False, _only_queue=False, **filter_) -> dict:
         """
         1) Получаем запись из таблицы в виде словаря
         2) Получаем данные из очереди в виде словаря
@@ -796,7 +802,7 @@ class ORMHelper(ORMAttributes):
         return updated_node_data
 
     @classmethod
-    def get_items(cls, _model: Optional[CustomModel] = None, _db_only=False, _queue_only=False, **attrs) -> Iterator[dict]:  # todo: придумать пагинатор
+    def get_items(cls, _model: Optional[Type[CustomModel]] = None, _db_only=False, _queue_only=False, **attrs) -> Iterator[dict]:  # todo: придумать пагинатор
         """
         1) Получаем запись из таблицы в виде словаря (CustomModel.query.all())
         2) Получаем данные из кеша, все элементы, у которых данная модель
