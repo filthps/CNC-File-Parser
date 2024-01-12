@@ -126,6 +126,8 @@ class Machine(db.Model, ModelController):
     operations = relationship("OperationDelegation", secondary=TaskDelegation.__table__)
     __table_args__ = (
         CheckConstraint("machine_name!=''", name="machine_name_empty"),
+        CheckConstraint(r"SUBSTRING(machine_name, 1, 2) NOT SIMILAR TO '[0-9_\!@#\$%\^&\*\(\)\-\= ]*'", name="invalid_machine_name_reg"),
+        CheckConstraint(r"machine_name SIMILAR TO '\S*'", name="valid_machine_mame_reg"),
         CheckConstraint("input_catalog!=''", name="input_catalog_empty"),
         CheckConstraint("output_catalog!=''", name="output_catalog_empty"),
         CheckConstraint("x_over>=0", name="x_over_must_be_positive"),
