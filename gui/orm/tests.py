@@ -1,10 +1,9 @@
 import unittest
 import time
 from sqlalchemy import func, select
-from database.models import Machine, Cnc, db as sqlalchemy_instance
+from database.models import Machine, Cnc, OperationDelegation, SearchString, db as sqlalchemy_instance
 from database.procedures import init_all_triggers
 from orm import *
-from exceptions import *
 
 
 def is_database_empty(session, empty=True, tables=15, procedures=52, test_db_name="testdb"):
@@ -30,20 +29,20 @@ def is_database_empty(session, empty=True, tables=15, procedures=52, test_db_nam
 
 
 def db_reinit(m):
-    def wrap(self: "TestORMHelper", *args, **kwargs):
+    def wrap(self: "TestORMHelper"):
         sqlalchemy_instance.drop_all()
         if is_database_empty(self.orm_manager.database):
             sqlalchemy_instance.create_all()
             init_all_triggers()
             if is_database_empty(self.orm_manager.database, empty=False):
-                return m(self, *args, **kwargs)
+                return m(self)
     return wrap
 
 
 def drop_cache(callable_):
-    def w(self: "TestORMHelper", *args, **kwargs):
+    def w(self: "TestORMHelper"):
         self.orm_manager.drop_cache()
-        return callable_(self, *args, **kwargs)
+        return callable_(self)
     return w
 
 
@@ -122,6 +121,67 @@ class TestORMHelper(unittest.TestCase):
 
     @drop_cache
     @db_reinit
-    def test_set_item(self):
+    def test_items_property(self):
+        self.assertEqual(self.orm_manager.cache.get("ORMItems", ORMItemQueue()), self.orm_manager.items)
         self.orm_manager.set_item(_insert=True, _model=Cnc, name="Fid")
-        self.assertTrue(self.orm_manager.items.__len__(), 1)
+        self.assertEqual(self.orm_manager.cache.get("ORMItems"), self.orm_manager.items)
+        self.orm_manager.drop_cache()
+        self.assertEqual(self.orm_manager.cache.get("ORMItems", ORMItemQueue()), self.orm_manager.items)
+
+    @drop_cache
+    @db_reinit
+    def test_set_item(self):
+        # GOOD
+        self.orm_manager.set_item(_insert=True, _model=Cnc, name="Fid")
+        self.assertIsNotNone(self.orm_manager.cache.get("ORMItems"))
+        self.assertTrue(self.orm_manager.items[0]["name"] == "Fid")
+        self.orm_manager.set_item(_insert=True, _model=Machine, machine_name="Helller")
+        self.assertEqual(len(self.orm_manager.items), 2)
+        self.assertEqual(len(self.orm_manager.items), len(self.orm_manager.cache.get("ORMItems")))
+        self.assertTrue(self.orm_manager.items[1]["machine_name"] == "Helller")
+        self.assertEqual(self.orm_manager.items[1].model, Machine)
+        self.assertEqual(self.orm_manager.items[0].model, Cnc)
+        self.orm_manager.set_item(_model=OperationDelegation, _update=True, operation_description="text")
+        self.assertEqual(self.orm_manager.items[2].value["operation_description"], "text")
+        # start Invalid ...
+        # плохой path
+        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _insert=True, _model=Machine, input_path="path")
+        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _insert=True, _model=Machine, output_path="path")
+        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _insert=True, _model=Machine, input_path=4)
+        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _insert=True, _model=Machine, output_path=7)
+        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _insert=True, _model=Machine, output_path="")
+        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _insert=True, _model=Machine, output_path="teststr")
+        # Invalid model
+        self.assertRaises(InvalidModel, self.orm_manager.set_item, machine_name="Test", _update=True)  # model = None
+        self.assertRaises(InvalidModel, self.orm_manager.set_item, machine_name="Test", _insert=True, _model=2)  # model: Type[int]
+        self.assertRaises(InvalidModel, self.orm_manager.set_item, machine_name="Test", _update=True, _model="test")  # model: Type[str]
+        self.assertRaises(InvalidModel, self.orm_manager.set_item, machine_name="Test", _insert=True, _model=self.__class__)
+        self.assertRaises(InvalidModel, self.orm_manager.set_item, machine_name="Heller", _delete=True, _model=None)
+        self.assertRaises(InvalidModel, self.orm_manager.set_item, machine_name="Heller", _delete=True, _model={1: True})
+        self.assertRaises(InvalidModel, self.orm_manager.set_item, machine_name="Heller", _delete=True, _model=['some_str'])
+        # invalid field
+        # field name | такого поля нет в таблице
+        self.assertRaises(NodeColumnError, self.orm_manager.set_item, invalid_="testval", _model=Machine, _insert=True)
+        self.assertRaises(NodeColumnError, self.orm_manager.set_item, invalid_field="val", other_field=2,
+                          other_field_5="name", _model=Cnc, _update=True)  # Поля нету в таблице
+        self.assertRaises(NodeColumnError, self.orm_manager.set_item, field="value", _model=OperationDelegation, _delete=True)  # Поля нету в таблице
+        self.assertRaises(NodeColumnError, self.orm_manager.set_item, inv="testl", _model=Machine, _insert=True)  # Поля нету в таблице
+        self.assertRaises(NodeColumnError, self.orm_manager.set_item, machine_name=object(), _model=SearchString, _insert=True)
+        self.assertRaises(NodeColumnError, self.orm_manager.set_item, name="123", _model=SearchString, _insert=True)
+        # field value | значение не подходит
+        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _model=Machine, _update=True, machine_name=Machine())
+        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _model=Machine, _update=True, machine_name=Cnc())
+        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _model=Machine, _update=True, machine_name=int)
+        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _model=OperationDelegation, _update=True, operation_description=lambda x: x)
+        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _model=OperationDelegation, _update=True, operation_description=4)
+        # не указан тип DML(_insert | _update | _delete) параметр не передан
+        self.assertRaises(NodeDMLTypeError, self.orm_manager.set_item, _model=Machine, machine_name="Helller")
+        self.assertRaises(NodeDMLTypeError, self.orm_manager.set_item, _model=Machine, machine_name="Fid")
+        self.assertRaises(NodeDMLTypeError, self.orm_manager.set_item, _model=Machine, input_catalog="C:\\Path")
+        self.assertRaises(NodeDMLTypeError, self.orm_manager.set_item, _model=Cnc, name="NC21")
+        self.assertRaises(NodeDMLTypeError, self.orm_manager.set_item, _model=Cnc, name="NC211")
+        self.assertRaises(NodeDMLTypeError, self.orm_manager.set_item, _model=Cnc, name="NC214")
+
+
+    def test_get_item(self):
+        pass
