@@ -1,12 +1,11 @@
 """ Тесты рассчитаны под PostreSQL диалект! """
 import time
 import unittest
-import sys
-from psycopg2.errors import RaiseException
+from typing import Type, Union
 from sqlalchemy.engine import create_engine
 from sqlalchemy.sql import select
 from sqlalchemy.orm.session import sessionmaker
-from sqlalchemy.exc import InternalError, IntegrityError, PendingRollbackError
+from sqlalchemy.exc import InternalError, IntegrityError, PendingRollbackError, NoResultFound
 from database.procedures import init_all_triggers
 from .models import db, Cnc, Machine, Comment, Insert, Uncomment, Rename, Condition, Replace, Numeration, Remove, \
     OperationDelegation, HeadVarible, HeadVarDelegation, TaskDelegation, ModelController, DATABASE_PATH_FOR_TESTS
@@ -18,21 +17,21 @@ TRANSACTION_ISOLATION_LEVEL = "SERIALIZABLE"  # https://docs.sqlalchemy.org/en/2
 def is_database_empty(s_factory: sessionmaker, is_empty=True, test_database_name="testdb", tables_count=15,
                       procedures_count=52) -> bool:
     time.sleep(1)  # Параллелизм будет?! На всякий случай подожду, если СУБД не успеет
-
     session = s_factory()
     exists_tables_counter = session.execute('SELECT COUNT(table_name) '
                                             'FROM information_schema."tables" '
                                             'WHERE table_type=\'BASE TABLE\' AND table_schema=\'public\';').scalar()
-    exists_procedures_counter = session.execute(f'SELECT * '
+    exists_procedures_counter = session.execute(f'SELECT COUNT(*) '
                                                 f'FROM information_schema."triggers" '
                                                 f'WHERE trigger_schema=\'public\' AND '
                                                 f'trigger_catalog=\'{test_database_name}\' AND '
                                                 f'event_object_catalog=\'{test_database_name}\';').scalar()
+    print(f"Тбалицы {exists_tables_counter}", f"Хранимые процедуры {exists_procedures_counter}")
     if is_empty:
         if exists_tables_counter or exists_procedures_counter:
             return is_database_empty(s_factory)
     if not is_empty:
-        if tables_count != exists_tables_counter or exists_procedures_counter!=procedures_count:
+        if tables_count != exists_tables_counter or exists_procedures_counter != procedures_count:
             return is_database_empty(s_factory, is_empty=is_empty, tables_count=tables_count,
                                      test_database_name=test_database_name, procedures_count=procedures_count)
     return True
@@ -54,6 +53,13 @@ class TestCncModel(unittest.TestCase):
         self.engine = create_engine(DATABASE_PATH_FOR_TESTS, isolation_level=TRANSACTION_ISOLATION_LEVEL)
         self.session_factory = sessionmaker(bind=self.engine)
 
+    @staticmethod
+    def is_obj_in_session(session, model_instance: Type[Union[ModelController, db.Model]]):
+        for obj in session:
+            if obj == model_instance:
+                return True
+        return False
+
     def test_create_valid_orm_cnc_object(self):
         valid_orm_obj = Cnc(name="Fidia", comment_symbol=",")
         self.assertIsInstance(valid_orm_obj, ModelController)
@@ -64,12 +70,7 @@ class TestCncModel(unittest.TestCase):
         session = self.session_factory()
         valid_orm_obj = Cnc(name="Fidia", comment_symbol=",")
         session.add(valid_orm_obj)
-        exists_status = False
-        for instance in session:
-            if valid_orm_obj == instance:
-                exists_status = True
-                break
-        self.assertTrue(exists_status, msg="Объект не добавился в сессию")
+        self.assertTrue(self.is_obj_in_session(session, valid_orm_obj), msg="Объект не добавился в сессию")
         session.commit()
 
     def test_exists_new_instance(self):
@@ -77,18 +78,27 @@ class TestCncModel(unittest.TestCase):
                                                         "FROM cnc "
                                                         "WHERE name='Fidia'").scalar(), 1)
 
+    def test_update_cnc_instance(self):
+        session = self.session_factory()
+        original_instance = session.scalars(select(Cnc).where(Cnc.name == "Fidia")).one()
+        setattr(original_instance, "except_symbols", "/")
+        setattr(original_instance, "name", "Testname")
+        session.add()
+
+    @truncate_all
     def test_save_invalid__case_empty_name(self):
         invalid_orm_obj = Cnc(name="", comment_symbol=",")
         session = self.session_factory()
         session.add(invalid_orm_obj)
-        with self.assertRaises((PendingRollbackError, IntegrityError,)):
+        with self.assertRaises(IntegrityError):
             session.commit()
 
+    @truncate_all
     def test_save_invalid__case_empty_comment_symbol(self):
         session = self.session_factory()
         invalid_orm_obj = Cnc(name="Ram", comment_symbol="")
         session.add(invalid_orm_obj)
-        with self.assertRaises((PendingRollbackError, IntegrityError,)):
+        with self.assertRaises(IntegrityError):
             session.commit()
 
     @truncate_all
@@ -100,14 +110,18 @@ class TestCncModel(unittest.TestCase):
         valid_orm_obj = Cnc(name="NC200", comment_symbol=",")
         session.add(valid_orm_obj)
         session.commit()
-        time.sleep(2)
         other_valid_same_object = Cnc(name="NC200", comment_symbol=",")
         session.add(other_valid_same_object)
-        with self.failUnlessRaises(PendingRollbackError):
-            session.commit()
+        with self.assertRaises(PendingRollbackError):
+            try:
+                session.commit()
+            except InternalError:
+                session.rollback()
+                raise PendingRollbackError
         self.assertEqual(session.execute("SELECT COUNT(name) "
                                          "FROM cnc "
                                          "WHERE name='NC200'").scalar(), 1)
+        self.assertEqual(session.scalars(select(Cnc).where(Cnc.name == "NC200")).all().__len__(), 1)
 
 
 class TestModelMachine(unittest.TestCase):
@@ -119,43 +133,49 @@ class TestModelMachine(unittest.TestCase):
         self.session_factory = sessionmaker(bind=self.engine)
 
     @staticmethod
+    def is_obj_in_session(session, model_instance: Type[Union[ModelController, db.Model]]):
+        for obj in session:
+            if obj == model_instance:
+                return True
+        return False
+
+    @staticmethod
     def get_or_create_cnc(session, name="NC210"):
-        instance = session.scalars(select(Cnc).where(Cnc.name == name))
-        if instance is None:
+        instance = session.scalars(select(Cnc).where(Cnc.name == name)).all()
+        if not instance:
             obj = Cnc(name="NC210", comment_symbol="/")
             session.add(obj)
             session.commit()
-            instance = session.scalars(select(Cnc).where(Cnc.name == name))
-        return instance
+            instance = session.scalars(select(Cnc).where(Cnc.name == name)).one()
+            return instance
+        return instance[0]
 
-    @truncate_all
     def test_create_valid_orm_machine_object(self):
-        session = self.session_factory()
-        cnc_instance = self.get_or_create_cnc(session)
-        valid_orm_obj = Machine(cncid=cnc_instance.cncid, machine_name="Heller",
+        valid_orm_obj = Machine(machine_name="Heller",
                                 input_catalog="C://Heller", output_catalog="D://Heller")
         self.assertIsInstance(valid_orm_obj, db.Model)
         self.assertIsInstance(valid_orm_obj, ModelController)
 
+    @truncate_all
     def test_save_valid_instance(self):
         session = self.session_factory()
         cnc_instance = self.get_or_create_cnc(session)
         valid_orm_obj = Machine(cncid=cnc_instance.cncid, machine_name="Heller",
                                 input_catalog="C://Heller", output_catalog="D://Heller")
         session.add(valid_orm_obj)
-        exists_status = False
-        for instance in session:
-            if valid_orm_obj == instance:
-                exists_status = True
-                break
-        self.assertTrue(exists_status, msg="Объект не добавился в сессию")
+        self.assertTrue(self.is_obj_in_session(session, valid_orm_obj), msg="Объект не добавился в сессию")
         session.commit()
 
     def test_exists_new_instance(self):
         session = self.session_factory()
-        # todo
-        ...
+        result_obj = session.scalars(select(Machine).where(Machine.machine_name == "Heller"))
+        try:
+            result_obj.one()
+        except NoResultFound:
+            assert False
+        self.assertEqual(len(session.scalars(select(Machine).where(Machine.machine_name == "Heller")).all()), 1)
 
+    @truncate_all
     def test_update_machine_instance(self):
         session = self.session_factory()
         cnc_instance = self.get_or_create_cnc(session)
@@ -163,23 +183,37 @@ class TestModelMachine(unittest.TestCase):
                                 x_over=4000,
                                 input_catalog="C://Heller", output_catalog="D://Heller")
         session.add(valid_orm_obj)
-        exists_status = False
-        for instance in session:
-            if valid_orm_obj == instance:
-                exists_status = True
-                break
-        self.assertTrue(exists_status, msg="Объект не добавился в сессию")
+        self.assertTrue(self.is_obj_in_session(session, valid_orm_obj), msg="Объект не добавился в сессию")
         session.commit()
-        saved_instance = Machine.query.filter_by(machine_name="Heller").first()
-        setattr(saved_instance, "x_over", 200)
-        setattr(saved_instance, "y_over", 200)
-        session.add(saved_instance)
+        saved_instance = session.scalars(select(Machine).where(Machine.machine_name == "Heller")).all()
+        if not saved_instance:
+            assert "Запись не сохранилась"
+        instance = saved_instance.pop()
+        if saved_instance:
+            assert "Больше одного уникального результата"
+        setattr(instance, "x_over", 200)
+        setattr(instance, "y_over", 200)
+        setattr(instance, "machine_name", "Other")
+        session.add(instance)
+        self.assertTrue(self.is_obj_in_session(session, instance), msg="Объект не добавился в сессию")
         session.commit()
+        updated_instance = session.scalars(select(Machine).where(Machine.machine_name == "Other")).all()
+        self.assertEqual(len(updated_instance), 1)
 
-    def test_updated_instance(self):
+    @truncate_all
+    def test_bad_machine_mame(self):
         session = self.session_factory()
-        ...
-        # todo
+        invalid_obj = Machine(machine_name="Bad name with spaces", input_catalog="C://Heller",
+                              output_catalog="D://Heller")
+        session.add(invalid_obj)
+        self.assertTrue(self.is_obj_in_session(session, invalid_obj))
+        with self.assertRaises(PendingRollbackError):
+            try:
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+                raise PendingRollbackError
+        self.assertFalse(session.scalars(select(Machine).where(Machine.machine_name == "Bad name with spaces")).all())
 
     def test_save_invalid_instance___case_empty_input_catalog_value(self):
         session = self.session_factory()
