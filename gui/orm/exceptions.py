@@ -1,6 +1,11 @@
 """ Исключения для всех классов в данном пакете """
 
 
+class ModelsConfigurationError(Exception):
+    def __init__(self, text=""):
+        super().__init__(text or "Ошибка в models.py. Конфигурация чисто кастомная!! Стандартное")
+
+
 class ORMException(Exception):
     def __init__(self, text="Ошибка уровня модуля orm"):
         super().__init__(text)
@@ -42,6 +47,16 @@ class NodeEmptyData(NodeError):
 class NodeAttributeError(NodeError):
     def __init__(self, text="Ошибка значиния атрибута в ноде"):
         super().__init__(text)
+
+
+class NodeColumnError(NodeError):
+    def __init__(self, field_name="", text="Ошибка названия столбца в ноде"):
+        super().__init__(f"Столбец {field_name} не найден в таблице" if field_name else text)
+
+
+class NodeColumnValueError(NodeError):
+    def __init__(self, value=None, text="Ошибка значения столбца в ноде"):
+        super().__init__(f"Значение {value} не является корректным" if value else text)
 
 
 class InvalidModel(NodeError):
