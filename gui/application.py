@@ -5,7 +5,7 @@ from PySide2.QtGui import QPixmap, QBrush
 from gui.ui import Ui_main_window as Ui
 from gui.signals import Navigation, Actions
 from tools import Tools
-from gui import orm
+from gui.orm import orm
 
 
 class Main(QMainWindow, Tools):
@@ -18,7 +18,7 @@ class Main(QMainWindow, Tools):
         self.ui = None
 
         def init_db_manager():
-            self.db_items_queue = orm.ORMHelper.initialization()
+            self.db_items_queue = orm.ORMHelper
 
         def init_ui():
             def init_buttons():

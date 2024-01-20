@@ -2,7 +2,7 @@ from typing import Optional, Iterator
 from PySide2.QtCore import Slot
 from PySide2.QtWidgets import QListWidgetItem, QLineEdit, QTextEdit
 from database.models import Cnc
-from gui import orm
+from gui.orm import orm
 from gui.tools import Constructor, Tools
 from gui.ui import Ui_main_window
 from gui.validation import Validator
