@@ -2,27 +2,31 @@
 Назначить каждому классу модели атрибут __db_queue_primary_field_name__, который необходим для класса tools.ORMHelper
 """
 import itertools
+import sys
 from uuid import uuid4
 from abc import ABC, abstractmethod
+from dotenv import load_dotenv
 from sqlalchemy import String, Integer, Column, ForeignKey, Boolean, SmallInteger, Text, CheckConstraint
 from sqlalchemy.orm import relationship, InstrumentedAttribute
 from flask_sqlalchemy import SQLAlchemy as FlaskSQLAlchemy
 from flask import Flask
 
 
+load_dotenv()
+
 DATABASE_PATH = "postgresql://postgres:g8ln7ze5vm6a@localhost:5432/intex1"
+DATABASE_PATH_FOR_TESTS = "postgresql://testuser:0000@localhost:5432/testdb"
 RESERVED_WORDS = ("__insert", "__update", "__delete", "__ready", "__model", "__primary_key__", "column_names")  # Используются в классе ORMHelper
 
-
 app = Flask(__name__)
-app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_PATH
+app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_PATH_FOR_TESTS
 db = FlaskSQLAlchemy(app)
 
 
 class ModelController:
     def __new__(cls, **k):
-        cls.__remove_pk__ = False
-        cls.column_names = []
+        cls.column_names = {}  # Если база данных инициализирована вручную, средствами sql,
+        # то заполнить даный словарь вручную
 
         def check_class_attributes():
             """ Предотвратить использование заерезервированных в классе ORMHelper слов """
@@ -33,45 +37,24 @@ class ModelController:
                         f"Атрибут {special_word} использовать нельзя, тк он зарезервирован."
                     )
 
-        def check_db_helper_queue_main_field():
-            """
-            Проверить наличие атрибута __db_queue_primary_field_name__,
-            который нужем в модуле tools, также, чтобы имя поля, хранящееся в его значении,
-            присутствовало в данной модели
-            """
-            if "__db_queue_primary_field_name__" not in dir(cls):
-                raise AttributeError("Добавьте атрибут __db_queue_primary_field_name__, "
-                                     "содержащий имя поля, которое наиболее удобно в качестве первичного ключа для"
-                                     "элеметнов очереди ORMItem.")
-            primary_field_name = getattr(cls, "__db_queue_primary_field_name__")
-            primary_field = getattr(cls, primary_field_name)
-            if str(primary_field.property.columns[0].type) == "INTEGER" and \
-                    primary_field.property.columns[0].autoincrement:
-                # В случае, когда поле первичного ключа в таблице имеет значение int и автоинкремент,
-                # то это поле будет удалено из значения ноды:
-                # pk - целочисленный автоинкремент, то нет смысла пытаться это отправлять в бд
-                cls.__remove_pk__ = True
-
-        def set_primary_key_field_name_to_cls():
-            """
-            Найти столбец с первичным ключом, сохранить его имя в атрибут класса __primary_key__.
-            Для orm.py
-            """
-            for attribute_name, val in cls.__dict__.items():
-                if hasattr(val, "primary_key") and type(val) is InstrumentedAttribute:
-                    setattr(cls, "__primary_key__", attribute_name)
-                    break
-
-        def collect_all_column_names():
+        def collect_column_attributes():
             """ Собрать в атрибут класса column_names все имена стоблцов таблицы """
-            for attr_name, value in cls.__dict__.items():
-                if type(value) is InstrumentedAttribute:
-                    cls.column_names.append(attr_name)
-            cls.column_names = tuple(cls.column_names)
+            for value in cls.__dict__.values():
+                if type(value) is InstrumentedAttribute and hasattr(value.expression, "name"):
+                    cls.column_names.update({value.expression.name: {"type": value.expression.type.python_type, 
+                                                                     "nullable": value.expression.nullable,
+                                                                     "primary_key": value.expression.primary_key,
+                                                                     "autoincrement": value.expression.autoincrement,
+                                                                     "unique": value.expression.unique,
+                                                                     "default": value.expression.default}})
+                    if hasattr(value, "length"):
+                        cls.column_names[value.expression.name].update({"length": value.length})
+
+        def collect_foreign_keys():
+            cls.foreign_keys = tuple(cls.__table__.foreign_keys)
         check_class_attributes()
-        check_db_helper_queue_main_field()
-        set_primary_key_field_name_to_cls()
-        collect_all_column_names()
+        collect_column_attributes() if not cls.column_names else None
+        collect_foreign_keys()
         return super().__new__(cls)
 
 
@@ -88,14 +71,16 @@ OPERATION_TYPES = (
 )
 
 
-class CustomModel(db.Model, ModelController):
+#  class CustomModel(db.Model, ModelController):
+class CustomModel:
     """
     Абстрактный класс для аннотации типов.
     класс модели SQLAlchemy для использования в классе ORMHelper модуля tools!
+    Атрибут класса __tablename__ обязателен!
+    Остальные атрибуты, ЕСЛИ БАЗА ДАННЫХ ИНИЦИАЛИРОВАНА ОТДЕЛЬНО, не нужны
     """
-    __init__ = None
-    __call__ = None
-    some_column = abstractmethod(Column(Integer, primary_key=True))
+    __tablename__ = "test_table"
+    some_column = ...  # Column(Integer, primary_key=True))
 
 
 class TaskDelegation(db.Model, ModelController):
@@ -124,8 +109,10 @@ class Machine(db.Model, ModelController):
     operations = relationship("OperationDelegation", secondary=TaskDelegation.__table__)
     __table_args__ = (
         CheckConstraint("machine_name!=''", name="machine_name_empty"),
-        CheckConstraint("input_catalog!=''", name="input_catalog_empty"),
-        CheckConstraint("output_catalog!=''", name="output_catalog_empty"),
+        CheckConstraint(r"SUBSTRING(machine_name, 1, 2) NOT SIMILAR TO '[0-9_\!@#\$%\^&\*\(\)\-\= ]*'", name="invalid_machine_name_reg"),
+        CheckConstraint(r"machine_name SIMILAR TO '\S*'", name="valid_machine_mame_reg"),
+        CheckConstraint(r"input_catalog SIMILAR TO '[A-Z]\:(?:\\[^\*\?«\<\>|:\/\.\,]+)+[^\s]'", name="input_catalog_reg"),
+        CheckConstraint(r"output_catalog SIMILAR TO '[A-Z]\:(?:\\[^\*\?«\<\>|:\/\.\,]+)+[^\s]'", name="output_catalog_reg"),
         CheckConstraint("x_over>=0", name="x_over_must_be_positive"),
         CheckConstraint("y_over>=0", name="y_over_must_be_positive"),
         CheckConstraint("z_over>=0", name="z_over_must_be_positive"),
