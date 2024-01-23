@@ -45,8 +45,8 @@ class ModelController:
                                                                      "nullable": value.expression.nullable,
                                                                      "primary_key": value.expression.primary_key,
                                                                      "autoincrement": value.expression.autoincrement,
-                                                                     "unique": value.expression.unique}})
-
+                                                                     "unique": value.expression.unique,
+                                                                     "default": value.expression.default}})
                     if hasattr(value, "length"):
                         cls.column_names[value.expression.name].update({"length": value.length})
 
@@ -325,11 +325,11 @@ class SearchString(db.Model, ModelController):
 
 if __name__ == "__main__":
     def check_bad_attribute_name():
+        TaskDelegation()
         Machine()
         OperationDelegation()
         Condition()
         Cnc()
-        sys.exit()
         HeadVarible()
         Insert()
         Comment()
