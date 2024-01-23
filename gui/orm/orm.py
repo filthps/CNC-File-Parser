@@ -1,3 +1,4 @@
+import datetime
 import itertools
 import hashlib
 import sys
@@ -21,6 +22,12 @@ from gui.orm.exceptions import *
 
 
 class ORMAttributes:
+    @classmethod
+    def is_valid_node(cls, node: Union["ORMItem", "SpecialOrmItem"]):
+        if type(node) is not ORMItem and type(node) is not SpecialOrmItem:
+            raise TypeError
+        cls.is_valid_model_instance(node.model)
+
     @staticmethod
     def is_valid_model_instance(item):
         if callable(item):
@@ -31,17 +38,23 @@ class ORMAttributes:
             if any(map(lambda x: keys - set(x), item.column_names)):
                 raise ModelsConfigurationError
             return
-        raise InvalidModel
+        raise
+
+    @staticmethod
+    def is_valid_container(container):
+        if not isinstance(container, (ORMItemQueue, SpecialOrmContainer,)):
+            raise TypeError
 
 
 class ORMItemObserver(ORMAttributes):
-    _container: Union["ORMItemQueue", "SpecialOrmContainer"] = None
     """
     Обеспечить связь экземпляр[нода] --> контейнер
     """
     @classmethod
-    def create_primary_key(cls, node: Union["ORMItem", "SpecialOrmItem"]):
-        cls.is_valid_model_instance(node)
+    def create_primary_key(cls, node: Union["ORMItem", "SpecialOrmItem"],
+                           container: Union["ORMItemQueue", "SpecialOrmContainer"]):
+        cls.is_valid_node(node)
+        cls.is_valid_container(container)
         attributes = node.model().column_names
         for field_name, data in attributes.items():
             if not data["primary_key"]:
@@ -55,24 +68,25 @@ class ORMItemObserver(ORMAttributes):
         # Иначе ищем его по полям
 
     @classmethod
-    @property
-    def container(cls):
-        if cls._container is None:
-            raise ValueError
-        return cls._container
+    def should_remove_primary_key(cls, node) -> bool:
+        """ Нужно ли удалить первичный ключ со значением из значений во время коммита в базу """
+        cls.is_valid_node(node)
+        attributes = node.model().column_names
+        for field_name, data in attributes.items():
+            if not data["primary_key"]:
+                continue
+            if data["autoincrement"]:
+                return True
+            if data["default"]:
+                return True
+            return False
 
-    @classmethod
-    @container.setter
-    def container(cls, item):
-        if not isinstance(item, (SpecialOrmContainer, ORMItemQueue,)):
-            raise TypeError
-        cls._container = item
+    @staticmethod
+    def _create_autoincrement_pk(node: Union["ORMItem", "SpecialOrmItem"]):
+        node.container.search_nodes(model=node.model)
 
-    @classmethod
-    def _create_autoincrement_pk(cls, primary_key_name):
-        ...
-
-    def _choice_primarykey_value_from_scalars(self):
+    @staticmethod
+    def _choice_primarykey_value_from_scalars():
         """ Выбрать значние из значений ноды,
         если primary_key=True установлено для строки или другого поля со скалярными значекниями"""
 
@@ -102,6 +116,7 @@ class ORMItem(LinkedListItem, ORMAttributes):
         self.__delete = kw.pop("_delete", False)
         self.__is_ready = kw.pop("_ready", True if self.__delete else False)
         self.__where = kw.pop("_where", None)
+        self._create_at = kw.pop("_create_at", datetime.datetime.now())
         self.__transaction_counter = kw.pop('_count_retries', 0)  # Инкрементируется при вызове self.make_query()
         self.__should_remove_pk = False
         # Подразумевая тем самым, что это попытка сделать транзакцию в базу
@@ -154,6 +169,10 @@ class ORMItem(LinkedListItem, ORMAttributes):
         return self._value.copy()
 
     @property
+    def container(self):
+        return copy.deepcopy(self._container)
+
+    @property
     def model(self):
         return self.__model
 
@@ -197,7 +216,7 @@ class ORMItem(LinkedListItem, ORMAttributes):
             try:
                 value = self._value[column_name]
             except KeyError:
-                value = search_another_node_and_create_pk()
+                value = None
             if only_value:
                 return value
             return {column_name: value} if not as_tuple else (column_name, value,)
@@ -205,6 +224,10 @@ class ORMItem(LinkedListItem, ORMAttributes):
     @property
     def ready(self) -> bool:
         return self.__is_ready
+
+    @property
+    def created_at(self):
+        return self._create_at
 
     @property
     def where(self) -> dict:
@@ -267,11 +290,27 @@ class ORMItem(LinkedListItem, ORMAttributes):
             return False
         return self.__hash__() == hash(other)
 
+    def __lt__(self, other: "ORMItem"):
+        """ Сравнение включено для сортировки  """
+        c_pk = self.get_primary_key_and_value(only_value=True)
+        if not type(c_pk) is int:
+            return self.created_at < other.created_at
+        other_pk = other.get_primary_key_and_value(only_value=True)
+        return c_pk < other_pk
+
+    def __gt__(self, other):
+        return not self.__lt__(other)
+
     def __contains__(self, item: str):
         if not isinstance(item, str):
+            raise TypeError
+        if ":" not in item:
+            raise KeyError("Требуется формат 'key:value'")
+        key, value = item.split(":")
+        if key not in self.value:
             return False
-        if item in self.value:
-            return True
+        val = self.value[key]
+        return value == val
 
     def __bool__(self):
         return bool(len(self))
@@ -831,7 +870,7 @@ class ORMHelper(ORMAttributes):
         cls.is_valid_model_instance(model)
         cls.items.enqueue(_model=model, _ready=_ready,
                           _insert=_insert, _update=_update,
-                          _delete=_delete, _where=_where, **value)
+                          _delete=_delete, _where=_where, _create_at=datetime.datetime.now(), **value)
         cls.__set_cache()
         cls._timer.cancel() if cls._timer else None
         cls._timer = cls.init_timer()
