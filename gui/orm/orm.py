@@ -5,6 +5,7 @@ import sys
 import copy
 import threading
 import warnings
+from weakref import ref, ReferenceType
 from typing import Union, Iterator, Iterable, Optional, Literal, Callable, Type
 from collections import ChainMap
 from pymemcache.client.base import Client
@@ -35,7 +36,7 @@ class ORMAttributes:
             if not hasattr(item, "column_names"):
                 raise InvalidModel
             keys = {"type", "nullable", "primary_key", "autoincrement", "unique", "default"}
-            if any(map(lambda x: keys - set(x), item.column_names)):
+            if any(map(lambda x: keys - set(x), item.column_names.values())):
                 raise ModelsConfigurationError
             return
         raise
@@ -50,6 +51,16 @@ class ORMItemObserver(ORMAttributes):
     """
     Обеспечить связь экземпляр[нода] --> контейнер
     """
+    _node = None
+    _container = None
+
+    @classmethod
+    def set_node(cls, node: Union["ORMItem", "SpecialOrmItem"], container: Union["SpecialOrmContainer", "ORMItemQueue"]):
+        cls.is_valid_node(node)
+        cls.is_valid_container(container)
+        cls._node = node
+        cls._container = container
+
     @classmethod
     def create_primary_key(cls, node: Union["ORMItem", "SpecialOrmItem"],
                            container: Union["ORMItemQueue", "SpecialOrmContainer"]):
@@ -61,17 +72,22 @@ class ORMItemObserver(ORMAttributes):
                 continue
             default_: Optional[ColumnDefault] = data["default"]
             autoincrement, type_ = data["autoincrement"], data["type"]
-            if autoincrement or default_:
-                if default_:
-                    return  # do nothing бд sqlalchemy сама всё сделает
-                return cls._create_autoincrement_pk(field_name)
-        # Иначе ищем его по полям
+            if default_:
+                return default_.execute()
+            if type_ is str:
+                return cls._select_primary_key_value_from_scalars(node, field_name)
+            if type_ is int:
+                if autoincrement:
+                    return cls._create_autoincrement_pk(field_name)
+                return cls._select_primary_key_value_from_scalars(node, field_name)
 
     @classmethod
-    def should_remove_primary_key(cls, node) -> bool:
+    @property
+    def should_remove_primary_key(cls) -> bool:
         """ Нужно ли удалить первичный ключ со значением из значений во время коммита в базу """
-        cls.is_valid_node(node)
-        attributes = node.model().column_names
+        if not cls._node:
+            raise ValueError
+        attributes = cls._node.model().column_names
         for field_name, data in attributes.items():
             if not data["primary_key"]:
                 continue
@@ -83,12 +99,22 @@ class ORMItemObserver(ORMAttributes):
 
     @staticmethod
     def _create_autoincrement_pk(node: Union["ORMItem", "SpecialOrmItem"]):
-        node.container.search_nodes(model=node.model)
+        nodes = node.container.search_nodes(model=node.model)
+        if not nodes:
+            return 1
+        sorted_nodes = sorted(nodes)
+        last_node: ORMItem = sorted_nodes[-1]
+        return last_node.get_primary_key_and_value(only_value=True) + 1
 
     @staticmethod
-    def _choice_primarykey_value_from_scalars():
+    def _select_primary_key_value_from_scalars(node: "ORMItem", field_name: str):
         """ Выбрать значние из значений ноды,
         если primary_key=True установлено для строки или другого поля со скалярными значекниями"""
+        try:
+            value = node.value[field_name]
+        except KeyError:
+            raise NodePrimaryKeyError("Должно быть значение для поля первичного ключа")
+        return value
 
 
 class ORMItem(LinkedListItem, ORMAttributes):
@@ -104,11 +130,10 @@ class ORMItem(LinkedListItem, ORMAttributes):
             Все остальные параметры являются парами 'поле-значение'
             """
         super().__init__()
-        self._container: Union["ORMItemQueue", "SpecialOrmContainer"] = _container
-        if self._container is None:
+        if _container is None:
             raise ValueError("Необходимо указать ссылку на экземпляр контейнера")
-        if type(self._container) is not SpecialOrmContainer or type(self._container) is not SpecialOrmContainer:
-            raise TypeError
+        self.is_valid_container(container)
+        self._container: ReferenceType[Union["ORMItemQueue", "SpecialOrmContainer"]] = ref(_container)
         self.__model: Union[Type[CustomModel], Type[ModelController]] = kw.pop("_model")
         self.is_valid_model_instance(self.__model)
         self.__insert = kw.pop("_insert", False)
@@ -136,11 +161,9 @@ class ORMItem(LinkedListItem, ORMAttributes):
         is_valid_dml_type()
 
         def check_should_remove_pk():
-            """ Если первичный ключ INTEGER и autoincrement TRUE,
-            то удаляем PK из локальной ноды, - бд сама его найдёт и нарастит"""
-            for field_name, attributes_data in self.__model().column_names.items():
-                if attributes_data["primary_key"] and attributes_data["autoincrement"]:
-                    self.__should_remove_pk = True
+            p = ORMItemObserver
+            p.set_node(self, self.container)
+            self.__should_remove_pk = p.should_remove_primary_key
         check_should_remove_pk()
 
         def is_valid_column_type(column_name: str):
@@ -170,7 +193,7 @@ class ORMItem(LinkedListItem, ORMAttributes):
 
     @property
     def container(self):
-        return copy.deepcopy(self._container)
+        return self._container()
 
     @property
     def model(self):
@@ -206,6 +229,7 @@ class ORMItem(LinkedListItem, ORMAttributes):
         """
         def search_another_node_and_create_pk():
             ...
+
         for column_name, column_attr_data in self.model().column_names.items():
             if "primary_key" not in column_attr_data:
                 raise ModelsConfigurationError
@@ -251,7 +275,7 @@ class ORMItem(LinkedListItem, ORMAttributes):
                 result.update({"_where": self.where})
         result.update({"_model": self.__model, "_insert": False,
                        "_update": False, "_ready": self.__is_ready,
-                       "_delete": False, "_count_retries": self.retries})
+                       "_delete": False, "_count_retries": self.retries, "_container": self.container})
         result.update({self.type: True})
         return result
 
@@ -433,7 +457,7 @@ class ORMItemQueue(LinkedList):
                                     container.append(**related_node.get_attributes())  # O(1)
         return container
 
-    def search_nodes(self, model: CustomModel, negative_selection=False, **_filter) -> "ORMItemQueue":  # O(n)
+    def search_nodes(self, model, negative_selection=False, **_filter) -> "ORMItemQueue":  # O(n)
         """
         Искать ноды по совпадениям любых полей
         :arg model: кастомный объект, смотри модуль database/models
@@ -1403,3 +1427,11 @@ class JoinedORMItem:
             while local_items:
                 result.append(local_items.pop(0))
         return iter(result)
+
+
+if __name__ == "__main__":
+    from database.models import Machine, Cnc
+
+    container = ORMItemQueue()
+    container.enqueue(_model=Cnc, name="test", _insert=True, _container=container)
+    container.enqueue(_model=Machine, machine_name="Heller", _insert=True, _container=container)
