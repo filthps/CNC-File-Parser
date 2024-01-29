@@ -47,47 +47,14 @@ class ORMAttributes:
             raise TypeError
 
 
-class ORMItemObserver(ORMAttributes):
-    """
-    Обеспечить связь экземпляр[нода] --> контейнер
-    """
-    _node = None
-    _container = None
+class PrimaryKeyManager(ORMAttributes):
+    model = None
 
-    @classmethod
-    def set_node(cls, node: Union["ORMItem", "SpecialOrmItem"], container: Union["SpecialOrmContainer", "ORMItemQueue"]):
-        cls.is_valid_node(node)
-        cls.is_valid_container(container)
-        cls._node = node
-        cls._container = container
-
-    @classmethod
-    def create_primary_key(cls, node: Union["ORMItem", "SpecialOrmItem"],
-                           container: Union["ORMItemQueue", "SpecialOrmContainer"]):
-        cls.is_valid_node(node)
-        cls.is_valid_container(container)
-        attributes = node.model().column_names
-        for field_name, data in attributes.items():
-            if not data["primary_key"]:
-                continue
-            default_: Optional[ColumnDefault] = data["default"]
-            autoincrement, type_ = data["autoincrement"], data["type"]
-            if default_:
-                return default_.execute()
-            if type_ is str:
-                return cls._select_primary_key_value_from_scalars(node, field_name)
-            if type_ is int:
-                if autoincrement:
-                    return cls._create_autoincrement_pk(field_name)
-                return cls._select_primary_key_value_from_scalars(node, field_name)
-
-    @classmethod
     @property
-    def should_remove_primary_key(cls) -> bool:
+    def should_remove_primary_key(self) -> bool:
         """ Нужно ли удалить первичный ключ со значением из значений во время коммита в базу """
-        if not cls._node:
-            raise ValueError
-        attributes = cls._node.model().column_names
+        self.is_valid_model_instance(self.model)
+        attributes = self.model().column_names
         for field_name, data in attributes.items():
             if not data["primary_key"]:
                 continue
@@ -99,6 +66,8 @@ class ORMItemObserver(ORMAttributes):
 
     @staticmethod
     def _create_autoincrement_pk(node: Union["ORMItem", "SpecialOrmItem"]):
+        if len(node.container) == 1:
+            return 1
         nodes = node.container.search_nodes(model=node.model)
         if not nodes:
             return 1
@@ -117,7 +86,7 @@ class ORMItemObserver(ORMAttributes):
         return value
 
 
-class ORMItem(LinkedListItem, ORMAttributes):
+class ORMItem(LinkedListItem, PrimaryKeyManager):
     """ Иммутабельный класс ноды для ORMItemQueue. """
     def __init__(self, _container=None, **kw):
         """
@@ -132,7 +101,7 @@ class ORMItem(LinkedListItem, ORMAttributes):
         super().__init__()
         if _container is None:
             raise ValueError("Необходимо указать ссылку на экземпляр контейнера")
-        self.is_valid_container(container)
+        self.is_valid_container(_container)
         self._container: ReferenceType[Union["ORMItemQueue", "SpecialOrmContainer"]] = ref(_container)
         self.__model: Union[Type[CustomModel], Type[ModelController]] = kw.pop("_model")
         self.is_valid_model_instance(self.__model)
@@ -143,7 +112,6 @@ class ORMItem(LinkedListItem, ORMAttributes):
         self.__where = kw.pop("_where", None)
         self._create_at = kw.pop("_create_at", datetime.datetime.now())
         self.__transaction_counter = kw.pop('_count_retries', 0)  # Инкрементируется при вызове self.make_query()
-        self.__should_remove_pk = False
         # Подразумевая тем самым, что это попытка сделать транзакцию в базу
         if not kw:
             raise NodeEmptyData
@@ -159,12 +127,6 @@ class ORMItem(LinkedListItem, ORMAttributes):
             if sum((self.__insert, self.__update, self.__delete,)) != 1:
                 raise NodeDMLTypeError
         is_valid_dml_type()
-
-        def check_should_remove_pk():
-            p = ORMItemObserver
-            p.set_node(self, self.container)
-            self.__should_remove_pk = p.should_remove_primary_key
-        check_should_remove_pk()
 
         def is_valid_column_type(column_name: str):
             exists_column_names = self.model().column_names
@@ -186,6 +148,7 @@ class ORMItem(LinkedListItem, ORMAttributes):
             if not nullable and value is None:
                 raise NodeColumnValueError(value)
         [is_valid_column_value(col_name, val) for col_name, val in self._value.items()]
+        self.__primary_key = None
 
     @property
     def value(self):
@@ -193,6 +156,8 @@ class ORMItem(LinkedListItem, ORMAttributes):
 
     @property
     def container(self):
+        if not hasattr(self, "_container"):
+            return
         return self._container()
 
     @property
@@ -227,23 +192,13 @@ class ORMItem(LinkedListItem, ORMAttributes):
         :param only_key: только название столбца - PK
         :param only_value: только значение столбца первичного ключа
         """
-        def search_another_node_and_create_pk():
-            ...
-
-        for column_name, column_attr_data in self.model().column_names.items():
-            if "primary_key" not in column_attr_data:
-                raise ModelsConfigurationError
-            if not column_attr_data["primary_key"]:
-                continue
-            if only_key:
-                return column_name
-            try:
-                value = self._value[column_name]
-            except KeyError:
-                value = None
-            if only_value:
-                return value
-            return {column_name: value} if not as_tuple else (column_name, value,)
+        if not self.__primary_key:
+            self.__primary_key = self.__create_primary_key()
+        if only_key:
+            return tuple(self.__primary_key.keys())[0]
+        if only_value:
+            return tuple(self.__primary_key.values())[0]
+        return tuple(self.__primary_key.items())[0] if as_tuple else self.__primary_key
 
     @property
     def ready(self) -> bool:
@@ -286,7 +241,7 @@ class ORMItem(LinkedListItem, ORMAttributes):
         value: dict = self.value
         primary_key = self.get_primary_key_and_value(only_key=True)
         if self.__insert:
-            if self.__should_remove_pk:
+            if self.should_remove_primary_key:
                 del value[primary_key]
             query = self.model(**value)
         if self.__update or self.__delete:
@@ -307,6 +262,8 @@ class ORMItem(LinkedListItem, ORMAttributes):
         return query
 
     def __len__(self):
+        if not hasattr(self, "_value"):
+            return 0
         return len(self._value)
 
     def __eq__(self, other: "ORMItem"):
@@ -355,6 +312,23 @@ class ORMItem(LinkedListItem, ORMAttributes):
         if item not in self.value:
             raise KeyError
         return self.value[item]
+    
+    def __create_primary_key(self) -> dict[str, Union[str, int]]:
+        """Повторный вызов недопустим. Вызывать в первую очередь! до добаления ноды в связанный список"""
+        attributes = self.model().column_names
+        for field_name, data in attributes.items():
+            if not data["primary_key"]:
+                continue
+            default_: Optional[ColumnDefault] = data["default"]
+            autoincrement, type_ = data["autoincrement"], data["type"]
+            if default_:
+                return {field_name: default_.execute()}
+            if type_ is str:
+                return {field_name: self._select_primary_key_value_from_scalars(self, field_name)}
+            if type_ is int:
+                if autoincrement:
+                    return {field_name: self._create_autoincrement_pk(self)}
+                return {field_name: self._select_primary_key_value_from_scalars(self, field_name)}
 
 
 class EmptyOrmItem(LinkedListItem):
@@ -477,9 +451,14 @@ class ORMItemQueue(LinkedList):
                     items.append(**left_node.get_attributes())
                 for field_name, value in _filter.items():
                     if field_name in left_node.value:
-                        if left_node.value[field_name] == value:
-                            items.append(**left_node.get_attributes())
-                            break
+                        if negative_selection:
+                            if not left_node.value[field_name] == value:
+                                items.append(**left_node.get_attributes())
+                                break
+                        else:
+                            if left_node.value[field_name] == value:
+                                items.append(**left_node.get_attributes())
+                                break
         return items
 
     def get_node(self, model: CustomModel, **primary_key_data) -> Optional[ORMItem]:
