@@ -134,6 +134,8 @@ class TestORMHelper(unittest.TestCase):
         # GOOD
         self.orm_manager.set_item(_insert=True, _model=Cnc, name="Fid")
         self.assertIsNotNone(self.orm_manager.cache.get("ORMItems"))
+        self.assertIsInstance(self.orm_manager.cache.get("ORMItems"), ORMItemQueue)
+        self.assertEqual(self.orm_manager.cache.get("ORMItems").__len__(), 1)
         self.assertTrue(self.orm_manager.items[0]["name"] == "Fid")
         self.orm_manager.set_item(_insert=True, _model=Machine, machine_name="Helller")
         self.assertEqual(len(self.orm_manager.items), 2)
@@ -145,12 +147,12 @@ class TestORMHelper(unittest.TestCase):
         self.assertEqual(self.orm_manager.items[2].value["operation_description"], "text")
         # start Invalid ...
         # плохой path
-        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _insert=True, _model=Machine, input_path="path")
-        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _insert=True, _model=Machine, output_path="path")
-        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _insert=True, _model=Machine, input_path=4)
-        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _insert=True, _model=Machine, output_path=7)
-        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _insert=True, _model=Machine, output_path="")
-        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _insert=True, _model=Machine, output_path="teststr")
+        self.assertRaises(NodeColumnError, self.orm_manager.set_item, _insert=True, _model=Machine, input_path="path")  # input_catalog
+        self.assertRaises(NodeColumnError, self.orm_manager.set_item, _insert=True, _model=Machine, output_path="path")  # output_catalog
+        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _insert=True, _model=Machine, input_catalog=4)
+        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _insert=True, _model=Machine, output_catalog=7)
+        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _insert=True, _model=Machine, output_catalog="")
+        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _insert=True, _model=Machine, output_catalog="teststr")
         # Invalid model
         self.assertRaises(InvalidModel, self.orm_manager.set_item, machine_name="Test", _update=True)  # model = None
         self.assertRaises(InvalidModel, self.orm_manager.set_item, machine_name="Test", _insert=True, _model=2)  # model: Type[int]
@@ -182,6 +184,6 @@ class TestORMHelper(unittest.TestCase):
         self.assertRaises(NodeDMLTypeError, self.orm_manager.set_item, _model=Cnc, name="NC211")
         self.assertRaises(NodeDMLTypeError, self.orm_manager.set_item, _model=Cnc, name="NC214")
 
-
+    @unittest.skip("pass")
     def test_get_item(self):
         pass
