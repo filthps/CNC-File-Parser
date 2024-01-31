@@ -22,6 +22,9 @@ from database.models import CustomModel, ModelController, DATABASE_PATH, DATABAS
 from gui.orm.exceptions import *
 
 
+DEBUG = True
+
+
 class ORMAttributes:
     @classmethod
     def is_valid_node(cls, node: Union["ORMItem", "SpecialOrmItem"]):
@@ -64,15 +67,17 @@ class PrimaryKeyManager(ORMAttributes):
                 return True
             return False
 
-    @staticmethod
-    def _create_autoincrement_pk(node: Union["ORMItem", "SpecialOrmItem"]):
+    @classmethod
+    def _create_autoincrement_pk(cls, node: Union["ORMItem", "SpecialOrmItem"]):
         if len(node.container) == 1:
             return 1
-        nodes = node.container.search_nodes(model=node.model)
+        nodes = cls._get_nodes_by_current_model(node.container, node)
         if not nodes:
             return 1
-        sorted_nodes = sorted(nodes)
-        last_node: ORMItem = sorted_nodes[-1]
+        sorted_nodes = nodes
+        if type(nodes[0]) is int:
+            sorted_nodes = sorted(nodes.items())
+        last_node: ORMItem = sorted_nodes[-1][1]
         return last_node.get_primary_key_and_value(only_value=True) + 1
 
     @staticmethod
@@ -84,6 +89,14 @@ class PrimaryKeyManager(ORMAttributes):
         except KeyError:
             raise NodePrimaryKeyError("Должно быть значение для поля первичного ключа")
         return value
+
+    @staticmethod
+    def _get_nodes_by_current_model(container: "ORMItemQueue", model_name: str) -> dict:
+        d = {}
+        for node in container:
+            if node.model.__name__ == model_name:
+                d.update({node.get_primary_key_and_value(only_value=True): node})
+        return d
 
 
 class ORMItem(LinkedListItem, PrimaryKeyManager):
@@ -148,7 +161,7 @@ class ORMItem(LinkedListItem, PrimaryKeyManager):
             if not nullable and value is None:
                 raise NodeColumnValueError(value)
         [is_valid_column_value(col_name, val) for col_name, val in self._value.items()]
-        self.__primary_key = None
+        self.__primary_key = self.__create_primary_key()
 
     @property
     def value(self):
@@ -192,8 +205,6 @@ class ORMItem(LinkedListItem, PrimaryKeyManager):
         :param only_key: только название столбца - PK
         :param only_value: только значение столбца первичного ключа
         """
-        if not self.__primary_key:
-            self.__primary_key = self.__create_primary_key()
         if only_key:
             return tuple(self.__primary_key.keys())[0]
         if only_value:
@@ -322,7 +333,9 @@ class ORMItem(LinkedListItem, PrimaryKeyManager):
             default_: Optional[ColumnDefault] = data["default"]
             autoincrement, type_ = data["autoincrement"], data["type"]
             if default_:
-                return {field_name: default_.execute()}
+                return {
+                    field_name: default_.execute(bind=create_engine(DATABASE_PATH_FOR_TESTS if DEBUG else DATABASE_PATH))
+                }
             if type_ is str:
                 return {field_name: self._select_primary_key_value_from_scalars(self, field_name)}
             if type_ is int:
@@ -393,7 +406,7 @@ class ORMItemQueue(LinkedList):
         self._remove_from_queue(exists_item) if exists_item else None
         super().append(**new_item.get_attributes())
         new_nodes = check_foreign_key_nodes()
-        self._replace_inner(new_nodes._head, new_nodes._tail)
+        self._replace_inner(new_nodes.head, new_nodes.tail)
 
     def dequeue(self) -> Optional[ORMItem]:
         """ Извлечение ноды с начала очереди """
@@ -588,7 +601,7 @@ class ORMItemQueue(LinkedList):
 
 class SQLAlchemyQueryManager:
     MAX_RETRIES: Union[int, Literal["no-limit"]] = "no-limit"
-    
+
     def __init__(self, connection_path: str, nodes: "ORMItemQueue", testing=False):
         def valid_node_type():
             if type(nodes) is not ORMItemQueue:
@@ -604,12 +617,12 @@ class SQLAlchemyQueryManager:
         self._sorted: list[ORMItemQueue] = []  # [[save_point_group {pk: val,}], [save_point_group]...]
         self._query_objects: dict[Union[Insert, Update, Delete]] = {}  # {node_index: obj}
         self._testing = testing
-        
+
     def start(self):
         self._sort_nodes()  # Упорядочить, разбить по savepoint
         self._manage_queries()  # Обратиться к left_node.make_query, - собрать объекты sql-иньекций
         self._open_connection_and_push()
-        
+
     def _manage_queries(self):
         if self._query_objects:
             return self._query_objects
@@ -786,7 +799,7 @@ class ORMHelper(ORMAttributes):
     MEMCACHED_PATH = "127.0.0.1:11211"
     DATABASE_PATH = DATABASE_PATH
     DATABASE_MOCK_PATH = DATABASE_PATH_FOR_TESTS
-    TESTING = False  # Блокировка откравки в бд, блокировка dequeue с пролонгированием кеша очереди нод
+    TESTING = DEBUG  # Блокировка откравки в бд, блокировка dequeue с пролонгированием кеша очереди нод
     RELEASE_INTERVAL_SECONDS = 5.0
     CACHE_LIFETIME_HOURS = 6 * 60 * 60
     _memcache_connection: Optional[Union[Client, MockMemcacheClient]] = None
@@ -871,9 +884,11 @@ class ORMHelper(ORMAttributes):
                  _delete=False, _ready=False, _where=None, _model=None, **value):
         model = _model or cls._model_obj
         cls.is_valid_model_instance(model)
-        cls.items.enqueue(_model=model, _ready=_ready,
-                          _insert=_insert, _update=_update,
-                          _delete=_delete, _where=_where, _create_at=datetime.datetime.now(), **value)
+        items = cls.items
+        items.enqueue(_model=model, _ready=_ready,
+                      _insert=_insert, _update=_update,
+                      _delete=_delete, _where=_where, _create_at=datetime.datetime.now(), _container=items,
+                      **value)
         cls.__set_cache()
         cls._timer.cancel() if cls._timer else None
         cls._timer = cls.init_timer()
@@ -1077,7 +1092,7 @@ class ORMHelper(ORMAttributes):
                 nonlocal heap
                 for model in models:  # O(n)
                     heap += cls.items.search_nodes(model, **_where.get(model.__name__, {}))  # O(n * k)
-                    
+
             def collect_node_values(on_keys_or_values: Union[dict.keys, dict.values]):  # f(n) = O(n) * (O(k) * O(u) * (O(l) * O(m)) * O(y)); g(n) = O(n * k)
                 for node in heap:  # O(n)
                     for table_and_column in on_keys_or_values:  # O(k)
@@ -1236,7 +1251,7 @@ class ORMHelper(ORMAttributes):
     def __set_cache(cls):
         cls.cache.set("ORMItems", cls._items, cls.CACHE_LIFETIME_HOURS)
 
-        
+
 class JoinedORMItem:
     """
     Экземпляр этого класса возвращается функцией ORMHelper.join_select()
@@ -1256,7 +1271,7 @@ class JoinedORMItem:
         Объект этого класса создан для 'слежки' за изменениями с UI."""
         _wrap_items: Optional[list[str]] = None
         _joined_item: Optional["JoinedORMItem"] = None
-        
+
         def __init__(self, result_items_from_select: Union[list[SpecialOrmContainer], tuple[SpecialOrmContainer]]):
             self._data = result_items_from_select
             self._is_valid()
