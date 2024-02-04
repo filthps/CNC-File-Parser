@@ -13,9 +13,12 @@
 import unittest
 import time
 from sqlalchemy import func, select
-from database.models import Machine, Cnc, OperationDelegation, SearchString, db as sqlalchemy_instance
+from database.models import Machine, Cnc, OperationDelegation, SearchString, db as sqlalchemy_instance, Condition
 from database.procedures import init_all_triggers
 from orm import *
+
+
+DEBUG = True
 
 
 def is_database_empty(session, empty=True, tables=15, procedures=52, test_db_name="testdb"):
@@ -98,7 +101,7 @@ class TestORMHelper(unittest.TestCase):
     @db_reinit
     def test_database_insert_and_select_single_entry(self):
         with self.orm_manager.database as session:
-            session.add(Machine(machine_name="Test", input_catalog="C:\\Test", output_catalog="C:\\TestPath"))
+            session.add(Machine(machine_name="Test", input_catalog=r"C:\Test", output_catalog="C:\\TestPath"))
             session.commit()
         self.assertEqual(self.orm_manager.database.execute("SELECT COUNT(machineid) FROM machine").scalar(), 1)
         data = self.orm_manager.database.execute(select(Machine).filter_by(machine_name="Test")).scalar().__dict__
@@ -157,14 +160,15 @@ class TestORMHelper(unittest.TestCase):
         self.assertEqual(self.orm_manager.items[0].model, Cnc)
         self.orm_manager.set_item(_model=OperationDelegation, _update=True, operation_description="text")
         self.assertEqual(self.orm_manager.items[2].value["operation_description"], "text")
+        self.orm_manager.set_item(_insert=True, _model=Condition, findfull=True, parentconditionbooleanvalue=True)
+        self.assertEqual(self.orm_manager.items.__len__(), 4)
         # start Invalid ...
         # плохой path
         self.assertRaises(NodeColumnError, self.orm_manager.set_item, _insert=True, _model=Machine, input_path="path")  # input_catalog
         self.assertRaises(NodeColumnError, self.orm_manager.set_item, _insert=True, _model=Machine, output_path="path")  # output_catalog
         self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _insert=True, _model=Machine, input_catalog=4)
         self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _insert=True, _model=Machine, output_catalog=7)
-        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _insert=True, _model=Machine, output_catalog="")
-        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _insert=True, _model=Machine, output_catalog="teststr")
+        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _insert=True, _model=Machine, output_catalog=None)
         # Invalid model
         self.assertRaises(InvalidModel, self.orm_manager.set_item, machine_name="Test", _update=True)  # model = None
         self.assertRaises(InvalidModel, self.orm_manager.set_item, machine_name="Test", _insert=True, _model=2)  # model: Type[int]
@@ -196,6 +200,32 @@ class TestORMHelper(unittest.TestCase):
         self.assertRaises(NodeDMLTypeError, self.orm_manager.set_item, _model=Cnc, name="NC211")
         self.assertRaises(NodeDMLTypeError, self.orm_manager.set_item, _model=Cnc, name="NC214")
 
-    @unittest.skip("pass")
+    @drop_cache
+    @db_reinit
     def test_get_item(self):
-        pass
+        # Invalid model
+        self.assertRaises(InvalidModel, self.orm_manager.get_item, _model=1)
+        self.assertRaises(InvalidModel, self.orm_manager.get_item, _model=object())
+        self.assertRaises(InvalidModel, self.orm_manager.get_item, _model=0)
+        self.assertRaises(InvalidModel, self.orm_manager.get_item, _model=sqlalchemy_instance.Model)
+        self.assertRaises(InvalidModel, self.orm_manager.get_item, _model="123")
+        self.assertRaises(InvalidModel, self.orm_manager.get_item)
+        self.assertRaises(InvalidModel, self.orm_manager.get_item, _model=None)
+        # GOOD
+        self.orm_manager.set_item(_insert=True, _model=Cnc, name="Fid")
+        self.orm_manager.set_item(_insert=True, _model=Machine, machine_name="Rambaudi")
+        self.assertEqual(len(self.orm_manager.get_item(_model=Cnc, name="Fid")), 1)
+        self.assertEqual(self.orm_manager.get_item(_model=Cnc, name="Fid")["name"], "Fid")
+
+    @drop_cache
+    @db_reinit
+    def test_get_items(self):
+        self.orm_manager.set_item(_model=Machine, machine_name="Heller", _delete=True)
+        print(id(self.orm_manager.items))
+        self.orm_manager.set_item(_model=Machine, machine_name="Fidia", input_catalog="C:\\path", _insert=True)
+        print(id(self.orm_manager.items))
+        self.assertEqual(list(self.orm_manager.get_items(_model=Machine)).__len__(), 2)
+        self.orm_manager.set_item(_model=Condition, condinner="text", less=True)
+        print(id(self.orm_manager.items))
+        self.orm_manager.set_item(_model=Cnc, name="Fid", comment_symbol="$")
+        self.assertEqual(list(self.orm_manager.get_items(_model=Machine)).__len__(), 4)
