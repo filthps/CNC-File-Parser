@@ -13,7 +13,7 @@ from pymemcache.exceptions import MemcacheError
 from pymemcache_dill_serde import DillSerde
 from pymemcache.test.utils import MockMemcacheClient
 from psycopg2.errors import Error as PsycopgError
-from sqlalchemy import create_engine, ColumnDefault
+from sqlalchemy import create_engine, ColumnDefault, delete
 from sqlalchemy.sql.dml import Insert, Update, Delete
 from sqlalchemy.orm import Query, sessionmaker as session_factory, Session
 from sqlalchemy.exc import DisconnectionError, OperationalError, SQLAlchemyError
@@ -22,7 +22,7 @@ from database.models import CustomModel, ModelController, DATABASE_PATH, DATABAS
 from gui.orm.exceptions import *
 
 
-DEBUG = True
+DEBUG = False
 
 
 class ORMAttributes:
@@ -42,7 +42,7 @@ class ORMAttributes:
             if any(map(lambda x: keys - set(x), item.column_names.values())):
                 raise ModelsConfigurationError
             return
-        raise
+        raise InvalidModel
 
     @staticmethod
     def is_valid_container(container):
@@ -50,38 +50,15 @@ class ORMAttributes:
             raise TypeError
 
 
-class PrimaryKeyManager(ORMAttributes):
-    model = None
-
-    @property
-    def should_remove_primary_key(self) -> bool:
-        """ Нужно ли удалить первичный ключ со значением из значений во время коммита в базу """
-        self.is_valid_model_instance(self.model)
-        attributes = self.model().column_names
-        for field_name, data in attributes.items():
-            if not data["primary_key"]:
-                continue
-            if data["autoincrement"]:
-                return True
-            if data["default"]:
-                return True
-            return False
-
+class ModelTools(ORMAttributes):
+    """ Высокоуровневый инструментарий для валидации полей данных в локальной очереди, производства ключей, и другого,
+     что требует 'живой' связи между очередью в локальном хранилище и/или базой данных"""
     @classmethod
     def _create_autoincrement_pk(cls, node: Union["ORMItem", "SpecialOrmItem"]):
-        if len(node.container) == 1:
-            return 1
-        nodes = cls._get_nodes_by_current_model(node.container, node)
-        if not nodes:
-            return 1
-        sorted_nodes = nodes
-        if type(nodes[0]) is int:
-            sorted_nodes = sorted(nodes.items())
-        last_node: ORMItem = sorted_nodes[-1][1]
-        return last_node.get_primary_key_and_value(only_value=True) + 1
+        return len(list(cls._get_nodes_by_current_model(node.container, node.model.__name__))) + 1
 
-    @staticmethod
-    def _select_primary_key_value_from_scalars(node: "ORMItem", field_name: str):
+    @classmethod
+    def _select_primary_key_value_from_scalars(cls, node: "ORMItem", field_name: str):
         """ Выбрать значние из значений ноды,
         если primary_key=True установлено для строки или другого поля со скалярными значекниями"""
         try:
@@ -91,15 +68,51 @@ class PrimaryKeyManager(ORMAttributes):
         return value
 
     @staticmethod
-    def _get_nodes_by_current_model(container: "ORMItemQueue", model_name: str) -> dict:
-        d = {}
+    def _get_nodes_by_current_model(container: "ORMItemQueue", model_name: str) -> Iterator[int]:
         for node in container:
             if node.model.__name__ == model_name:
-                d.update({node.get_primary_key_and_value(only_value=True): node})
-        return d
+                yield node.get_primary_key_and_value(only_value=True)
+
+    @staticmethod
+    def _check_unique_values(node) -> bool:
+        model_data = node.model().column_names
+        for column_name, value in node.value.items():
+            if model_data[column_name]["unique"]:
+                for n in node.container:
+                    if n.model.__name__ == node.model.__name__:
+                        if column_name in n.value:
+                            if n.value[column_name] == value:
+                                return False
+        return True
+
+    @staticmethod
+    def _check_not_null_fields_in_node_value(node: "ORMItem") -> bool:
+        """ Проверить все поля на предмет nullable """
+        model_attributes: dict[dict] = node.model().column_names
+        for k, attributes in model_attributes.items():
+            if not attributes["nullable"]:
+                if k not in node.value:
+                    return False
+                if type(node.value[k]) is None:
+                    return False
+        return True
+
+    @staticmethod
+    def _is_valid_column_type_in_sql_type(node: "ORMItem") -> bool:
+        """ Проверить соответствие данных в ноде на предмет типизации.
+         Если тип данных отличается от табличного в БД, то возбудить исключение"""
+        data = node.model().column_names
+        for column_name in node.value:
+            if column_name not in data:
+                return False
+            if not isinstance(node.value[column_name], data[column_name]["type"]):
+                raise NodeColumnValueError(text=f"Столбец {column_name} должен быть производным от "
+                                                f"{str(data[column_name]['type'])}, "
+                                                f"по факту {type(node.value[column_name])}")
+        return True
 
 
-class ORMItem(LinkedListItem, PrimaryKeyManager):
+class ORMItem(LinkedListItem, ModelTools):
     """ Иммутабельный класс ноды для ORMItemQueue. """
     def __init__(self, _container=None, **kw):
         """
@@ -131,6 +144,7 @@ class ORMItem(LinkedListItem, PrimaryKeyManager):
         self._value = {}  # Содержимое - пары ключ-значение: поле таблицы бд: значение
         self._value.update(kw)
         self.__foreign_key_fields = self.__model().foreign_keys
+        self.__relative_primary_key = False
 
         def is_valid_dml_type():
             """ Только одино свойство, обозначающее тип sql-dml операции, может быть True """
@@ -141,37 +155,44 @@ class ORMItem(LinkedListItem, PrimaryKeyManager):
                 raise NodeDMLTypeError
         is_valid_dml_type()
 
-        def is_valid_column_type(column_name: str):
-            exists_column_names = self.model().column_names
-            if column_name not in exists_column_names:
-                raise NodeColumnError(column_name)
-            if not isinstance(self._value[column_name], exists_column_names[column_name]["type"]):
-                raise NodeColumnValueError(text=f"Столбец {column_name} должен быть производным от "
-                                                f"{str(exists_column_names[column_name]['type'])}, "
-                                                f"по факту {type(self._value[column_name])}")
-        [is_valid_column_type(col) for col in self._value]
-
-        def is_valid_column_value(column, value):
-            model_attributes: dict[dict] = self.__model().column_names
-            try:
-                column_attributes = model_attributes[column]
-                nullable = column_attributes.pop("nullable")
-            except KeyError:
-                raise ModelsConfigurationError
-            if not nullable and value is None:
-                raise NodeColumnValueError(value)
-        [is_valid_column_value(col_name, val) for col_name, val in self._value.items()]
+        def field_names_validation():
+            field_names = self.model().column_names
+            if set(self.value) - set(field_names):
+                raise NodeColumnError
+        field_names_validation()
         self.__primary_key = self.__create_primary_key()
+        self._value.update(self.__primary_key)
+        _ = self.ready
+
+        def check_current_primary_key_is_relative():
+            """ Является ли первичный ключ относительным.
+            Под этим понимается то, что при последующих репликациях во время
+            enqueue значение первичного ключа является автоинкрементом или неким вычисляемым значением по умолчанию,
+            предугадать которое не представляется возможным,- такой первичный ключ мы будем называть относительным."""
+            model_data = self.model().column_names[self.get_primary_key_and_value(only_key=True)]
+            if model_data["autoincrement"] or model_data["default"]:
+                self.__relative_primary_key = True
+        check_current_primary_key_is_relative()
 
     @property
     def value(self):
         return self._value.copy()
 
     @property
+    def is_relative_primary_key(self):
+        return self.__relative_primary_key
+
+    @property
     def container(self):
         if not hasattr(self, "_container"):
             return
         return self._container()
+
+    @container.setter
+    def container(self, cnt):
+        if type(cnt) is not ORMItemQueue:
+            raise TypeError
+        self._container = ref(cnt)
 
     @property
     def model(self):
@@ -212,16 +233,19 @@ class ORMItem(LinkedListItem, PrimaryKeyManager):
         return tuple(self.__primary_key.items())[0] if as_tuple else self.__primary_key
 
     @property
-    def ready(self) -> bool:
-        return self.__is_ready
-
-    @property
     def created_at(self):
         return self._create_at
 
     @property
     def where(self) -> dict:
         return self.__where.copy() if self.__where else {}
+
+    @property
+    def ready(self) -> bool:
+        self.__is_ready = self._is_valid_column_type_in_sql_type(self)
+        self.__is_ready = self._check_unique_values(self) if self.__is_ready else False
+        self.__is_ready = self._check_not_null_fields_in_node_value(self) if self.__is_ready else False
+        return self.__is_ready
 
     @ready.setter
     def ready(self, status: bool):
@@ -251,24 +275,23 @@ class ORMItem(LinkedListItem, PrimaryKeyManager):
         query = None
         value: dict = self.value
         primary_key = self.get_primary_key_and_value(only_key=True)
+        where = self.__where
+        if self.__should_remove_primary_key:
+            del value[primary_key]
+            where = value if not where else where
+        else:
+            where = where if where else self.get_primary_key_and_value()
         if self.__insert:
-            if self.should_remove_primary_key:
-                del value[primary_key]
             query = self.model(**value)
         if self.__update or self.__delete:
-            where = self.__where
-            if not where:
-                where = self.get_primary_key_and_value()
-            del value[primary_key]
             query = self.model.query.filter_by(**where).first()
-            if query is None:
+            if query is not None:
+                if self.__update:
+                    [setattr(query, key, value) for key, value in value.items()]
                 if self.__delete:
-                    return
-                query = self.model(**self.value)
-        if self.__update:
-            if primary_key in value:
-                del value[primary_key]
-            [setattr(query, key, value) for key, value in value.items()]
+                    query = delete(self.model).where(
+                        ", ".join(map(lambda x: f"{self.model.__tablename__}.{x[0]} == '{x[1]}'", value.items()))
+                    )
         self.__transaction_counter += 1
         return query
 
@@ -281,17 +304,6 @@ class ORMItem(LinkedListItem, PrimaryKeyManager):
         if type(other) is not type(self):
             return False
         return self.__hash__() == hash(other)
-
-    def __lt__(self, other: "ORMItem"):
-        """ Сравнение включено для сортировки  """
-        c_pk = self.get_primary_key_and_value(only_value=True)
-        if not type(c_pk) is int:
-            return self.created_at < other.created_at
-        other_pk = other.get_primary_key_and_value(only_value=True)
-        return c_pk < other_pk
-
-    def __gt__(self, other):
-        return not self.__lt__(other)
 
     def __contains__(self, item: str):
         if not isinstance(item, str):
@@ -314,7 +326,10 @@ class ORMItem(LinkedListItem, PrimaryKeyManager):
         return str(self.value)
 
     def __hash__(self):
-        str_ = "".join(map(lambda x: str(x), itertools.chain(*self.value.items())))
+        value = self.value
+        if self.is_relative_primary_key:
+            del value[self.get_primary_key_and_value(only_key=True)]
+        str_ = "".join(map(lambda x: str(x), itertools.chain(*value.items())))
         return int.from_bytes(hashlib.md5(str_.encode("utf-8")).digest(), "big")
 
     def __getitem__(self, item: str):
@@ -323,6 +338,20 @@ class ORMItem(LinkedListItem, PrimaryKeyManager):
         if item not in self.value:
             raise KeyError
         return self.value[item]
+
+    @property
+    def __should_remove_primary_key(self) -> bool:
+        """ Нужно ли удалить первичный ключ со значением из значений во время коммита в базу """
+        self.is_valid_model_instance(self.model)
+        attributes = self.model().column_names
+        for field_name, data in attributes.items():
+            if not data["primary_key"]:
+                continue
+            if data["autoincrement"]:
+                return True
+            if data["default"]:
+                return True
+            return False
     
     def __create_primary_key(self) -> dict[str, Union[str, int]]:
         """Повторный вызов недопустим. Вызывать в первую очередь! до добаления ноды в связанный список"""
@@ -449,7 +478,7 @@ class ORMItemQueue(LinkedList):
         Искать ноды по совпадениям любых полей
         :arg model: кастомный объект, смотри модуль database/models
         :arg _filter: словарь содержащий набор полей и их значений для поиска
-        :arg negative_selection: режим отбора нод
+        :arg negative_selection: режим отбора нод (найти нады КРОМЕ ... [filter])
         """
         ORMItem.is_valid_model_instance(model)
         items = self.__class__()
@@ -788,7 +817,6 @@ class ORMHelper(ORMAttributes):
     2) Установка ссылки на класс модели Flask-SqlAlchemy
         LinkToObj.set_model(CustomModel)
     3) Использование
-        name - Это всегда либо действующий PK или поле с ограничением UNIQUE=TRUE!
         LinkToObj.set_item(name, data, **kwargs) - Установка в очередь, обнуление таймера
         LinkToObj.get_item(name, **kwargs) - получение данных из бд и из ноды
         LinkToObj.get_items(model=None) - получение данных из бд и из ноды
@@ -805,7 +833,7 @@ class ORMHelper(ORMAttributes):
     _memcache_connection: Optional[Union[Client, MockMemcacheClient]] = None
     _database_session = None
     _timer: Optional[threading.Timer] = None
-    _items: ORMItemQueue = ORMItemQueue()  # Temp
+    _items: Optional[ORMItemQueue] = None  # Temp
     _model_obj: Optional[Type[CustomModel]] = None  # Текущий класс модели, присваиваемый автоматически всем экземплярам при добавлении в очередь
     _was_initialized = False
 
@@ -865,11 +893,9 @@ class ORMHelper(ORMAttributes):
         """ Вернуть локальные элементы """
         if cls._items:
             return cls._items
-        items = cls.cache.get("ORMItems")
-        if not items:
-            items = ORMItemQueue()
-        cls._items = items
-        return items
+        if cls._items is None:
+            cls._items = cls.cache.get("ORMItems")
+        return cls._items
 
     @classmethod
     def init_timer(cls):
@@ -972,6 +998,7 @@ class ORMHelper(ORMAttributes):
                 raise ORMExternalDataError
             left_node: ORMItem = cls.items.get_node(model, **{pk_name: db_data[pk_name]})
             if left_node:
+                left_node.container = nodes_implements_db
                 nodes_implements_db.enqueue(**left_node.get_attributes())
                 if not left_node.type == "_delete":
                     db_data.update(left_node.value)
@@ -1243,7 +1270,7 @@ class ORMHelper(ORMAttributes):
             raise TypeError
         if cls.CACHE_LIFETIME_HOURS <= cls.RELEASE_INTERVAL_SECONDS:
             raise ORMInitializationError("Срок жизни кеша, который хранит очередь сохраняемых объектов не может быть меньше, "
-                            "чем интервал отправки объектов в базу данных.")
+                                         "чем интервал отправки объектов в базу данных.")
         cls._was_initialized = True
         #  cls.drop_cache()
 
@@ -1427,5 +1454,7 @@ if __name__ == "__main__":
     from database.models import Machine, Cnc
 
     container = ORMItemQueue()
-    container.enqueue(_model=Cnc, name="test", _insert=True, _container=container)
+    container.enqueue(_model=Cnc, name="test", _delete=True, _container=container)
     container.enqueue(_model=Machine, machine_name="Heller", _insert=True, _container=container)
+    container.enqueue(_model=Cnc, name="Testname", _container=container, _update=True)
+    print(container)
