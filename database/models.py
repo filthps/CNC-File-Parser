@@ -46,7 +46,7 @@ class ModelController:
                                                                      "primary_key": value.expression.primary_key,
                                                                      "autoincrement": value.expression.autoincrement,
                                                                      "unique": value.expression.unique,
-                                                                     "default": value.expression.default}})
+                                                                     "default": value.expression.default}})  # todo: Доработать остальные аналоги default, согласно документации https://docs.sqlalchemy.org/en/20/core/defaults.html
                     if hasattr(value, "length"):
                         cls.column_names[value.expression.name].update({"length": value.length})
 
@@ -111,8 +111,10 @@ class Machine(db.Model, ModelController):
         CheckConstraint("machine_name!=''", name="machine_name_empty"),
         CheckConstraint(r"SUBSTRING(machine_name, 1, 2) NOT SIMILAR TO '[0-9_\!@#\$%\^&\*\(\)\-\= ]*'", name="invalid_machine_name_reg"),
         CheckConstraint(r"machine_name SIMILAR TO '\S*'", name="valid_machine_mame_reg"),
-        CheckConstraint(r"input_catalog SIMILAR TO '[A-Z]\:(?:\\[^\*\?«\<\>|:\/\.\,]+)+[^\s]'", name="input_catalog_reg"),
-        CheckConstraint(r"output_catalog SIMILAR TO '[A-Z]\:(?:\\[^\*\?«\<\>|:\/\.\,]+)+[^\s]'", name="output_catalog_reg"),
+        CheckConstraint(r"input_catalog SIMILAR TO '[A-Z]\:(\\[^\*\?«\<\>|:\/\.\,]+)+[^\s]'", name="input_catalog_reg"),
+        CheckConstraint(r"output_catalog SIMILAR TO '[A-Z]\:(\\[^\*\?«\<\>|:\/\.\,]+)+[^\s]'", name="output_catalog_reg"),
+        CheckConstraint("input_catalog!=''", name="input_catalog_is_not_empty"),
+        CheckConstraint("output_catalog!=''", name="output_catalog_is_not_empty"),
         CheckConstraint("x_over>=0", name="x_over_must_be_positive"),
         CheckConstraint("y_over>=0", name="y_over_must_be_positive"),
         CheckConstraint("z_over>=0", name="z_over_must_be_positive"),
