@@ -583,11 +583,23 @@ class ORMItemQueue(LinkedList):
     def _replication(self, **new_node_complete_data: dict) -> tuple[Optional[ORMItem], ORMItem]:  # O(l * k) + O(n) + O(1) = O(n)
         """
         Создавать ноды для добавления можно только здесь! Логика для постаовки в очередь здесь.
+        1) Инициализация ноды: первичного ключа (согласно атрибутам класса модели), данных в ней и др
+        2) Попытка найти ноду от той же модели с таким же первичным ключом -->
+        заменяем ноду в очерени новой, смешивая value, если найдена, return
+        Иначе
+        3) Получаем список столбцов модели с unique=True
+        Если столбца нету заменяем ноду в очерени новой, смешивая value, если найдена, return
+        4) В новой ноде из п1 ищем все значения по столбцам из п3
+        Если нет ни одного значения -> заменяем ноду в очерени новой, смешивая value, если найдена, return
+        5) Найти в очереди ноды с той же моделью, полями и значениями
+        Если не найдено ни одной ноды -> заменяем ноду в очерени новой, смешивая value, если найдена, return
+        6) Берём ноду из очереди у которой максимальное кол-во совпадений -> заменяем ноду в очерени новой,
+        смешивая value, если найдена, return
         """
         potential_new_item = self.LinkedListItem(**new_node_complete_data)  # O(1)
         new_item = None
 
-        def create_merged_values_node(old_node: ORMItem, new_node: ORMItem, dml_type: str) -> ORMItem:
+        def merge(old_node: ORMItem, new_node: ORMItem, dml_type: str) -> ORMItem:
             new_node_data = old_node.get_attributes()
             old_where, new_where = old_node.where, new_node.where
             old_where.update(new_where)
@@ -598,7 +610,32 @@ class ORMItemQueue(LinkedList):
             new_node_data.update({"_insert": False, "_update": False, "_delete": False})
             new_node_data.update({dml_type: True, "_ready": new_node.ready})
             return self.LinkedListItem(**new_node_data)
+
+        def find_node_to_replace_by_unique_values() -> Optional[ORMItem]:
+            def get_unique_column_names():
+                return [name for name, data in potential_new_item.model().column_names.items() if data["unique"]]
+
+            def collect_values(n: ORMItem, *fields):
+                d = {}
+                for field in fields:
+                    if field in n.value:
+                        d.update({field: n.value[field]})
+                return d
+
+            def count_matches(new_node_values, other_node_values):
+                return sum(map())
+
+            unique_fields = get_unique_column_names()
+            unique_values_in_new_node = collect_values(potential_new_item, *unique_fields)
+            if not unique_values_in_new_node:
+                return
+            nodes_with_unique_fields = self.search_nodes(exists_item.model, **unique_values_in_new_node)
+            if not nodes_with_unique_fields:
+                return
+            v = max(map(lambda i: count_matches(unique_values_in_new_node, i.value), nodes_with_unique_fields))
         exists_item = self.get_node(potential_new_item.model, **potential_new_item.get_primary_key_and_value())  # O(n)
+        if not exists_item:
+            exists_item = find_node_to_replace_by_unique_values(unique=True)
         if not exists_item:
             new_item = potential_new_item
             return None, new_item
@@ -608,16 +645,16 @@ class ORMItemQueue(LinkedList):
         if new_item_is_update:
             if exists_item.type == "_insert" or exists_item.type == "_update":
                 if exists_item.type == "_insert":
-                    new_item = create_merged_values_node(exists_item, potential_new_item, "_insert")
+                    new_item = merge(exists_item, potential_new_item, "_insert")
                 if exists_item.type == "_update":
-                    new_item = create_merged_values_node(exists_item, potential_new_item, "_update")
+                    new_item = merge(exists_item, potential_new_item, "_update")
             if exists_item.type == "_delete":
                 new_item = potential_new_item
         if new_item_is_delete:
             new_item = potential_new_item
         if new_item_is_insert:
             if exists_item.type == "_insert" or exists_item.type == "_update":
-                new_item = create_merged_values_node(exists_item, potential_new_item, "_insert")
+                new_item = merge(exists_item, potential_new_item, "_insert")
             if exists_item.type == "_delete":
                 new_item = potential_new_item
         return exists_item, new_item
