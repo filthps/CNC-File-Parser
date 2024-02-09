@@ -622,9 +622,13 @@ class ORMItemQueue(LinkedList):
                         d.update({field: n.value[field]})
                 return d
 
-            def count_matches(new_node_values, other_node_values):
-                return sum(map())
-
+            def count_(node: ORMItem) -> int:
+                counter = 0
+                for key, value in node.value.items():
+                    if key in unique_values_in_new_node:
+                        if value == unique_values_in_new_node[key]:
+                            counter += 1
+                return counter
             unique_fields = get_unique_column_names()
             unique_values_in_new_node = collect_values(potential_new_item, *unique_fields)
             if not unique_values_in_new_node:
@@ -632,10 +636,12 @@ class ORMItemQueue(LinkedList):
             nodes_with_unique_fields = self.search_nodes(exists_item.model, **unique_values_in_new_node)
             if not nodes_with_unique_fields:
                 return
-            v = max(map(lambda i: count_matches(unique_values_in_new_node, i.value), nodes_with_unique_fields))
+            items_counter = dict(enumerate(map(lambda node: count_(node), nodes_with_unique_fields)))  # index: counter
+            items_counter = dict(zip(items_counter.values(), items_counter.keys()))
+            return nodes_with_unique_fields[items_counter[max(items_counter)]]
         exists_item = self.get_node(potential_new_item.model, **potential_new_item.get_primary_key_and_value())  # O(n)
         if not exists_item:
-            exists_item = find_node_to_replace_by_unique_values(unique=True)
+            exists_item = find_node_to_replace_by_unique_values()
         if not exists_item:
             new_item = potential_new_item
             return None, new_item
