@@ -633,7 +633,7 @@ class ORMItemQueue(LinkedList):
             unique_values_in_new_node = collect_values(potential_new_item, *unique_fields)
             if not unique_values_in_new_node:
                 return
-            nodes_with_unique_fields = self.search_nodes(exists_item.model, **unique_values_in_new_node)
+            nodes_with_unique_fields = self.search_nodes(potential_new_item.model, **unique_values_in_new_node)
             if not nodes_with_unique_fields:
                 return
             items_counter = dict(enumerate(map(lambda node: count_(node), nodes_with_unique_fields)))  # index: counter
@@ -824,7 +824,7 @@ class SpecialOrmItem(ORMItem):
 
 
 class SpecialOrmContainer(ORMItemQueue):
-    """ Данный контейнер для использования в JoinedORMItem (результат вызова ORMHelper.join_select) """
+    """ Данный контейнер для использования в JoinSelectResult (результат вызова ORMHelper.join_select) """
     LinkedListItem = SpecialOrmItem
 
     def get(self, model_name, default=None):
@@ -1069,7 +1069,7 @@ class ORMHelper(ORMAttributes):
 
     @classmethod
     def join_select(cls, *models: Iterable[CustomModel], on: Optional[dict] = None,
-                    _where: Optional[dict] = None, _db_only=False, _queue_only=False) -> "JoinedORMItem":
+                    _where: Optional[dict] = None, _db_only=False, _queue_only=False) -> "JoinSelectResult":
         """
         join_select(model_a, model,b, on={model_b: 'model_a.column_name'})
 
@@ -1077,7 +1077,7 @@ class ORMHelper(ORMAttributes):
         :param on: modelName.column1: modelName2.column2
         :param _db_only: извлечь только sql inner join
         :param _queue_only: извлечь только из queue
-        :return: специльный итерируемый объект класса JoinedORMItem, который содержит смешанные данные из локального
+        :return: специльный итерируемый объект класса JoinSelectResult, который содержит смешанные данные из локального
         хранилища и БД
         """
         def valid_params():
@@ -1088,7 +1088,9 @@ class ORMHelper(ORMAttributes):
             if not models:
                 raise ValueError
             if on is None:
-                raise ValueError
+                raise ValueError("Необходим аргумент on={model_b.column_name: 'model_a.column_name'}")
+            if type(on) is not dict:
+                raise TypeError
             if _where:
                 if type(_where) is not dict:
                     raise TypeError
@@ -1111,22 +1113,21 @@ class ORMHelper(ORMAttributes):
                 right_model = right_table_dot_field.split(".")[0]
                 if len(left_table_dot_field.split(".")) != 2 or len(right_table_dot_field.split(".")) != 2:
                     raise AttributeError("...on={model_b.column_name: 'model_a.column_name'}")
-                if left_model not in name_and_model_dict:
-                    raise ImportError(f"Класс модели {left_model} не найден")
-                if right_model not in name_and_model_dict:
-                    raise ImportError(f"Класс модели {right_model} не найден")
+                if left_model not in {m.__name__: m for m in models}:
+                    raise ValueError(f"Класс модели {left_model} не найден")
+                if right_model not in {m.__name__: m for m in models}:
+                    raise ValueError(f"Класс модели {right_model} не найден")
                 left_model_field = left_table_dot_field.split(".")[1]
                 right_model_field = right_table_dot_field.split(".")[1]
-                if not getattr(name_and_model_dict[left_model], left_model_field, None):
+                if not getattr({m.__name__: m for m in models}[left_model], left_model_field, None):
                     raise AttributeError(f"Столбец {left_model_field} у таблицы {left_model} не найден")
-                if not getattr(name_and_model_dict[right_model], right_model_field, None):
+                if not getattr({m.__name__: m for m in models}[right_model], right_model_field, None):
                     raise AttributeError(f"Столбец {right_model_field} у таблицы {right_model} не найден")
-        name_and_model_dict = {m.__name__: m for m in models}
         valid_params()
 
         def collect_db_data(self_instance=None):
             def create_request() -> str:  # O(n) * O(m)
-                s = f"dirty_data = db.database.query({tuple(name_and_model_dict.keys())[0]})"  # O(l) * O(1)
+                s = f"dirty_data = db.database.query({tuple((m.__name__ for m in models))[0]})"  # O(l) * O(1)
                 for left_table_dot_field, right_table_dot_field in on.items():  # O(n)
                     left_table, left_table_field = left_table_dot_field.split(".")  # O(m)
                     s += f".join({left_table}, "
@@ -1199,9 +1200,9 @@ class ORMHelper(ORMAttributes):
             heap = ORMItemQueue()
             collect_all()
             return compare_by_matched_fk()
-        JoinedORMItem.get_nodes_from_database = collect_db_data
-        JoinedORMItem.get_local_nodes = collect_local_data
-        return JoinedORMItem()
+        JoinSelectResult.get_nodes_from_database = collect_db_data
+        JoinSelectResult.get_local_nodes = collect_local_data
+        return JoinSelectResult()
 
     @classmethod
     def get_node_dml_type(cls, node_pk_value: Union[str, int], model=None) -> Optional[str]:
@@ -1322,7 +1323,7 @@ class ORMHelper(ORMAttributes):
         cls.cache.set("ORMItems", cls._items, cls.CACHE_LIFETIME_HOURS)
 
 
-class JoinedORMItem:
+class JoinSelectResult:
     """
     Экземпляр этого класса возвращается функцией ORMHelper.join_select()
     1 экземпляр этого класса 1 результат вызова ORMHelper.join_select()
@@ -1340,7 +1341,7 @@ class JoinedORMItem:
         """ Экземпляр данного объекта - оболочка для содержимого, обеспечивающая доступ к данным.
         Объект этого класса создан для 'слежки' за изменениями с UI."""
         _wrap_items: Optional[list[str]] = None
-        _joined_item: Optional["JoinedORMItem"] = None
+        _joined_item: Optional["JoinSelectResult"] = None
 
         def __init__(self, result_items_from_select: Union[list[SpecialOrmContainer], tuple[SpecialOrmContainer]]):
             self._data = result_items_from_select
@@ -1398,7 +1399,7 @@ class JoinedORMItem:
                 raise JoinedItemPointerError(
                     "Экземпляр класса JoinedItemResult не установлен в атрибут класса _joined_item"
                 )
-            if type(self._joined_item) is not JoinedORMItem:
+            if type(self._joined_item) is not JoinSelectResult:
                 raise TypeError
             if self._wrap_items is None:
                 raise ValueError
