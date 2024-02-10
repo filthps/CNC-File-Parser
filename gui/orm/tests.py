@@ -162,6 +162,9 @@ class TestORMHelper(unittest.TestCase):
         self.assertEqual(self.orm_manager.items[2].value["operation_description"], "text")
         self.orm_manager.set_item(_insert=True, _model=Condition, findfull=True, parentconditionbooleanvalue=True)
         self.assertEqual(self.orm_manager.items.__len__(), 4)
+        self.orm_manager.set_item(_delete=True, machine_name="Some_name", _model=Machine)
+        self.orm_manager.set_item(_delete=True, machine_name="Some_name_2", _model=Machine)
+        self.assertEqual(len(self.orm_manager.items), 6)
         # start Invalid ...
         # плохой path
         self.assertRaises(NodeColumnError, self.orm_manager.set_item, _insert=True, _model=Machine, input_path="path")  # input_catalog
@@ -216,16 +219,41 @@ class TestORMHelper(unittest.TestCase):
         self.orm_manager.set_item(_insert=True, _model=Machine, machine_name="Rambaudi")
         self.assertEqual(len(self.orm_manager.get_item(_model=Cnc, name="Fid")), 1)
         self.assertEqual(self.orm_manager.get_item(_model=Cnc, name="Fid")["name"], "Fid")
+        # test only_db & only_queue
 
     @drop_cache
     @db_reinit
     def test_get_items(self):
         self.orm_manager.set_item(_model=Machine, machine_name="Heller", _delete=True)
-        print(id(self.orm_manager.items))
+        self.assertEqual(list(self.orm_manager.get_items(_model=Machine)).__len__(), 0)
+        self.assertFalse(list(self.orm_manager.get_items(_model=Machine)))
+        # Элементы с _delete=True игнорируются в выборке через метод get_items,- согласно замыслу
+        # Тем не менее, в очереди они должны присутствовать: см свойство items
         self.orm_manager.set_item(_model=Machine, machine_name="Fidia", input_catalog="C:\\path", _insert=True)
-        print(id(self.orm_manager.items))
-        self.assertEqual(list(self.orm_manager.get_items(_model=Machine)).__len__(), 2)
-        self.orm_manager.set_item(_model=Condition, condinner="text", less=True)
-        print(id(self.orm_manager.items))
-        self.orm_manager.set_item(_model=Cnc, name="Fid", comment_symbol="$")
-        self.assertEqual(list(self.orm_manager.get_items(_model=Machine)).__len__(), 4)
+        self.assertEqual(list(self.orm_manager.get_items(_model=Machine)).__len__(), 1)
+        self.orm_manager.set_item(_model=Condition, condinner="text", less=True, _insert=True)
+        self.orm_manager.set_item(_model=Cnc, name="Fid", comment_symbol="$", _update=True)
+        self.assertEqual(list(self.orm_manager.get_items(_model=Machine)).__len__(), 1)
+        self.assertEqual(list(self.orm_manager.get_items(_model=Condition)).__len__(), 1)
+        self.assertEqual(list(self.orm_manager.get_items(_model=Cnc)).__len__(), 1)
+
+    @drop_cache
+    @db_reinit
+    def test_join_select(self):
+        # Возвращает ли метод экземпляр класса JoinSelectResult?
+        self.assertIsInstance(self.orm_manager.join_select(Machine, Cnc, on={"Cnc.cncid": "Machine.cncid"}), JoinSelectResult)
+        # Плохие аргументы ...
+        # invalid model
+        self.assertRaises(InvalidModel, self.orm_manager.join_select, "str", Machine, on={"Cnc.cncid": "Machine.cncid"})
+        self.assertRaises(InvalidModel, self.orm_manager.join_select, Machine, 5, on={"Cnc.cncid": "Machine.cncid"})
+        self.assertRaises(InvalidModel, self.orm_manager.join_select, Machine, "str", on={"Cnc.cncid": "Machine.cncid"})
+        self.assertRaises(InvalidModel, self.orm_manager.join_select, "str", object())
+        # invalid named on...
+        self.assertRaises(TypeError, self.orm_manager.join_select, Machine, Cnc, on=6)
+        self.assertRaises(TypeError, self.orm_manager.join_select, Machine, Cnc, on=object())
+        self.assertRaises(TypeError, self.orm_manager.join_select, Machine, Cnc, on=[])
+        self.assertRaises(TypeError, self.orm_manager.join_select, Machine, Cnc, on="[]")
+        # Модели, переданные в аргументах (позиционных), не связаны с моделями и полями в именованном аргументе 'on'.
+        # join_select(a_model, b_model on={"a_model.column_name": "b_model.column_name"})
+        self.assertRaises(ValueError, self.orm_manager.join_select, Machine, Cnc, on={"InvalidModel.invalid_field": "SomeModel.other_field"})
+
