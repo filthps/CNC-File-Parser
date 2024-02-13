@@ -256,4 +256,18 @@ class TestORMHelper(unittest.TestCase):
         # Модели, переданные в аргументах (позиционных), не связаны с моделями и полями в именованном аргументе 'on'.
         # join_select(a_model, b_model on={"a_model.column_name": "b_model.column_name"})
         self.assertRaises(ValueError, self.orm_manager.join_select, Machine, Cnc, on={"InvalidModel.invalid_field": "SomeModel.other_field"})
-
+        self.assertRaises(ValueError, self.orm_manager.join_select, Machine, Cnc, on={"InvalidModel.invalid_field": "SomeModel.other_field"})
+        # Именованный параметр on содержит недействительные данные
+        self.assertRaises(AttributeError, self.orm_manager.join_select, Machine, Cnc, on={"invalid_field": "SomeModel.other_field"})
+        self.assertRaises(AttributeError, self.orm_manager.join_select, Machine, Cnc, on={"InvalidModel.invalid_field": "other_field"})
+        self.assertRaises(AttributeError, self.orm_manager.join_select, Machine, Cnc, on={"Machine.invalid_field": ".other_field"})
+        self.assertRaises(AttributeError, self.orm_manager.join_select, Machine, Cnc, on={".invalid_field": "SomeModel.other_field"})
+        self.assertRaises(AttributeError, self.orm_manager.join_select, Machine, Cnc, on={"InvalidModel.invalid_field": "SomeModel."})
+        self.assertRaises(AttributeError, self.orm_manager.join_select, Machine, Cnc, on={"InvalidModel.": "SomeModel.other_field"})
+        self.assertRaises(AttributeError, self.orm_manager.join_select, Machine, Cnc, on={"InvalidModel.": "SomeModel."})
+        self.assertRaises(AttributeError, self.orm_manager.join_select, Machine, Cnc, on={"InvalidModel.invalid_field": "."})
+        self.assertRaises(AttributeError, self.orm_manager.join_select, Machine, Cnc, on={".": "SomeModel.other_field"})
+        self.assertRaises(AttributeError, self.orm_manager.join_select, Machine, Cnc, on={"InvalidModel.invalid_field": " "})
+        self.assertRaises(AttributeError, self.orm_manager.join_select, Machine, Cnc, on={" ": "SomeModel.other_field"})
+        self.assertRaises(AttributeError, self.orm_manager.join_select, Machine, Cnc, on={"InvalidModel.invalid_field": "-"})
+        self.assertRaises(TypeError, self.orm_manager.join_select, Machine, Cnc, on={"InvalidModel.invalid_field": 5})
