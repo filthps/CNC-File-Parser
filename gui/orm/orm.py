@@ -1109,6 +1109,8 @@ class ORMHelper(ORMAttributes):
             for left_table_dot_field, right_table_dot_field in on.items():
                 if not type(left_table_dot_field) is str or not isinstance(right_table_dot_field, str):
                     raise TypeError("...on={model_b.column_name: 'model_a.column_name'}")
+                if not all(itertools.chain(*[[len(x) for x in i.split(".")] for t in on.items() for i in t])):
+                    raise AttributeError("...on={model_b.column_name: 'model_a.column_name'}")
                 left_model = left_table_dot_field.split(".")[0]
                 right_model = right_table_dot_field.split(".")[0]
                 if len(left_table_dot_field.split(".")) != 2 or len(right_table_dot_field.split(".")) != 2:
