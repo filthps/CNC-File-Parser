@@ -75,8 +75,8 @@ def init_cnc_table_triggers():
             IF (SELECT 1
             FROM cnc
             WHERE name=NEW.name 
-            AND comment_symbol=NEW.comment_symbol 
-            AND (except_symbols=NEW.except_symbols OR NEW.except_symbols IS NULL AND except_symbols IS NULL)
+            AND commentsymbol=NEW.commentsymbol 
+            AND (exceptsymbols=NEW.exceptsymbols OR NEW.exceptsymbols IS NULL AND exceptsymbols IS NULL)
             ) THEN
                 RAISE EXCEPTION 'Данный экземпляр сущности уже существует';
             ELSE
@@ -529,16 +529,16 @@ def init_machine_table_triggers():
                 SELECT 1
                 FROM machine
                 WHERE (cncid=NEW.cncid OR NEW.cncid IS NULL AND cncid IS NULL)
-                AND machine_name=NEW.machine_name
-                AND (x_over=NEW.x_over OR NEW.x_over IS NULL AND x_over IS NULL)
-                AND (y_over=NEW.y_over OR NEW.y_over IS NULL AND y_over IS NULL)
-                AND (z_over=NEW.z_over OR NEW.z_over IS NULL AND z_over IS NULL)
-                AND (x_fspeed=NEW.x_fspeed OR NEW.x_fspeed IS NULL AND x_fspeed IS NULL)
-                AND (y_fspeed=NEW.y_fspeed OR NEW.y_fspeed IS NULL AND y_fspeed IS NULL)
-                AND (z_fspeed=NEW.z_fspeed OR NEW.z_fspeed IS NULL AND z_fspeed IS NULL)
-                AND (spindele_speed=NEW.spindele_speed OR NEW.spindele_speed IS NULL AND spindele_speed IS NULL)
-                AND input_catalog=NEW.input_catalog
-                AND output_catalog=NEW.output_catalog
+                AND machinename=NEW.machinename
+                AND (xover=NEW.xover OR NEW.xover IS NULL AND xover IS NULL)
+                AND (yover=NEW.yover OR NEW.yover IS NULL AND yover IS NULL)
+                AND (zover=NEW.zover OR NEW.zover IS NULL AND zover IS NULL)
+                AND (xfspeed=NEW.xfspeed OR NEW.xfspeed IS NULL AND xfspeed IS NULL)
+                AND (yfspeed=NEW.yfspeed OR NEW.yfspeed IS NULL AND yfspeed IS NULL)
+                AND (zfspeed=NEW.zfspeed OR NEW.zfspeed IS NULL AND zfspeed IS NULL)
+                AND (spindelespeed=NEW.spindelespeed OR NEW.spindelespeed IS NULL AND spindelespeed IS NULL)
+                AND inputcatalog=NEW.inputcatalog
+                AND outputcatalog=NEW.outputcatalog
                 ) THEN
                     RAISE EXCEPTION 'Данный экземпляр сущности уже существует';
                 ELSE
