@@ -96,32 +96,32 @@ class Machine(db.Model, ModelController):
     __db_queue_primary_field_name__ = "machine_name"
     machineid = Column(Integer, primary_key=True, autoincrement=True)
     cncid = Column(Integer, ForeignKey("cnc", ondelete="SET NULL", onupdate="SET NULL"), nullable=True)
-    machine_name = Column(String(100), unique=True, nullable=False)
-    x_over = Column(Integer, nullable=True, default=None)
-    y_over = Column(Integer, nullable=True, default=None)
-    z_over = Column(Integer, nullable=True, default=None)
-    x_fspeed = Column(Integer, nullable=True, default=None)
-    y_fspeed = Column(Integer, nullable=True, default=None)
-    z_fspeed = Column(Integer, nullable=True, default=None)
-    spindele_speed = Column(Integer, nullable=True, default=None)
-    input_catalog = Column(String, nullable=False)
-    output_catalog = Column(String, nullable=False)
+    machinename = Column(String(100), unique=True, nullable=False)
+    xover = Column(Integer, nullable=True, default=None)
+    yover = Column(Integer, nullable=True, default=None)
+    zover = Column(Integer, nullable=True, default=None)
+    xfspeed = Column(Integer, nullable=True, default=None)
+    yfspeed = Column(Integer, nullable=True, default=None)
+    zfspeed = Column(Integer, nullable=True, default=None)
+    spindelespeed = Column(Integer, nullable=True, default=None)
+    inputcatalog = Column(String, nullable=False)
+    outputcatalog = Column(String, nullable=False)
     operations = relationship("OperationDelegation", secondary=TaskDelegation.__table__)
     __table_args__ = (
-        CheckConstraint("machine_name!=''", name="machine_name_empty"),
-        CheckConstraint(r"SUBSTRING(machine_name, 1, 2) NOT SIMILAR TO '[0-9_\!@#\$%\^&\*\(\)\-\= ]*'", name="invalid_machine_name_reg"),
-        CheckConstraint(r"machine_name SIMILAR TO '\S*'", name="valid_machine_mame_reg"),
-        CheckConstraint(r"input_catalog SIMILAR TO '[A-Z]\:(\\[^\*\?«\<\>|:\/\.\,]+)+[^\s]'", name="input_catalog_reg"),
-        CheckConstraint(r"output_catalog SIMILAR TO '[A-Z]\:(\\[^\*\?«\<\>|:\/\.\,]+)+[^\s]'", name="output_catalog_reg"),
-        CheckConstraint("input_catalog!=''", name="input_catalog_is_not_empty"),
-        CheckConstraint("output_catalog!=''", name="output_catalog_is_not_empty"),
-        CheckConstraint("x_over>=0", name="x_over_must_be_positive"),
-        CheckConstraint("y_over>=0", name="y_over_must_be_positive"),
-        CheckConstraint("z_over>=0", name="z_over_must_be_positive"),
-        CheckConstraint("x_fspeed>=0", name="x_fspeed_must_be_positive"),
-        CheckConstraint("y_fspeed>=0", name="y_fspeed_must_be_positive"),
-        CheckConstraint("z_fspeed>=0", name="z_fspeed_must_be_positive"),
-        CheckConstraint("spindele_speed>=0", name="spindele_speed_must_be_positive"),
+        CheckConstraint("machinename!=''", name="machine_name_empty"),
+        CheckConstraint(r"SUBSTRING(machinename, 1, 2) NOT SIMILAR TO '[0-9_\!@#\$%\^&\*\(\)\-\= ]*'", name="invalid_machine_name_reg"),
+        CheckConstraint(r"machinename SIMILAR TO '\S*'", name="valid_machine_mame_reg"),
+        CheckConstraint(r"inputcatalog SIMILAR TO '[A-Z]\:(\\[^\*\?«\<\>|:\/\.\,]+)+[^\s]'", name="input_catalog_reg"),
+        CheckConstraint(r"outputcatalog SIMILAR TO '[A-Z]\:(\\[^\*\?«\<\>|:\/\.\,]+)+[^\s]'", name="output_catalog_reg"),
+        CheckConstraint("inputcatalog!=''", name="input_catalog_is_not_empty"),
+        CheckConstraint("outputcatalog!=''", name="output_catalog_is_not_empty"),
+        CheckConstraint("xover>=0", name="x_over_must_be_positive"),
+        CheckConstraint("yover>=0", name="y_over_must_be_positive"),
+        CheckConstraint("zover>=0", name="z_over_must_be_positive"),
+        CheckConstraint("xfspeed>=0", name="x_fspeed_must_be_positive"),
+        CheckConstraint("yfspeed>=0", name="y_fspeed_must_be_positive"),
+        CheckConstraint("zfspeed>=0", name="z_fspeed_must_be_positive"),
+        CheckConstraint("spindelespeed>=0", name="spindele_speed_must_be_positive"),
     )
 
 
@@ -170,10 +170,10 @@ class Cnc(db.Model, ModelController):
     __db_queue_primary_field_name__ = "name"
     cncid = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(20), unique=True, nullable=False)
-    comment_symbol = Column(String(1), nullable=False)
-    except_symbols = Column(String(50), nullable=True, default=None)
+    commentsymbol = Column(String(1), nullable=False)
+    exceptsymbols = Column(String(50), nullable=True, default=None)
     __table_args__ = (
-        CheckConstraint("comment_symbol!=''", name="comment_symbol_empty"),
+        CheckConstraint("commentsymbol!=''", name="comment_symbol_empty"),
         CheckConstraint("name!=''", name="name_empty"),
     )
 
@@ -274,9 +274,9 @@ class Numeration(db.Model, ModelController):
     endat = Column(Integer, nullable=True, default=None)
     __table_args__ = (
         CheckConstraint("startat!=endat", name="startat_equal_endat"),
-        CheckConstraint("startat<=0", name="negatory_startat_value"),
-        CheckConstraint("endat<=0", name="negatory_endat_value"),
-        CheckConstraint("startat>endat", name="startat_more_then_endat"),
+        CheckConstraint("startat>=0", name="negatory_startat_value"),
+        CheckConstraint("endat>=0", name="negatory_endat_value"),
+        CheckConstraint("startat<endat", name="startat_more_then_endat"),
     )
 
 
