@@ -257,7 +257,9 @@ class ORMItem(LinkedListItem, ModelTools):
     def type(self) -> str:
         return "_insert" if self.__insert else "_update" if self.__update else "_delete"
 
-    def get_attributes(self) -> dict:
+    def get_attributes(self, with_update: Optional[dict] = None) -> dict:
+        if with_update is not None and type(with_update) is not dict:
+            raise TypeError
         result = {}
         result.update(self.value)
         if self.__update or self.__delete:
@@ -267,6 +269,7 @@ class ORMItem(LinkedListItem, ModelTools):
                        "_update": False, "_ready": self.__is_ready,
                        "_delete": False, "_count_retries": self.retries, "_container": self.container})
         result.update({self.type: True})
+        result.update(with_update) if with_update else None
         return result
 
     def make_query(self) -> Optional[Query]:
@@ -359,6 +362,9 @@ class ORMItem(LinkedListItem, ModelTools):
         for field_name, data in attributes.items():
             if not data["primary_key"]:
                 continue
+            if field_name in self._value:
+                # Если первичный ключ и значение были переданы в ноду при инициализации - считать это первичным ключом
+                return {field_name: self._value[field_name]}
             default_: Optional[ColumnDefault] = data["default"]
             autoincrement, type_ = data["autoincrement"], data["type"]
             if default_:
@@ -536,12 +542,12 @@ class ORMItemQueue(LinkedList):
                 return True
         return False
 
-    def __add__(self, other: Union["ORMItemQueue"]):
+    def __add__(self, other: "ORMItemQueue"):
         if not type(other) is self.__class__:
             raise TypeError
         result_instance = self.__class__()
-        [result_instance.append(**n.get_attributes()) for n in self]  # O(n)
-        [result_instance.enqueue(**n.get_attributes()) for n in other]  # O(n**2) todo n**2!
+        [result_instance.append(**n.get_attributes(with_update={"_container": result_instance})) for n in self]  # O(n)
+        [result_instance.enqueue(**n.get_attributes(with_update={"_container": result_instance})) for n in other]  # O(n**2) todo n**2!
         return result_instance
 
     def __iadd__(self, other):
@@ -854,7 +860,7 @@ class ORMHelper(ORMAttributes):
     Адаптер для ORMItemQueue
     Имеет таймер для единовременного высвобождения очереди объектов,
     при добавлении элемента в очередь таймер обнуляется.
-    свойство items (инкапсулирован в _items) - ссылка на экземпляр ORMItemQueue.
+    свойство items - ссылка на экземпляр ORMItemQueue.
     1) Инициализация
         LinkToObj = ORMHelper
     2) Установка ссылки на класс модели Flask-SqlAlchemy
@@ -876,7 +882,6 @@ class ORMHelper(ORMAttributes):
     _memcache_connection: Optional[Union[Client, MockMemcacheClient]] = None
     _database_session = None
     _timer: Optional[threading.Timer] = None
-    _items: Optional[ORMItemQueue] = None  # Temp
     _model_obj: Optional[Type[CustomModel]] = None  # Текущий класс модели, присваиваемый автоматически всем экземплярам при добавлении в очередь
     _was_initialized = False
 
@@ -912,7 +917,6 @@ class ORMHelper(ORMAttributes):
 
     @classmethod
     def drop_cache(cls):
-        cls._items = ORMItemQueue()
         cls.cache.flush_all()
 
     @classmethod
@@ -934,11 +938,7 @@ class ORMHelper(ORMAttributes):
     @property
     def items(cls) -> ORMItemQueue:
         """ Вернуть локальные элементы """
-        if cls._items:
-            return cls._items
-        if cls._items is None:
-            cls._items = cls.cache.get("ORMItems")
-        return cls._items
+        return cls.cache.get("ORMItems", ORMItemQueue())
 
     @classmethod
     def init_timer(cls):
@@ -958,7 +958,7 @@ class ORMHelper(ORMAttributes):
                       _insert=_insert, _update=_update,
                       _delete=_delete, _where=_where, _create_at=datetime.datetime.now(), _container=items,
                       **value)
-        cls.__set_cache()
+        cls.__set_cache(items)
         cls._timer.cancel() if cls._timer else None
         cls._timer = cls.init_timer()
 
@@ -1232,14 +1232,15 @@ class ORMHelper(ORMAttributes):
         if not isinstance(node_or_nodes, (tuple, list, set, frozenset, str, int,)):
             raise TypeError
         primary_key_field_name = getattr(model, "__db_queue_primary_field_name__")
+        items = cls.items
         if isinstance(node_or_nodes, (str, int,)):
-            cls.items.remove(model, **{primary_key_field_name: node_or_nodes})
+            items.remove(model, **{primary_key_field_name: node_or_nodes})
         if isinstance(node_or_nodes, (tuple, list, set, frozenset)):
             for pk_field_value in node_or_nodes:
                 if not isinstance(pk_field_value, (int, str,)):
                     raise TypeError
-                cls.items.remove(model, **{primary_key_field_name: pk_field_value})
-        cls.__set_cache()
+                items.remove(model, **{primary_key_field_name: pk_field_value})
+        cls.__set_cache(items)
 
     @classmethod
     def remove_field_from_node(cls, pk_field_value, field_or_fields: Union[Iterable[str], str], _model=None):
@@ -1269,8 +1270,9 @@ class ORMHelper(ORMAttributes):
                 raise NodePrimaryKeyError("Нельзя удалить поле, которое является первичным ключом")
             if field_or_fields in node_data:
                 del node_data[field_or_fields]
-        cls.items.enqueue(**node_data)
-        cls.__set_cache()
+        container = cls.items
+        container.enqueue(**node_data)
+        cls.__set_cache(container)
 
     @classmethod
     def is_node_from_cache(cls, model=None, **attrs) -> bool:
@@ -1292,8 +1294,7 @@ class ORMHelper(ORMAttributes):
         """
         database_adapter = SQLAlchemyQueryManager(DATABASE_PATH, cls.items, testing=cls.TESTING)
         database_adapter.start()
-        cls._items = database_adapter.remaining_nodes or None
-        cls.__set_cache()
+        cls.__set_cache(database_adapter.remaining_nodes or None)
         cls._timer = cls.init_timer() if database_adapter.remaining_nodes else None
         sys.exit()
 
@@ -1321,8 +1322,8 @@ class ORMHelper(ORMAttributes):
         #  cls.drop_cache()
 
     @classmethod
-    def __set_cache(cls):
-        cls.cache.set("ORMItems", cls._items, cls.CACHE_LIFETIME_HOURS)
+    def __set_cache(cls, nodes):
+        cls.cache.set("ORMItems", nodes, cls.CACHE_LIFETIME_HOURS)
 
 
 class JoinSelectResult:
@@ -1378,7 +1379,6 @@ class JoinSelectResult:
             if item_name not in self._wrap_items:
                 raise ValueError("Элемент не найден")
             old_items_container = self._wrap_items[self._wrap_items.index(item_name)]
-            self._joined_item.refresh()
             return old_items_container.__hash__() not in map(lambda x: hash(x), self._joined_item)
 
         def __getitem__(self, item: str):
@@ -1440,6 +1440,13 @@ class JoinSelectResult:
         self._merged = tuple(fresh_values)
         return result
 
+    @property
+    def items(self) -> ChainMap:
+        items = tuple(self)
+        if self.__check_merged_column_names(items):
+            raise Warning("В результате join запроса есть повторяющиеся столбцы. Какие-то значения утеряны")
+        return ChainMap(*[node_item.value for queue_item in items for node_item in queue_item])
+
     def has_changes(self, hash_=None) -> bool:
         if hash_ is not None and not isinstance(hash_, int):
             raise TypeError
@@ -1449,9 +1456,6 @@ class JoinSelectResult:
             self._merged = tuple(new_values)
             return not result
         return not tuple([hash(container) for container in self]) == tuple(map(lambda i: hash(i), self._merge()))
-
-    def refresh(self):
-        self._merged = tuple(self._merge())
 
     def __iter__(self):
         if self._merged is not None:
@@ -1494,6 +1498,11 @@ class JoinSelectResult:
             while local_items:
                 result.append(local_items.pop(0))
         return iter(result)
+
+    @staticmethod
+    def __check_merged_column_names(result: tuple[SpecialOrmContainer]) -> bool:
+        return bool(set.intersection(*[set(n.value) - set(n.get_primary_key_and_value())
+                                       for group in result for n in group]))
 
 
 if __name__ == "__main__":
