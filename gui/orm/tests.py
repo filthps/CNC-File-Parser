@@ -274,10 +274,20 @@ class TestORMHelper(unittest.TestCase):
         self.assertIsInstance(self.orm_manager.join_select(Machine, Cnc, on={"Cnc.cncid": "Machine.cncid"}), JoinSelectResult)
         # GOOD
         # Найдутся ли записи с pk равными значениям, которые мы добавили
+        # Локальные данные
         result = self.orm_manager.join_select(Machine, Cnc, on={"Machine.cncid": "Cnc.cncid"})
         self.assertTrue("cncid" in result.items and result.items["cncid"] == 2)
         self.assertTrue("machineid" in result.items and result.items["machineid"] == 2)
         self.assertEqual("Ram", result.items["name"])
+        result_case_numeration = self.orm_manager.join_select(OperationDelegation, Numeration,
+                                              on={"OperationDelegation.numerationid": "Numeration.numerationid"})
+        self.assertIn("endat", result_case_numeration.items)
+        self.assertTrue(result_case_numeration.items["endat"] == 269)
+        self.assertTrue(result_case_numeration.items["numerationid"] == 2)
+        #
+        result_case_comment = self.orm_manager.join_select(Comment, OperationDelegation, on={"Comment.commentid": "OperationDelegation.commentid"})
+        self.assertFalse(result_case_numeration.items["opid"] == result_case_comment.items["opid"])
+        #self.assertEqual()
         # Отбор только из локальных данных (очереди)
         ...  # todo
         # Отбор только из базы данных
