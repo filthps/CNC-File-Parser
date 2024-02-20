@@ -157,8 +157,13 @@ class ORMItem(LinkedListItem, ModelTools):
 
         def field_names_validation():
             field_names = self.model().column_names
-            if set(self.value) - set(field_names):
+            any_ = set(self.value) - set(field_names)
+            if any_:
+                if type(self) is SpecialOrmItem:
+                    if set(self.value) - set(map(lambda d: f"{self.model.__name__}.{d}", any_)):
+                        raise NodeColumnError
                 raise NodeColumnError
+
         field_names_validation()
         self.__primary_key = self.__create_primary_key()
         self._value.update(self.__primary_key)
@@ -1443,8 +1448,8 @@ class JoinSelectResult:
     @property
     def items(self) -> ChainMap:
         items = tuple(self)
-        if self.__check_merged_column_names(items):
-            raise Warning("В результате join запроса есть повторяющиеся столбцы. Какие-то значения утеряны")
+        if self.__get_merged_column_names(items):
+            items = self.__set_prefix_to_column_name(items)
         return ChainMap(*[node_item.value for queue_item in items for node_item in queue_item])
 
     def has_changes(self, hash_=None) -> bool:
@@ -1500,9 +1505,32 @@ class JoinSelectResult:
         return iter(result)
 
     @staticmethod
-    def __check_merged_column_names(result: tuple[SpecialOrmContainer]) -> bool:
-        return bool(set.intersection(*[set(n.value) - set(n.get_primary_key_and_value())
-                                       for group in result for n in group]))
+    def __get_merged_column_names(result: tuple[SpecialOrmContainer]) -> set[str]:
+        """ Наименования столбцов, которые присутствуют в более чем 1 таблице результата join_select """
+        return set.intersection(*[set(n.value) for group in result for n in group])
+
+    def __set_prefix_to_column_name(self, items: tuple[SpecialOrmContainer]) -> tuple[SpecialOrmContainer]:
+        """ Добавить префикс вида - ModelName.column_name ко всем столбцам,
+        чьи имена дублируются в нодах от нескольких моделей """
+        result = []
+        merged_columns = list(self.__get_merged_column_names(items))
+        while merged_columns:
+            column_name = merged_columns.pop()
+            for container in items:
+                new_container = SpecialOrmContainer()
+                for node in container:
+                    if column_name in node.value:
+                        value: dict = node.value
+                        value.update({f"{node.model.__name__}.{column_name}": value[column_name]})
+                        del value[column_name]
+                        data = node.get_attributes()
+                        data.update(value)
+                        data.update({"_container": new_container})
+                        new_container.append(**data)
+                    else:
+                        new_container.append(**{**node.get_attributes(), "_container": new_container})
+                result.append(new_container)
+        return tuple(result)
 
 
 if __name__ == "__main__":
