@@ -154,17 +154,7 @@ class ORMItem(LinkedListItem, ModelTools):
             if sum((self.__insert, self.__update, self.__delete,)) != 1:
                 raise NodeDMLTypeError
         is_valid_dml_type()
-
-        def field_names_validation():
-            field_names = self.model().column_names
-            any_ = set(self.value) - set(field_names)
-            if any_:
-                if type(self) is SpecialOrmItem:
-                    if set(self.value) - set(map(lambda d: f"{self.model.__name__}.{d}", any_)):
-                        raise NodeColumnError
-                raise NodeColumnError
-
-        field_names_validation()
+        self._field_names_validation()
         self.__primary_key = self.__create_primary_key()
         self._value.update(self.__primary_key)
         _ = self.ready
@@ -346,6 +336,19 @@ class ORMItem(LinkedListItem, ModelTools):
         if item not in self.value:
             raise KeyError
         return self.value[item]
+
+    def _field_names_validation(self, from_polymorphizm=False) -> Optional[set[str]]:
+        """ соотнести все столбцы ноды в словаре value со столбцами из класса Model """
+        def clear_names():
+            """ ORM могла добавить префиксы вида 'ModelClassName.column_name', очистить имена от них """
+            value = {(k[k.index(".") + 1:] if "." in k else k): v for k, v in self.value.items()}
+            return value
+        field_names = self.model().column_names
+        any_ = set(clear_names()) - set(field_names)
+        if any_:
+            if from_polymorphizm:
+                return any_
+            raise NodeColumnError
 
     @property
     def __should_remove_primary_key(self) -> bool:
@@ -833,6 +836,18 @@ class SpecialOrmItem(ORMItem):
         str_ = "".join(map(lambda i: str(i), self.get_primary_key_and_value(as_tuple=True)))
         return int.from_bytes(hashlib.md5(str_.encode("utf-8")).digest(), "big")
 
+    def _field_names_validation(self):
+        column_names = set(self.model().column_names)
+        loss_fields = super()._field_names_validation(from_polymorphizm=True)
+        while loss_fields and column_names:
+            field = loss_fields.pop()
+            if f"{self.model.__name__}.{field}" not in column_names:
+                if field not in column_names:
+                    loss_fields.add(field)
+            column_names.remove(field)
+        if loss_fields:
+            raise NodeColumnError
+
 
 class SpecialOrmContainer(ORMItemQueue):
     """ Данный контейнер для использования в JoinSelectResult (результат вызова ORMHelper.join_select) """
@@ -884,6 +899,7 @@ class ORMHelper(ORMAttributes):
     TESTING = DEBUG  # Блокировка откравки в бд, блокировка dequeue с пролонгированием кеша очереди нод
     RELEASE_INTERVAL_SECONDS = 5.0
     CACHE_LIFETIME_HOURS = 6 * 60 * 60
+    JOIN_SELECT_DIFF_CACHE_MINUTES = 60 * 60
     _memcache_connection: Optional[Union[Client, MockMemcacheClient]] = None
     _database_session = None
     _timer: Optional[threading.Timer] = None
@@ -1132,7 +1148,7 @@ class ORMHelper(ORMAttributes):
                     raise AttributeError(f"Столбец {right_model_field} у таблицы {right_model} не найден")
         valid_params()
 
-        def collect_db_data(self_instance=None):
+        def collect_db_data():
             def create_request() -> str:  # O(n) * O(m)
                 s = f"dirty_data = db.database.query({tuple((m.__name__ for m in models))[0]})"  # O(l) * O(1)
                 for left_table_dot_field, right_table_dot_field in on.items():  # O(n)
@@ -1165,7 +1181,7 @@ class ORMHelper(ORMAttributes):
             exec(sql_text, {"db": cls}, ChainMap(*list(map(lambda x: {x.__name__: x}, models))))
             return add_items_to_orm_queue()
 
-        def collect_local_data(self_instance=None) -> Iterator[SpecialOrmContainer]:
+        def collect_local_data() -> Iterator[SpecialOrmContainer]:
             def collect_all():  # n**2!
                 nonlocal heap
                 for model in models:  # O(n)
@@ -1355,12 +1371,14 @@ class JoinSelectResult:
             self._data = result_items_from_select
             self._is_valid()
 
+        @classmethod
         @property
-        def wrapper(self):
-            return copy.copy(self._wrap_items)
+        def wrapper(cls):
+            return copy.copy(cls._wrap_items)
 
         @classmethod
-        def set_wrapper(cls, val):
+        @wrapper.setter
+        def wrapper(cls, val):
             if type(val) is not list and type(val) is not tuple:
                 raise TypeError
             if not all(map(lambda x: isinstance(x, str), val)):
@@ -1423,7 +1441,6 @@ class JoinSelectResult:
     def __init__(self):
         if not callable(self.get_nodes_from_database) or not callable(self.get_local_nodes):
             raise TypeError
-        self._merged: Optional[tuple] = tuple(self._merge())
 
     @property
     def pointer(self) -> Pointer:
@@ -1439,34 +1456,30 @@ class JoinSelectResult:
         self.Pointer.set_wrapper(items)
 
     @property
-    def has_new_items(self) -> bool:
-        fresh_values = self._merge()
-        result = not tuple((items.hash_by_pk for items in self)) == tuple(map(lambda x: x.hash_by_pk, fresh_values))
-        self._merged = tuple(fresh_values)
-        return result
+    def has_changes(self, hash_=None) -> bool:
+        current_hash = self._previous_hash
+        self.__iter__()
+        new_hash = self._previous_hash
+        if hash_:
+            if hash_ not in current_hash:
+                raise ValueError
+            if hash_ in new_hash:
+                return False
+            return True
+        return current_hash != new_hash
 
     @property
-    def items(self) -> ChainMap:
+    def items(self) -> list[ChainMap]:
         items = tuple(self)
+        result = []
         if self.__get_merged_column_names(items):
             items = self.__set_prefix_to_column_name(items)
-        return ChainMap(*[node_item.value for queue_item in items for node_item in queue_item])
-
-    def has_changes(self, hash_=None) -> bool:
-        if hash_ is not None and not isinstance(hash_, int):
-            raise TypeError
-        new_values = self._merge()
-        if hash_:
-            result = hash_ in map(lambda x: x, new_values)
-            self._merged = tuple(new_values)
-            return not result
-        return not tuple([hash(container) for container in self]) == tuple(map(lambda i: hash(i), self._merge()))
+        for group in items:
+            result.append(ChainMap(*[node.value for node in group]))
+        return result
 
     def __iter__(self):
-        if self._merged is not None:
-            return iter(self._merged)
-        self._merged = tuple(self._merge())
-        return iter(self._merged)
+        return self._merge()
 
     def __len__(self):
         return sum([1 for _ in self])
@@ -1485,10 +1498,10 @@ class JoinSelectResult:
             return False
         return item in map(lambda x: hash(x), self)
 
-    def _merge(self) -> Iterator[SpecialOrmContainer]:
+    def _merge(self) -> list[SpecialOrmContainer]:
+        result = []
         db_items = list(self.get_nodes_from_database())
         local_items = list(self.get_local_nodes())
-        result = []
         for db_group_index, db_nodes_group in enumerate(db_items):
             for local_nodes_group_index, local_nodes_group in enumerate(local_items):
                 if db_nodes_group.is_containing_the_same_nodes(local_nodes_group):
@@ -1502,7 +1515,20 @@ class JoinSelectResult:
         if local_items:
             while local_items:
                 result.append(local_items.pop(0))
-        return iter(result)
+        self._previous_hash = tuple([hash(group) for group in result])
+        return result
+
+    @property
+    def _previous_hash(self) -> Optional[tuple[int]]:
+        return ORMHelper.cache.get("join_select_hash")
+
+    @_previous_hash.setter
+    def _previous_hash(self, values: tuple[int]):
+        if type(values) is not tuple:
+            raise TypeError
+        if not all(map(lambda b: type(b) is int, values)):
+            raise TypeError
+        ORMHelper.cache.set("join_select_hash", values, ORMHelper.JOIN_SELECT_DIFF_CACHE_MINUTES)
 
     @staticmethod
     def __get_merged_column_names(result: tuple[SpecialOrmContainer]) -> set[str]:
