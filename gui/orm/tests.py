@@ -252,7 +252,8 @@ class TestORMHelper(unittest.TestCase):
                                                   inputcatalog=r"C:\Windows",
                                                   outputcatalog=r"X:\path"))
             self.orm_manager.database.add(OperationDelegation(
-                numerationid=self.orm_manager.database.scalar(select(Numeration)).numerationid)
+                numerationid=self.orm_manager.database.scalar(select(Numeration)).numerationid),
+                operationdescription="Нумерация. Добавил сразу в БД"
             )
             self.orm_manager.database.add(OperationDelegation(commentid=self.orm_manager.database.scalar(select(Comment)).commentid))
             self.orm_manager.database.commit()
@@ -260,10 +261,12 @@ class TestORMHelper(unittest.TestCase):
         def set_data_into_queue():
             items = ORMItemQueue()
             items.enqueue(_model=Numeration, numerationid=2, endat=269, _insert=True, _container=items)
-            items.enqueue(_insert=True, _model=OperationDelegation, numerationid=2, _container=items)
+            items.enqueue(_insert=True, _model=OperationDelegation, numerationid=2, _container=items,
+                          operationdescription="Нумерация кадров")
             items.enqueue(_model=Comment, findstr="test_string", ifcontains=True, _insert=True, commentid=2,
                           _container=items)
-            items.enqueue(_model=OperationDelegation, commentid=2, _container=items, _insert=True)
+            items.enqueue(_model=OperationDelegation, commentid=2, _container=items, _insert=True,
+                          operationdescription="Комментарий")
             items.enqueue(_model=Cnc, _insert=True, cncid=2, name="Ram", commentsymbol="#", _container=items)
             items.enqueue(_model=Machine, machineid=2, cncid=2, machinename="Fidia", inputcatalog=r"D:\Heller",
                           outputcatalog=r"C:\Test", _container=items, _insert=True)
@@ -294,17 +297,14 @@ class TestORMHelper(unittest.TestCase):
         # Machine - Cnc
         local_data = self.orm_manager.join_select(Machine, Cnc, on={"Machine.cncid": "Cnc.cncid"}, _queue_only=True)
         database_data = self.orm_manager.join_select(Cnc, Machine, on={"Cnc.cncid": "Machine.cncid"}, _db_only=True)
-        self.assertNotIn(local_data.items[0]["machineid"], database_data.items[0])
-        #self.assertNotIn(database_data.items[0][])
+        self.assertNotIn(local_data.items[0]["machineid"], database_data.items[0].values())
+        self.assertNotIn(database_data[0]["machineid"], local_data[0].values())
+        self.assertIn("Fidia", local_data[2].values())
         # Comment - OperationDelegation
         local_data = self.orm_manager.join_select(Comment, OperationDelegation, on={"Comment.commentid": "OperationDelegation.commentid"}, _queue_only=True)
         database_data = self.orm_manager.join_select(Comment, OperationDelegation, on={"Comment.commentid": "OperationDelegation.commentid"}, _db_only=True)
-
-
-
-
-        # Отбор только из базы данных, их уже в очереди быть не должно
-        ...  # todo
+        self.assertNotIn(local_data.items[0]["commentid"], database_data[0].items.values())
+        self.assertNotIn(database_data.items[0]["commentid"], local_data[0].items.values())
         # Плохие аргументы ...
         # invalid model
         self.assertRaises(InvalidModel, self.orm_manager.join_select, "str", Machine, on={"Cnc.cncid": "Machine.cncid"})
@@ -356,3 +356,4 @@ class TestORMHelper(unittest.TestCase):
                           on={2.9: 5})
         self.assertRaises((AttributeError, TypeError, ValueError,), self.orm_manager.join_select, Machine, Cnc,
                           on={4: "Machine.machinename"})
+        # todo: test Pointer
