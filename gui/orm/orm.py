@@ -1367,17 +1367,20 @@ class JoinSelectResult:
         _wrap_items: Optional[list[str]] = None
         _joined_item: Optional["JoinSelectResult"] = None
 
-        def __init__(self, result_items_from_select: Union[list[SpecialOrmContainer], tuple[SpecialOrmContainer]]):
-            self._data = result_items_from_select
+        def __init__(self):
+            if type(self._joined_item) is not JoinSelectResult:
+                raise TypeError
+            self._data = self._joined_item.__iter__()
             self._is_valid()
+            self._hash_names_map = {name: hash(node_group) for name, node_group in zip(self._wrap_items, copy.copy(self._data))}
 
-        @classmethod
         @property
+        @classmethod
         def wrapper(cls):
             return copy.copy(cls._wrap_items)
 
-        @classmethod
         @wrapper.setter
+        @classmethod
         def wrapper(cls, val):
             if type(val) is not list and type(val) is not tuple:
                 raise TypeError
@@ -1386,54 +1389,32 @@ class JoinSelectResult:
             cls._wrap_items = list(val)
 
         @property
-        def values(self):
-            return copy.copy(self._data)
-
-        @property
         def items(self) -> dict[str, int]:
             return dict(zip(self._wrap_items, self._data))
 
-        def has_changes(self, item_name: str) -> bool:
-            self._is_valid()
-            if type(item_name) is not str:
+        def has_changes(self, name: str = None) -> bool:
+            if type(name) is not str:
                 raise TypeError
-            if not self._wrap_items:
-                raise ValueError
-            if item_name not in self._wrap_items:
-                raise ValueError("Элемент не найден")
-            old_items_container = self._wrap_items[self._wrap_items.index(item_name)]
-            return old_items_container.__hash__() not in map(lambda x: hash(x), self._joined_item)
-
-        def __getitem__(self, item: str):
-            if not isinstance(item, str):
-                raise TypeError
-            return self.items[item]
-
-        def __iter__(self):
-            return iter(self._wrap_items)
-
-        def __repr__(self):
-            return f"{self.__class__.__name__}({self._data})"
+            return self._joined_item.has_changes(self._hash_names_map[name])
 
         def __str__(self):
-            return "".join(map(lambda x: str(x), self._data))
+            return "".join(map(lambda x: f"{x[0]}:{x[1]} /n", zip(self._wrap_items, copy.copy(self._data))))
 
         def _is_valid(self):
+            data = tuple(copy.copy(self._data))
             """ Если длины 2 последовательностей (см init) отличаются, то вызвать исключение """
             if self._joined_item is None:
                 raise JoinedItemPointerError(
                     "Экземпляр класса JoinedItemResult не установлен в атрибут класса _joined_item"
                 )
-            if type(self._joined_item) is not JoinSelectResult:
-                raise TypeError
             if self._wrap_items is None:
                 raise ValueError
-            if not isinstance(self._data, (list, tuple,)):
+            if not isinstance(data, (list, tuple,)):
                 raise TypeError
-            if len(self._wrap_items) != len(self._data):
+            if len(self._wrap_items) != len(data):
                 raise warnings.warn("Появились новые записи")
-            if self._data:
-                if not all(map(lambda x: isinstance(x, (ORMItemQueue, SpecialOrmContainer,)), self._data)):
+            if data:
+                if not all(map(lambda x: isinstance(x, (ORMItemQueue, SpecialOrmContainer,)), data)):
                     raise TypeError
     get_local_nodes: Optional[Callable] = None
     get_nodes_from_database: Optional[Callable] = None
@@ -1442,20 +1423,6 @@ class JoinSelectResult:
         if not callable(self.get_nodes_from_database) or not callable(self.get_local_nodes):
             raise TypeError
 
-    @property
-    def pointer(self) -> Pointer:
-        self.Pointer._joined_item = self
-        return self.Pointer(tuple(self))
-
-    @pointer.setter
-    def pointer(self, items: list):
-        if not isinstance(items, (list, tuple,)):
-            raise TypeError
-        if not all(map(lambda val: type(val) is str, items)):
-            raise ValueError
-        self.Pointer.set_wrapper(items)
-
-    @property
     def has_changes(self, hash_=None) -> bool:
         current_hash = self._previous_hash
         self.__iter__()
@@ -1467,6 +1434,19 @@ class JoinSelectResult:
                 return False
             return True
         return current_hash != new_hash
+
+    @property
+    def pointer(self) -> Pointer:
+        self.Pointer._joined_item = self
+        return self.Pointer()
+
+    @pointer.setter
+    def pointer(self, items: list):
+        if not isinstance(items, (list, tuple,)):
+            raise TypeError
+        if not all(map(lambda val: type(val) is str, items)):
+            raise ValueError
+        self.Pointer.set_wrapper(items)
 
     @property
     def items(self) -> list[ChainMap]:
@@ -1485,7 +1465,7 @@ class JoinSelectResult:
         return sum([1 for _ in self])
 
     def __getitem__(self, item: int) -> SpecialOrmContainer:
-        if not isinstance(item, str):
+        if not isinstance(item, int):
             raise TypeError
         if item not in self:
             raise DoesNotExists
