@@ -127,7 +127,6 @@ class Machine(db.Model, ModelController):
 
 class OperationDelegation(db.Model, ModelController):
     __tablename__ = "operationdelegation"
-    __db_queue_primary_field_name__ = "operation_description"
     opid = Column(String, primary_key=True, default=get_uuid)
     conditionid = Column(String, ForeignKey("cond.cnd"), nullable=True, default=None)
     insertid = Column(Integer, ForeignKey("insert.insid"), nullable=True, default=None)
@@ -138,7 +137,7 @@ class OperationDelegation(db.Model, ModelController):
     replaceid = Column(Integer, ForeignKey("repl.replaceid"), nullable=True, default=None)
     numerationid = Column(Integer, ForeignKey("num.numerationid"), nullable=True, default=None)
     is_active = Column(Boolean, default=True, nullable=False)
-    operation_description = Column(String(300), default="", nullable=False)
+    operationdescription = Column(String(300), default="", nullable=False)
     machines = relationship("Machine", secondary=TaskDelegation.__table__)
 
 
