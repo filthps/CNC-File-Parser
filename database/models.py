@@ -85,7 +85,6 @@ class CustomModel:
 
 class TaskDelegation(db.Model, ModelController):
     __tablename__ = "taskdelegate"
-    __db_queue_primary_field_name__ = "id"
     id = Column(String, primary_key=True, default=get_uuid)
     machineid = Column(ForeignKey("machine.machineid"), nullable=False)
     operationid = Column(ForeignKey("operationdelegation.opid"), nullable=False)
@@ -93,7 +92,6 @@ class TaskDelegation(db.Model, ModelController):
 
 class Machine(db.Model, ModelController):
     __tablename__ = "machine"
-    __db_queue_primary_field_name__ = "machine_name"
     machineid = Column(Integer, primary_key=True, autoincrement=True)
     cncid = Column(Integer, ForeignKey("cnc", ondelete="SET NULL", onupdate="SET NULL"), nullable=True)
     machinename = Column(String(100), unique=True, nullable=False)
@@ -136,14 +134,13 @@ class OperationDelegation(db.Model, ModelController):
     renameid = Column(Integer, ForeignKey("renam.renameid"), nullable=True, default=None)
     replaceid = Column(Integer, ForeignKey("repl.replaceid"), nullable=True, default=None)
     numerationid = Column(Integer, ForeignKey("num.numerationid"), nullable=True, default=None)
-    is_active = Column(Boolean, default=True, nullable=False)
+    isactive = Column(Boolean, default=True, nullable=False)
     operationdescription = Column(String(300), default="", nullable=False)
     machines = relationship("Machine", secondary=TaskDelegation.__table__)
 
 
 class Condition(db.Model, ModelController):
     __tablename__ = "cond"
-    __db_queue_primary_field_name__ = "cnd"
     cnd = Column(String, primary_key=True, default=get_uuid)
     parent = Column(String, ForeignKey("cond.cnd", ondelete="SET NULL", onupdate="CASCADE"), nullable=True, default=None)
     hvarid = Column(ForeignKey("headvar.varid", ondelete="CASCADE", onupdate="CASCADE"), nullable=True, default=None)
@@ -166,7 +163,6 @@ class Condition(db.Model, ModelController):
 
 class Cnc(db.Model, ModelController):
     __tablename__ = "cnc"
-    __db_queue_primary_field_name__ = "name"
     cncid = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(20), unique=True, nullable=False)
     commentsymbol = Column(String(1), nullable=False)
@@ -179,7 +175,6 @@ class Cnc(db.Model, ModelController):
 
 class HeadVarible(db.Model, ModelController):
     __tablename__ = "headvar"
-    __db_queue_primary_field_name__ = "name"
     varid = Column(String, default=get_uuid, primary_key=True)
     cncid = Column(ForeignKey("cnc.cncid", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
     strid = Column(ForeignKey("sstring.strid", ondelete="CASCADE", onupdate="CASCADE"), unique=True, nullable=False)
@@ -191,7 +186,6 @@ class HeadVarible(db.Model, ModelController):
 
 class Insert(db.Model, ModelController):
     __tablename__ = "insert"
-    __db_queue_primary_field_name__ = "insid"
     insid = Column(Integer, primary_key=True, autoincrement=True)
     after = Column(Boolean, default=False, nullable=False)
     before = Column(Boolean, default=False, nullable=False)
@@ -207,7 +201,6 @@ class Insert(db.Model, ModelController):
 
 class Comment(db.Model, ModelController):
     __tablename__ = "comment"
-    __db_queue_primary_field_name__ = "commentid"
     commentid = Column(Integer, primary_key=True, autoincrement=True)
     findstr = Column(String(100), nullable=False)
     iffullmatch = Column(Boolean, default=False, nullable=False)
@@ -216,7 +209,6 @@ class Comment(db.Model, ModelController):
 
 class Uncomment(db.Model, ModelController):
     __tablename__ = "uncomment"
-    __db_queue_primary_field_name__ = "uid"
     uid = Column(Integer, primary_key=True, autoincrement=True)
     findstr = Column(String(100), nullable=False)
     iffullmatch = Column(Boolean, default=False, nullable=False)
@@ -228,7 +220,6 @@ class Uncomment(db.Model, ModelController):
 
 class Remove(db.Model, ModelController):
     __tablename__ = "remove"
-    __db_queue_primary_field_name__ = "removeid"
     removeid = Column(Integer, primary_key=True, autoincrement=True)
     iffullmatch = Column(Boolean, default=False, nullable=False)
     ifcontains = Column(Boolean, default=False, nullable=False)
@@ -241,7 +232,6 @@ class Remove(db.Model, ModelController):
 
 class HeadVarDelegation(db.Model, ModelController):
     __tablename__ = "varsec"
-    __db_queue_primary_field_name__ = "secid"
     secid = Column(String, default=get_uuid, primary_key=True)
     varid = Column(String, ForeignKey("headvar.varid"), nullable=False)
     insertid = Column(Integer, ForeignKey("insert.insid"), nullable=True, default=None)
@@ -253,7 +243,6 @@ class HeadVarDelegation(db.Model, ModelController):
 
 class Rename(db.Model, ModelController):
     __tablename__ = "renam"
-    __db_queue_primary_field_name__ = "renameid"
     renameid = Column(Integer, primary_key=True, autoincrement=True)
     uppercase = Column(Boolean, default=False, nullable=False)
     lowercase = Column(Boolean, default=False, nullable=False)
@@ -267,7 +256,6 @@ class Rename(db.Model, ModelController):
 
 class Numeration(db.Model, ModelController):
     __tablename__ = "num"
-    __db_queue_primary_field_name__ = "numerationid"
     numerationid = Column(Integer, autoincrement=True, primary_key=True)
     startat = Column(Integer, nullable=False, default=1)
     endat = Column(Integer, nullable=True, default=None)
@@ -281,7 +269,6 @@ class Numeration(db.Model, ModelController):
 
 class Replace(db.Model, ModelController):
     __tablename__ = "repl"
-    __db_queue_primary_field_name__ = "replaceid"
     replaceid = Column(Integer, primary_key=True, autoincrement=True)
     findstr = Column(String(100), nullable=False)
     ifcontains = Column(Boolean, default=False, nullable=False)
@@ -297,7 +284,6 @@ class Replace(db.Model, ModelController):
 
 class SearchString(db.Model, ModelController):
     __tablename__ = "sstring"
-    __db_queue_primary_field_name__ = "strid"
     strid = Column(String, default=get_uuid, primary_key=True)
     inner_ = Column(Text, default="", nullable=False)
     ignorecase = Column(Boolean, default=True, nullable=False)
