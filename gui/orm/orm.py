@@ -15,6 +15,7 @@ from pymemcache.test.utils import MockMemcacheClient
 from psycopg2.errors import Error as PsycopgError
 from sqlalchemy import create_engine, ColumnDefault, delete
 from sqlalchemy.sql.dml import Insert, Update, Delete
+from sqlalchemy.sql.expression import select
 from sqlalchemy.orm import Query, sessionmaker as session_factory, Session
 from sqlalchemy.exc import DisconnectionError, OperationalError, SQLAlchemyError
 from gui.datatype import LinkedList, LinkedListItem
@@ -106,6 +107,8 @@ class ModelTools(ORMAttributes):
             if column_name not in data:
                 return False
             if not isinstance(node.value[column_name], data[column_name]["type"]):
+                if node.value[column_name] is None and data[column_name]["nullable"]:
+                    continue
                 raise NodeColumnValueError(text=f"Столбец {column_name} должен быть производным от "
                                                 f"{str(data[column_name]['type'])}, "
                                                 f"по факту {type(node.value[column_name])}")
@@ -318,7 +321,7 @@ class ORMItem(LinkedListItem, ModelTools):
         return bool(len(self))
 
     def __repr__(self):
-        return f"{self.__class__.__name__}({self.get_attributes()})"
+        return self.__str__()
 
     def __str__(self):
         return str(self.value)
@@ -864,7 +867,7 @@ class SpecialOrmContainer(ORMItemQueue):
     def is_containing_the_same_nodes(self, other_items: "SpecialOrmContainer"):
         if not isinstance(other_items, type(self)):
             raise TypeError
-        return sum([n.hash_by_pk() for n in self]) == sum(map(lambda i: i.hash_by_pk(), other_items))
+        return sum([n.hash_by_pk for n in self]) == sum(map(lambda i: i.hash_by_pk, other_items))
 
     def __getitem__(self, model_name: str):
         if not isinstance(model_name, str):
@@ -1123,7 +1126,7 @@ class ORMHelper(ORMAttributes):
                             raise TypeError("Наименование столбца может быть только строкой")
                         if not isinstance(value, (str, int,)):
                             raise TypeError
-            if len(on) != len(models) - 1:
+            if len(on.keys()) + len(on.values()) != len(models):
                 raise ValueError(
                     "Правильный способ работы с данным методом: join_select(model_a, model,b, on={model_b.column_name: 'model_a.column_name'})"
                 )
@@ -1148,12 +1151,11 @@ class ORMHelper(ORMAttributes):
                     raise AttributeError(f"Столбец {right_model_field} у таблицы {right_model} не найден")
         valid_params()
 
-        def collect_db_data():
+        def collect_db_data(self):
             def create_request() -> str:  # O(n) * O(m)
-                s = f"dirty_data = db.database.query({tuple((m.__name__ for m in models))[0]})"  # O(l) * O(1)
+                s = f"orm_helper.database.query({', '.join(map(lambda x: x.__name__, models))}).filter("  # O(l) * O(1)
                 for left_table_dot_field, right_table_dot_field in on.items():  # O(n)
                     left_table, left_table_field = left_table_dot_field.split(".")  # O(m)
-                    s += f".join({left_table}, "
                     s += f"{left_table}.{left_table_field} == {right_table_dot_field})"
                 if _where:
                     on_keys_counter = 0
@@ -1168,20 +1170,20 @@ class ORMHelper(ORMAttributes):
                 return s
 
             def add_items_to_orm_queue() -> Iterator[SpecialOrmContainer]:  # O(i) * O(k) * O(m) * O(n) * O(j) * O(l)
-                for mix_table_data in dirty_data:  # O(i)
-                    row = SpecialOrmContainer()  # todo: что будет, если в 2 таблицах есть одноимённые столбцы?! testcase
-                    for model in models:  # O(k)
-                        all_column_names = getattr(model(), "column_names")
-                        r = {col_name: col_val for col_name, col_val in mix_table_data.items()
+                data = query.all()
+                for data_row in data:  # O(i)
+                    row = SpecialOrmContainer()  # todo: что будет, если в 2 таблицах есть одноимённые столбцы-primary_key?! testcase
+                    for join_select_result in data_row:
+                        all_column_names = getattr(type(join_select_result), "column_names")
+                        r = {col_name: col_val for col_name, col_val in join_select_result.__dict__.items()
                              if col_name in all_column_names}  # O(n) * O(j)
-                        row.append(_model=model, _insert=True, **r)  # O(l)
+                        row.append(_model=join_select_result.__class__, _insert=True, _container=row, **r)  # O(l)
                     yield row
-            dirty_data = []
             sql_text = create_request()
-            exec(sql_text, {"db": cls}, ChainMap(*list(map(lambda x: {x.__name__: x}, models))))
+            query: Query = eval(sql_text, {"orm_helper": cls}, ChainMap(*list(map(lambda x: {x.__name__: x}, models)), {"select": select}))
             return add_items_to_orm_queue()
 
-        def collect_local_data() -> Iterator[SpecialOrmContainer]:
+        def collect_local_data(self) -> Iterator[SpecialOrmContainer]:
             def collect_all():  # n**2!
                 nonlocal heap
                 for model in models:  # O(n)
@@ -1225,7 +1227,7 @@ class ORMHelper(ORMAttributes):
             return compare_by_matched_fk()
         JoinSelectResult.get_nodes_from_database = collect_db_data
         JoinSelectResult.get_local_nodes = collect_local_data
-        return JoinSelectResult()
+        return JoinSelectResult(only_database=_db_only, only_local=_queue_only)
 
     @classmethod
     def get_node_dml_type(cls, node_pk_value: Union[str, int], model=None) -> Optional[str]:
@@ -1419,9 +1421,17 @@ class JoinSelectResult:
     get_local_nodes: Optional[Callable] = None
     get_nodes_from_database: Optional[Callable] = None
 
-    def __init__(self):
+    def __init__(self, only_local=False, only_database=False):
         if not callable(self.get_nodes_from_database) or not callable(self.get_local_nodes):
             raise TypeError
+        if type(only_local) is not bool:
+            raise TypeError
+        if not isinstance(only_database, bool):
+            raise TypeError
+        if only_database and only_local:
+            raise ValueError
+        self._only_queue = only_local
+        self._only_db = only_database
 
     def has_changes(self, hash_=None) -> bool:
         current_hash = self._previous_hash
@@ -1455,11 +1465,11 @@ class JoinSelectResult:
         if self.__get_merged_column_names(items):
             items = self.__set_prefix_to_column_name(items)
         for group in items:
-            result.append(ChainMap(*[node.value for node in group]))
+            result.append(ChainMap(*[values for values in group]))
         return result
 
     def __iter__(self):
-        return self._merge()
+        return iter(self._merge())
 
     def __len__(self):
         return sum([1 for _ in self])
@@ -1480,8 +1490,8 @@ class JoinSelectResult:
 
     def _merge(self) -> list[SpecialOrmContainer]:
         result = []
-        db_items = list(self.get_nodes_from_database())
-        local_items = list(self.get_local_nodes())
+        db_items = list(self.get_nodes_from_database()) if not self._only_queue else []
+        local_items = list(self.get_local_nodes()) if not self._only_db else []
         for db_group_index, db_nodes_group in enumerate(db_items):
             for local_nodes_group_index, local_nodes_group in enumerate(local_items):
                 if db_nodes_group.is_containing_the_same_nodes(local_nodes_group):
@@ -1513,30 +1523,28 @@ class JoinSelectResult:
     @staticmethod
     def __get_merged_column_names(result: tuple[SpecialOrmContainer]) -> set[str]:
         """ Наименования столбцов, которые присутствуют в более чем 1 таблице результата join_select """
+        if not result:
+            return set()
         return set.intersection(*[set(n.value) for group in result for n in group])
 
-    def __set_prefix_to_column_name(self, items: tuple[SpecialOrmContainer]) -> tuple[SpecialOrmContainer]:
+    def __set_prefix_to_column_name(self, items: tuple[SpecialOrmContainer]) -> Iterator[list[dict]]:
         """ Добавить префикс вида - ModelName.column_name ко всем столбцам,
         чьи имена дублируются в нодах от нескольких моделей """
-        result = []
         merged_columns = list(self.__get_merged_column_names(items))
         while merged_columns:
             column_name = merged_columns.pop()
             for container in items:
-                new_container = SpecialOrmContainer()
+                list_ = []
                 for node in container:
                     if column_name in node.value:
-                        value: dict = node.value
-                        value.update({f"{node.model.__name__}.{column_name}": value[column_name]})
-                        del value[column_name]
-                        data = node.get_attributes()
-                        data.update(value)
-                        data.update({"_container": new_container})
-                        new_container.append(**data)
+                        values: dict = node.value
+                        pk_value = values[column_name]
+                        del values[column_name]
+                        values.update({f"{node.model.__name__}.{column_name}": pk_value})
+                        list_.append(values)
                     else:
-                        new_container.append(**{**node.get_attributes(), "_container": new_container})
-                result.append(new_container)
-        return tuple(result)
+                        list_.append(node.value)
+                yield list_
 
 
 if __name__ == "__main__":
