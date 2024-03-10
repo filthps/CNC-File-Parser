@@ -102,19 +102,19 @@ class TestORMHelper(unittest.TestCase):
     @db_reinit
     def test_database_insert_and_select_single_entry(self):
         with self.orm_manager.database as session:
-            session.add(Machine(machinename="Test", input_catalog=r"C:\Test", output_catalog="C:\\TestPath"))
+            session.add(Machine(machinename="Test", inputcatalog=r"C:\Test", outputcatalog="C:\\TestPath"))
             session.commit()
         self.assertEqual(self.orm_manager.database.execute("SELECT COUNT(machineid) FROM machine").scalar(), 1)
         data = self.orm_manager.database.execute(select(Machine).filter_by(machinename="Test")).scalar().__dict__
         self.assertEqual(data["machinename"], "Test")
-        self.assertEqual(data["input_catalog"], "C:\\Test")
-        self.assertEqual(data["output_catalog"], "C:\\TestPath")
+        self.assertEqual(data["inputcatalog"], "C:\\Test")
+        self.assertEqual(data["outputcatalog"], "C:\\TestPath")
 
     @db_reinit
     def test_database_insert_and_select_two_joined_entries(self):
         with self.orm_manager.database as session:
             session.add(Cnc(name="testcnc", commentsymbol="*"))
-            session.add(Machine(machinename="Test", input_catalog="C:\\Test", output_catalog="C:\\TestPath", cncid=1))
+            session.add(Machine(machinename="Test", inputcatalog="C:\\Test", outputcatalog="C:\\TestPath", cncid=1))
             session.commit()
         self.assertEqual(self.orm_manager.database.execute("SELECT COUNT(*) "
                                                            "FROM machine "
@@ -152,15 +152,15 @@ class TestORMHelper(unittest.TestCase):
         self.assertIsNotNone(self.orm_manager.cache.get("ORMItems"))
         self.assertIsInstance(self.orm_manager.cache.get("ORMItems"), ORMItemQueue)
         self.assertEqual(self.orm_manager.cache.get("ORMItems").__len__(), 1)
-        self.assertTrue(self.orm_manager.items[0][0]["name"] == "Fid")
+        self.assertTrue(self.orm_manager.items[0]["name"] == "Fid")
         self.orm_manager.set_item(_insert=True, _model=Machine, machinename="Helller")
         self.assertEqual(len(self.orm_manager.items[0]), 2)
         self.assertEqual(len(self.orm_manager.items[0]), len(self.orm_manager.cache.get("ORMItems")))
-        self.assertTrue(self.orm_manager.items[0][1]["machinename"] == "Helller")
-        self.assertEqual(self.orm_manager.items[0][1].model, Machine)
-        self.assertEqual(self.orm_manager.items[0][0].model, Cnc)
-        self.orm_manager.set_item(_model=OperationDelegation, _update=True, operation_description="text")
-        self.assertEqual(self.orm_manager.items[0][2].value["operation_description"], "text")
+        self.assertTrue(self.orm_manager.items[1]["machinename"] == "Helller")
+        self.assertEqual(self.orm_manager.items[1].model, Machine)
+        self.assertEqual(self.orm_manager.items[0].model, Cnc)
+        self.orm_manager.set_item(_model=OperationDelegation, _update=True, operationdescription="text")
+        self.assertEqual(self.orm_manager.items[2].value["operationdescription"], "text")
         self.orm_manager.set_item(_insert=True, _model=Condition, findfull=True, parentconditionbooleanvalue=True)
         self.assertEqual(self.orm_manager.items.__len__(), 4)
         self.orm_manager.set_item(_delete=True, machinename="Some_name", _model=Machine)
@@ -168,11 +168,11 @@ class TestORMHelper(unittest.TestCase):
         self.assertEqual(len(self.orm_manager.items[0]), 6)
         # start Invalid ...
         # плохой path
-        self.assertRaises(NodeColumnError, self.orm_manager.set_item, _insert=True, _model=Machine, input_path="path")  # input_catalog
-        self.assertRaises(NodeColumnError, self.orm_manager.set_item, _insert=True, _model=Machine, output_path="path")  # output_catalog
-        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _insert=True, _model=Machine, input_catalog=4)
-        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _insert=True, _model=Machine, output_catalog=7)
-        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _insert=True, _model=Machine, output_catalog=None)
+        self.assertRaises(NodeColumnError, self.orm_manager.set_item, _insert=True, _model=Machine, input_path="path")  # inputcatalog
+        self.assertRaises(NodeColumnError, self.orm_manager.set_item, _insert=True, _model=Machine, output_path="path")  # outputcatalog
+        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _insert=True, _model=Machine, inputcatalog=4)
+        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _insert=True, _model=Machine, outputcatalog=7)
+        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _insert=True, _model=Machine, outputcatalog=None)
         # Invalid model
         self.assertRaises(InvalidModel, self.orm_manager.set_item, machinename="Test", _update=True)  # model = None
         self.assertRaises(InvalidModel, self.orm_manager.set_item, machinename="Test", _insert=True, _model=2)  # model: Type[int]
@@ -194,12 +194,12 @@ class TestORMHelper(unittest.TestCase):
         self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _model=Machine, _update=True, machinename=Machine())
         self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _model=Machine, _update=True, machinename=Cnc())
         self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _model=Machine, _update=True, machinename=int)
-        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _model=OperationDelegation, _update=True, operation_description=lambda x: x)
-        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _model=OperationDelegation, _update=True, operation_description=4)
+        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _model=OperationDelegation, _update=True, operationdescription=lambda x: x)
+        self.assertRaises(NodeColumnValueError, self.orm_manager.set_item, _model=OperationDelegation, _update=True, operationdescription=4)
         # не указан тип DML(_insert | _update | _delete) параметр не передан
         self.assertRaises(NodeDMLTypeError, self.orm_manager.set_item, _model=Machine, machinename="Helller")
         self.assertRaises(NodeDMLTypeError, self.orm_manager.set_item, _model=Machine, machinename="Fid")
-        self.assertRaises(NodeDMLTypeError, self.orm_manager.set_item, _model=Machine, input_catalog="C:\\Path")
+        self.assertRaises(NodeDMLTypeError, self.orm_manager.set_item, _model=Machine, inputcatalog="C:\\Path")
         self.assertRaises(NodeDMLTypeError, self.orm_manager.set_item, _model=Cnc, name="NC21")
         self.assertRaises(NodeDMLTypeError, self.orm_manager.set_item, _model=Cnc, name="NC211")
         self.assertRaises(NodeDMLTypeError, self.orm_manager.set_item, _model=Cnc, name="NC214")
@@ -218,7 +218,6 @@ class TestORMHelper(unittest.TestCase):
         # GOOD
         self.orm_manager.set_item(_insert=True, _model=Cnc, name="Fid")
         self.orm_manager.set_item(_insert=True, _model=Machine, machinename="Rambaudi")
-        self.assertEqual(len(self.orm_manager.get_item(_model=Cnc, name="Fid")), 1)
         self.assertEqual(self.orm_manager.get_item(_model=Cnc, name="Fid")["name"], "Fid")
         # test only_db & only_queue
 
@@ -230,7 +229,7 @@ class TestORMHelper(unittest.TestCase):
         self.assertFalse(list(self.orm_manager.get_items(_model=Machine)))
         # Элементы с _delete=True игнорируются в выборке через метод get_items,- согласно замыслу
         # Тем не менее, в очереди они должны присутствовать: см свойство items
-        self.orm_manager.set_item(_model=Machine, machinename="Fidia", input_catalog="C:\\path", _insert=True)
+        self.orm_manager.set_item(_model=Machine, machinename="Fidia", inputcatalog="C:\\path", _insert=True)
         self.assertEqual(list(self.orm_manager.get_items(_model=Machine)).__len__(), 1)
         self.orm_manager.set_item(_model=Condition, condinner="text", less=True, _insert=True)
         self.orm_manager.set_item(_model=Cnc, name="Fid", commentsymbol="$", _update=True)
@@ -244,7 +243,7 @@ class TestORMHelper(unittest.TestCase):
         # Добавить в базу и кеш данные
         def set_data_into_database():
             self.orm_manager.database.add(Cnc(name="NC210", commentsymbol=","))
-            self.orm_manager.database.add(Numeration())
+            self.orm_manager.database.add(Numeration(numerationid=3))
             self.orm_manager.database.add(Comment(findstr="test_str", iffullmatch=True))
             self.orm_manager.database.commit()
             self.orm_manager.database.add(Machine(machinename="Heller",
@@ -252,9 +251,9 @@ class TestORMHelper(unittest.TestCase):
                                                   inputcatalog=r"C:\Windows",
                                                   outputcatalog=r"X:\path"))
             self.orm_manager.database.add(OperationDelegation(
-                numerationid=self.orm_manager.database.scalar(select(Numeration)).numerationid),
+                numerationid=self.orm_manager.database.scalar(select(Numeration)).numerationid,
                 operationdescription="Нумерация. Добавил сразу в БД"
-            )
+            ))
             self.orm_manager.database.add(OperationDelegation(commentid=self.orm_manager.database.scalar(select(Comment)).commentid))
             self.orm_manager.database.commit()
 
@@ -263,48 +262,73 @@ class TestORMHelper(unittest.TestCase):
             items.enqueue(_model=Numeration, numerationid=2, endat=269, _insert=True, _container=items)
             items.enqueue(_insert=True, _model=OperationDelegation, numerationid=2, _container=items,
                           operationdescription="Нумерация кадров")
-            items.enqueue(_model=Comment, findstr="test_string", ifcontains=True, _insert=True, commentid=2,
-                          _container=items)
+            items.enqueue(_model=Comment, findstr="test_string_set_from_queue", ifcontains=True,
+                          _insert=True, commentid=2, _container=items)
             items.enqueue(_model=OperationDelegation, commentid=2, _container=items, _insert=True,
                           operationdescription="Комментарий")
             items.enqueue(_model=Cnc, _insert=True, cncid=2, name="Ram", commentsymbol="#", _container=items)
             items.enqueue(_model=Machine, machineid=2, cncid=2, machinename="Fidia", inputcatalog=r"D:\Heller",
                           outputcatalog=r"C:\Test", _container=items, _insert=True)
             self.orm_manager.cache.set("ORMItems", items, ORMHelper.CACHE_LIFETIME_HOURS)
-        set_data_into_queue()
         set_data_into_database()
+        set_data_into_queue()
         # Возвращает ли метод экземпляр класса JoinSelectResult?
         self.assertIsInstance(self.orm_manager.join_select(Machine, Cnc, on={"Cnc.cncid": "Machine.cncid"}), JoinSelectResult)
         # GOOD (хороший случай)
         # Найдутся ли записи с pk равными значениям, которые мы добавили
         # Machine - Cnc
         result = self.orm_manager.join_select(Machine, Cnc, on={"Machine.cncid": "Cnc.cncid"})
-        self.assertTrue("cncid" in result.items[0] and result.items[0]["cncid"] == 2)
-        self.assertTrue("machineid" in result.items[0] and result.items[0]["machineid"] == 2)
-        self.assertEqual("Ram", result.items[0]["name"])
-        self.assertEqual(result.items[0]["Machine.cncid"], result.items[0]["Cnc.cncid"])
+        self.assertEqual("NC210", result.items[0]["name"])
+        self.assertEqual("Heller", result.items[0]["machinename"])
+        self.assertEqual("Ram", result.items[1]["name"])
+        self.assertEqual("Fidia", result.items[1]["machinename"])
+        self.assertNotEqual(result.items[0]["Cnc.cncid"], result.items[1]["Cnc.cncid"])
+        self.assertEqual(result.items[0]["Cnc.cncid"], result.items[0]["Machine.cncid"])
+        #
         # Numeration - Operationdelegation
-        result_case_numeration = self.orm_manager.join_select(OperationDelegation, Numeration,
-                                                              on={"OperationDelegation.numerationid": "Numeration.numerationid"})
-        self.assertIn("endat", result_case_numeration.items[0])
-        self.assertTrue(result_case_numeration.items[0]["endat"] == 269)
-        self.assertTrue(result_case_numeration.items[0]["numerationid"] == 2)
-        self.assertEqual(result_case_numeration.items[0]["Numeration.numerationid"], result_case_numeration.items[0]["OperationDelegation.numerationid"])
+        #
+        result = self.orm_manager.join_select(OperationDelegation, Numeration,
+                                              on={"OperationDelegation.numerationid": "Numeration.numerationid"})
+        self.assertEqual("Нумерация. Добавил сразу в БД", result.items[0]["operationdescription"])
+        self.assertNotEqual("Нумерация. Добавил сразу в БД", result.items[1]["operationdescription"])
+        self.assertEqual("Нумерация кадров", result.items[1]["operationdescription"])
+        self.assertEqual(result.items[0]["Numeration.numerationid"], 3)
+        self.assertEqual(269, result.items[1]["endat"])
+        #
         # Comment - OperationDelegation
-        result_case_comment = self.orm_manager.join_select(Comment, OperationDelegation, on={"Comment.commentid": "OperationDelegation.commentid"})
-        self.assertFalse(result_case_numeration.items[0]["opid"] == result_case_comment.items[0]["opid"])
+        #
+        result = self.orm_manager.join_select(Comment, OperationDelegation, on={"Comment.commentid": "OperationDelegation.commentid"})
+        self.assertEqual("test_string_set_from_queue", result.items[1]["findstr"])
+        self.assertNotEqual("test_string_set_from_queue", result.items[0]["findstr"])
+        self.assertEqual("test_str", result.items[0]["findstr"])
+        self.assertNotEqual("test_str", result.items[1]["findstr"])
+        self.assertEqual(result.items[0]["iffullmatch"], True)
+        self.assertNotIn("iffullmatch", result.items[1])
+        self.assertEqual(True, result.items[1]["ifcontains"])
+        self.assertFalse(result.items[0]["ifcontains"])
+        #
         # Отбор только из локальных данных (очереди), но в базе данных их пока что быть не должно
+        #
         # Machine - Cnc
+        #
         local_data = self.orm_manager.join_select(Machine, Cnc, on={"Machine.cncid": "Cnc.cncid"}, _queue_only=True)
         database_data = self.orm_manager.join_select(Cnc, Machine, on={"Cnc.cncid": "Machine.cncid"}, _db_only=True)
-        self.assertNotIn(local_data.items[0]["machineid"], database_data.items[0].values())
-        self.assertNotIn(database_data[0]["machineid"], local_data[0].values())
-        self.assertIn("Fidia", local_data[2].values())
+        self.assertEqual(local_data.items[0]["Machine.cncid"], local_data.items[0]["Cnc.cncid"])
+        self.assertEqual(database_data.items[0]["Cnc.cncid"], database_data.items[0]["Machine.cncid"])
+        self.assertIn("machineid", local_data.items[0])
+        self.assertIn("machineid", database_data.items[0])
+        self.assertNotEqual(local_data.items[0]["machineid"], database_data.items[0]["machineid"])
+        self.assertEqual("Fidia", local_data.items[0]["machinename"])
+        self.assertEqual("Ram", local_data.items[0]["name"])
+        self.assertNotEqual(local_data.items[0]["name"], database_data.items[0]["name"])
+        #
         # Comment - OperationDelegation
+        #
         local_data = self.orm_manager.join_select(Comment, OperationDelegation, on={"Comment.commentid": "OperationDelegation.commentid"}, _queue_only=True)
         database_data = self.orm_manager.join_select(Comment, OperationDelegation, on={"Comment.commentid": "OperationDelegation.commentid"}, _db_only=True)
-        self.assertNotIn(local_data.items[0]["commentid"], database_data[0].items.values())
-        self.assertNotIn(database_data.items[0]["commentid"], local_data[0].items.values())
+        self.assertNotEqual(local_data.items[0]["Comment.commentid"], database_data.items[0]["Comment.commentid"])
+        self.assertEqual(local_data.items[0]["Comment.commentid"], local_data.items[0]["OperationDelegation.commentid"])
+        self.assertEqual(database_data.items[0]["Comment.commentid"], database_data.items[0]["OperationDelegation.commentid"])
         # Плохие аргументы ...
         # invalid model
         self.assertRaises(InvalidModel, self.orm_manager.join_select, "str", Machine, on={"Cnc.cncid": "Machine.cncid"})
