@@ -755,18 +755,4 @@ def init_all_triggers():
 
 
 if __name__ == "__main__":
-    init_rename_table_triggers()
-    init_uncomment_table_triggers()
-    init_remove_table_triggers()
-    init_comment_table_triggers()
-    init_replace_table_triggers()
-    init_numeration_table_triggers()
-    init_condition_table_triggers()
-    init_cnc_table_triggers()
-    init_insert_table_triggers()
-    init_operation_delegation_table_triggers()
-    init_machine_table_triggers()
-    init_headvarible_table_triggers()
-    init_headvardelegation_table_triggers()
-    init_taskdelegation_table_triggers()
-    init_searchstring_table_triggers()
+    init_all_triggers()
