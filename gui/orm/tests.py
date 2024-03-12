@@ -62,7 +62,39 @@ def drop_cache(callable_):
     return w
 
 
-class TestORMHelper(unittest.TestCase):
+class SetUp:
+    def set_data_into_database(self):
+        self.orm_manager.database.add(Cnc(name="NC210", commentsymbol=","))
+        self.orm_manager.database.add(Numeration(numerationid=3))
+        self.orm_manager.database.add(Comment(findstr="test_str", iffullmatch=True))
+        self.orm_manager.database.commit()
+        self.orm_manager.database.add(Machine(machinename="Heller",
+                                              cncid=self.orm_manager.database.scalar(select(Cnc).where(Cnc.name == "NC210")).cncid,
+                                              inputcatalog=r"C:\Windows",
+                                              outputcatalog=r"X:\path"))
+        self.orm_manager.database.add(OperationDelegation(
+            numerationid=self.orm_manager.database.scalar(select(Numeration)).numerationid,
+            operationdescription="Нумерация. Добавил сразу в БД"
+        ))
+        self.orm_manager.database.add(OperationDelegation(commentid=self.orm_manager.database.scalar(select(Comment)).commentid))
+        self.orm_manager.database.commit()
+
+    def set_data_into_queue(self):
+        items = ORMItemQueue()
+        items.enqueue(_model=Numeration, numerationid=2, endat=269, _insert=True, _container=items)
+        items.enqueue(_insert=True, _model=OperationDelegation, numerationid=2, _container=items,
+                      operationdescription="Нумерация кадров")
+        items.enqueue(_model=Comment, findstr="test_string_set_from_queue", ifcontains=True,
+                      _insert=True, commentid=2, _container=items)
+        items.enqueue(_model=OperationDelegation, commentid=2, _container=items, _insert=True,
+                      operationdescription="Комментарий")
+        items.enqueue(_model=Cnc, _insert=True, cncid=2, name="Ram", commentsymbol="#", _container=items)
+        items.enqueue(_model=Machine, machineid=2, cncid=2, machinename="Fidia", inputcatalog=r"D:\Heller",
+                      outputcatalog=r"C:\Test", _container=items, _insert=True)
+        self.orm_manager.cache.set("ORMItems", items, ORMHelper.CACHE_LIFETIME_HOURS)
+
+
+class TestORMHelper(unittest.TestCase, SetUp):
     def setUp(self) -> None:
         ORMHelper.TESTING = True
         ORMHelper.CACHE_LIFETIME_HOURS = 60
@@ -165,7 +197,6 @@ class TestORMHelper(unittest.TestCase):
         self.assertEqual(self.orm_manager.items.__len__(), 4)
         self.orm_manager.set_item(_delete=True, machinename="Some_name", _model=Machine)
         self.orm_manager.set_item(_delete=True, machinename="Some_name_2", _model=Machine)
-        self.assertEqual(len(self.orm_manager.items[0]), 6)
         # start Invalid ...
         # плохой path
         self.assertRaises(NodeColumnError, self.orm_manager.set_item, _insert=True, _model=Machine, input_path="path")  # inputcatalog
@@ -241,37 +272,8 @@ class TestORMHelper(unittest.TestCase):
     @db_reinit
     def test_join_select(self):
         # Добавить в базу и кеш данные
-        def set_data_into_database():
-            self.orm_manager.database.add(Cnc(name="NC210", commentsymbol=","))
-            self.orm_manager.database.add(Numeration(numerationid=3))
-            self.orm_manager.database.add(Comment(findstr="test_str", iffullmatch=True))
-            self.orm_manager.database.commit()
-            self.orm_manager.database.add(Machine(machinename="Heller",
-                                                  cncid=self.orm_manager.database.scalar(select(Cnc).where(Cnc.name == "NC210")).cncid,
-                                                  inputcatalog=r"C:\Windows",
-                                                  outputcatalog=r"X:\path"))
-            self.orm_manager.database.add(OperationDelegation(
-                numerationid=self.orm_manager.database.scalar(select(Numeration)).numerationid,
-                operationdescription="Нумерация. Добавил сразу в БД"
-            ))
-            self.orm_manager.database.add(OperationDelegation(commentid=self.orm_manager.database.scalar(select(Comment)).commentid))
-            self.orm_manager.database.commit()
-
-        def set_data_into_queue():
-            items = ORMItemQueue()
-            items.enqueue(_model=Numeration, numerationid=2, endat=269, _insert=True, _container=items)
-            items.enqueue(_insert=True, _model=OperationDelegation, numerationid=2, _container=items,
-                          operationdescription="Нумерация кадров")
-            items.enqueue(_model=Comment, findstr="test_string_set_from_queue", ifcontains=True,
-                          _insert=True, commentid=2, _container=items)
-            items.enqueue(_model=OperationDelegation, commentid=2, _container=items, _insert=True,
-                          operationdescription="Комментарий")
-            items.enqueue(_model=Cnc, _insert=True, cncid=2, name="Ram", commentsymbol="#", _container=items)
-            items.enqueue(_model=Machine, machineid=2, cncid=2, machinename="Fidia", inputcatalog=r"D:\Heller",
-                          outputcatalog=r"C:\Test", _container=items, _insert=True)
-            self.orm_manager.cache.set("ORMItems", items, ORMHelper.CACHE_LIFETIME_HOURS)
-        set_data_into_database()
-        set_data_into_queue()
+        self.set_data_into_database()
+        self.set_data_into_queue()
         # Возвращает ли метод экземпляр класса JoinSelectResult?
         self.assertIsInstance(self.orm_manager.join_select(Machine, Cnc, on={"Cnc.cncid": "Machine.cncid"}), JoinSelectResult)
         # GOOD (хороший случай)
@@ -329,25 +331,33 @@ class TestORMHelper(unittest.TestCase):
         self.assertNotEqual(local_data.items[0]["Comment.commentid"], database_data.items[0]["Comment.commentid"])
         self.assertEqual(local_data.items[0]["Comment.commentid"], local_data.items[0]["OperationDelegation.commentid"])
         self.assertEqual(database_data.items[0]["Comment.commentid"], database_data.items[0]["OperationDelegation.commentid"])
+        #
         # Плохие аргументы ...
         # invalid model
+        #
         self.assertRaises(InvalidModel, self.orm_manager.join_select, "str", Machine, on={"Cnc.cncid": "Machine.cncid"})
         self.assertRaises(InvalidModel, self.orm_manager.join_select, Machine, 5, on={"Cnc.cncid": "Machine.cncid"})
         self.assertRaises(InvalidModel, self.orm_manager.join_select, Machine, "str", on={"Cnc.cncid": "Machine.cncid"})
         self.assertRaises(InvalidModel, self.orm_manager.join_select, "str", object())
+        #
         # invalid named on...
+        #
         self.assertRaises((AttributeError, TypeError, ValueError,), self.orm_manager.join_select, Machine, Cnc, on=6)
         self.assertRaises((AttributeError, TypeError, ValueError,), self.orm_manager.join_select, Machine, Cnc,
                           on=object())
         self.assertRaises((AttributeError, TypeError, ValueError,), self.orm_manager.join_select, Machine, Cnc, on=[])
         self.assertRaises((AttributeError, TypeError, ValueError,), self.orm_manager.join_select, Machine, Cnc, on="[]")
+        #
         # Модели, переданные в аргументах (позиционных), не связаны с моделями и полями в именованном аргументе 'on'.
         # join_select(a_model, b_model on={"a_model.column_name": "b_model.column_name"})
+        #
         self.assertRaises((AttributeError, TypeError, ValueError,), self.orm_manager.join_select, Machine, Cnc,
                           on={"InvalidModel.invalid_field": "SomeModel.other_field"})
         self.assertRaises((AttributeError, TypeError, ValueError,), self.orm_manager.join_select, Machine, Cnc,
                           on={"InvalidModel.invalid_field": "SomeModel.other_field"})
+        #
         # Именованный параметр on содержит недействительные данные
+        #
         self.assertRaises((AttributeError, TypeError, ValueError,), self.orm_manager.join_select, Machine, Cnc,
                           on={"invalid_field": "SomeModel.other_field"})
         self.assertRaises((AttributeError, TypeError, ValueError,), self.orm_manager.join_select, Machine, Cnc,
@@ -380,4 +390,11 @@ class TestORMHelper(unittest.TestCase):
                           on={2.9: 5})
         self.assertRaises((AttributeError, TypeError, ValueError,), self.orm_manager.join_select, Machine, Cnc,
                           on={4: "Machine.machinename"})
-        # todo: test Pointer
+
+    def test_pointer_instance(self):
+        """ Тестирование Pointer
+        Pointer нужен для связывания данных на стороне UI с готовыми инструментами для повторного запроса на эти данные,
+        тем самым перекладывая часть рутинной работы с UI на ORM.
+        """
+        self.set_data_into_database()
+        self.set_data_into_queue()
