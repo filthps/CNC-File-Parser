@@ -901,6 +901,7 @@ class ORMHelper(ORMAttributes):
     DATABASE_MOCK_PATH = DATABASE_PATH_FOR_TESTS
     TESTING = DEBUG  # Блокировка откравки в бд, блокировка dequeue с пролонгированием кеша очереди нод
     RELEASE_INTERVAL_SECONDS = 5.0
+    RELEASE_INTERVAL_SECONDS_DEBUG = 0.5
     CACHE_LIFETIME_HOURS = 6 * 60 * 60
     JOIN_SELECT_DIFF_CACHE_MINUTES = 60 * 60
     _memcache_connection: Optional[Union[Client, MockMemcacheClient]] = None
@@ -966,7 +967,7 @@ class ORMHelper(ORMAttributes):
 
     @classmethod
     def init_timer(cls):
-        timer = threading.Timer(cls.RELEASE_INTERVAL_SECONDS, cls.release)
+        timer = threading.Timer(cls.RELEASE_INTERVAL_SECONDS if not cls.TESTING else cls.RELEASE_INTERVAL_SECONDS_DEBUG, cls.release)
         timer.daemon = True
         timer.setName("ORMHelper(database push queue)")
         timer.start()
@@ -1058,7 +1059,13 @@ class ORMHelper(ORMAttributes):
         db_items = []
         queue_items = {}  # index: node_value
         nodes_implements_db = ORMItemQueue()  # Ноды, которые пересекаются с бд
-        pk_name = getattr(model(), "__db_queue_primary_field_name__")
+        attrs = getattr(model(), "column_names", None)
+        if not attrs:
+            raise ModelsConfigurationError
+        try:
+            pk_name = [field_name for field_name, value in attrs.items() if "primary_key" in value and value["primary_key"]][0]
+        except IndexError:
+            raise ModelsConfigurationError
         for db_item in items_db:  # O(n)
             db_data: dict = db_item.__dict__
             if pk_name not in db_data:
@@ -1366,54 +1373,53 @@ class JoinSelectResult:
     class Pointer:
         """ Экземпляр данного объекта - оболочка для содержимого, обеспечивающая доступ к данным.
         Объект этого класса создан для 'слежки' за изменениями с UI."""
-        _wrap_items: Optional[list[str]] = None
-        _joined_item: Optional["JoinSelectResult"] = None
+        wrap_items: Optional[list[str]] = None
 
-        def __init__(self):
-            if type(self._joined_item) is not JoinSelectResult:
-                raise TypeError
-            self._data = self._joined_item.__iter__()
+        def __init__(self, joined_item: "JoinSelectResult"):
+            self._blocked = False  # Если длина wrap_items и итератора joined_item начали отличаться - бракуем этот экземпляр
+            self._joined_item = joined_item
+            self._previous_hash = self._joined_item.previous_hash
+            self._joined_item_data = self._joined_item.__iter__()
             self._is_valid()
-            self._hash_names_map = {name: hash(node_group) for name, node_group in zip(self._wrap_items, copy.copy(self._data))}
-
-        @property
-        @classmethod
-        def wrapper(cls):
-            return copy.copy(cls._wrap_items)
-
-        @wrapper.setter
-        @classmethod
-        def wrapper(cls, val):
-            if type(val) is not list and type(val) is not tuple:
-                raise TypeError
-            if not all(map(lambda x: isinstance(x, str), val)):
-                raise TypeError
-            cls._wrap_items = list(val)
+            self.wrap_items = copy.copy(self.wrap_items)  # Для защиты cls.wrap_items от дурака на стороне UI
 
         @property
         def items(self) -> dict[str, int]:
-            return dict(zip(self._wrap_items, self._data))
+            return dict(zip(self.wrap_items, self._joined_item_data))
 
         def has_changes(self, name: str = None) -> bool:
+            if self._blocked:
+                return True
+            hash_names_map = {
+                name: self._previous_hash[index] for index, name in enumerate(self.wrap_items)
+            }
             if type(name) is not str:
                 raise TypeError
-            return self._joined_item.has_changes(self._hash_names_map[name])
+            hash_ = hash_names_map[name]
+            status = self._joined_item.has_changes(hash_, strict_mode=False)
+            return status
+
+        def __getitem__(self, item: str):
+            return self.items[item]
 
         def __str__(self):
-            return "".join(map(lambda x: f"{x[0]}:{x[1]} /n", zip(self._wrap_items, copy.copy(self._data))))
+            return "".join(map(lambda x: f"{x[0]}:{x[1]} /n", zip(self.wrap_items, copy.copy(self._joined_item))))
 
         def _is_valid(self):
-            data = tuple(copy.copy(self._data))
+            data = tuple(copy.copy(self._joined_item_data))
             """ Если длины 2 последовательностей (см init) отличаются, то вызвать исключение """
-            if self._joined_item is None:
+            if type(self._joined_item) is not JoinSelectResult:
                 raise JoinedItemPointerError(
-                    "Экземпляр класса JoinedItemResult не установлен в атрибут класса _joined_item"
+                    "Экземпляр класса JoinedItemResult не установлен в атрибут класса joined_item"
                 )
-            if self._wrap_items is None:
-                raise ValueError
+            if type(self.wrap_items) is not list and type(self.wrap_items) is not tuple:
+                raise TypeError
+            if not all(map(lambda x: isinstance(x, str), self.wrap_items)):
+                raise TypeError
             if not isinstance(data, (list, tuple,)):
                 raise TypeError
-            if len(self._wrap_items) != len(data):
+            if len(self.wrap_items) != len(data):
+                self._blocked = True
                 raise warnings.warn("Появились новые записи")
             if data:
                 if not all(map(lambda x: isinstance(x, (ORMItemQueue, SpecialOrmContainer,)), data)):
@@ -1432,31 +1438,34 @@ class JoinSelectResult:
             raise ValueError
         self._only_queue = only_local
         self._only_db = only_database
+        self._pointer = None
 
-    def has_changes(self, hash_=None) -> bool:
-        current_hash = self._previous_hash
+    def has_changes(self, hash_=None, strict_mode=True) -> bool:
+        current_hash = self.previous_hash
         self.__iter__()
-        new_hash = self._previous_hash
+        new_hash = self.previous_hash
         if hash_:
             if hash_ not in current_hash:
-                raise ValueError
+                if strict_mode:
+                    raise ValueError
+                return True
             if hash_ in new_hash:
                 return False
             return True
-        return current_hash != new_hash
+        return not current_hash == new_hash
 
     @property
     def pointer(self) -> Pointer:
-        self.Pointer._joined_item = self
-        return self.Pointer()
+        return self._pointer(self)
 
     @pointer.setter
     def pointer(self, items: list):
-        if not isinstance(items, (list, tuple,)):
-            raise TypeError
-        if not all(map(lambda val: type(val) is str, items)):
-            raise ValueError
-        self.Pointer.set_wrapper(items)
+        self._pointer = self.Pointer
+        self._pointer.wrap_items = items
+
+    @property
+    def previous_hash(self) -> Optional[tuple[int]]:
+        return ORMHelper.cache.get("join_select_hash")
 
     @property
     def items(self) -> list[ChainMap]:
@@ -1505,15 +1514,11 @@ class JoinSelectResult:
         if local_items:
             while local_items:
                 result.append(local_items.pop(0))
-        self._previous_hash = tuple([hash(group) for group in result])
+        self.__set_previous_hash(tuple([hash(group) for group in result]))
         return result
 
-    @property
-    def _previous_hash(self) -> Optional[tuple[int]]:
-        return ORMHelper.cache.get("join_select_hash")
-
-    @_previous_hash.setter
-    def _previous_hash(self, values: tuple[int]):
+    @staticmethod
+    def __set_previous_hash(values: tuple[int]):
         if type(values) is not tuple:
             raise TypeError
         if not all(map(lambda b: type(b) is int, values)):
