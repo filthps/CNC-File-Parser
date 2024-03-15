@@ -63,6 +63,8 @@ def drop_cache(callable_):
 
 
 class SetUp:
+    orm_manager: Optional[ORMHelper] = None
+
     def set_data_into_database(self):
         self.orm_manager.database.add(Cnc(name="NC210", commentsymbol=","))
         self.orm_manager.database.add(Numeration(numerationid=3))
@@ -92,6 +94,11 @@ class SetUp:
         items.enqueue(_model=Machine, machineid=2, cncid=2, machinename="Fidia", inputcatalog=r"D:\Heller",
                       outputcatalog=r"C:\Test", _container=items, _insert=True)
         self.orm_manager.cache.set("ORMItems", items, ORMHelper.CACHE_LIFETIME_HOURS)
+
+    def update_exists_items(self):
+        self.orm_manager.set_item(_update=True, _model=Cnc, cncid=2, name="Ramnewname", commentsymbol="&")
+        self.orm_manager.set_item(_update=True, _model=Machine, machineid=2, inputcatalog=r"C:\Fidia")
+        self.orm_manager.set_item(cncid=1, name="Test", _model=Cnc, _update=True)
 
 
 class TestORMHelper(unittest.TestCase, SetUp):
@@ -391,6 +398,8 @@ class TestORMHelper(unittest.TestCase, SetUp):
         self.assertRaises((AttributeError, TypeError, ValueError,), self.orm_manager.join_select, Machine, Cnc,
                           on={4: "Machine.machinename"})
 
+    @drop_cache
+    @db_reinit
     def test_pointer_instance(self):
         """ Тестирование Pointer
         Pointer нужен для связывания данных на стороне UI с готовыми инструментами для повторного запроса на эти данные,
@@ -398,3 +407,22 @@ class TestORMHelper(unittest.TestCase, SetUp):
         """
         self.set_data_into_database()
         self.set_data_into_queue()
+        result = self.orm_manager.join_select(Machine, Cnc, on={"Machine.cncid": "Cnc.cncid"})
+        wrapper = ["Результат в списке 1", "Результат в списке 2"]
+        result.pointer = wrapper
+        #
+        # Тест wrap_items
+        #
+        self.assertEqual(result.pointer.wrap_items, ["Результат в списке 1", "Результат в списке 2"])
+        #
+        #  Тестировать refresh
+        #
+        self.assertFalse(result.pointer.has_changes("Результат в списке 1"))
+        self.assertFalse(result.pointer.has_changes("Результат в списке 2"))
+        #
+        # Добавить изменения и проверить повторно
+        self.update_exists_items()
+        time.sleep(5)
+        #
+        self.assertTrue(result.pointer.has_changes("Результат в списке 2"))
+        self.assertTrue(result.pointer.has_changes("Результат в списке 1"))
