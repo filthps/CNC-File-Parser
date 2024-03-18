@@ -310,41 +310,52 @@ class SearchString(db.Model, ModelController):
     )
 
 
-if __name__ == "__main__":
-    def check_bad_attribute_name():
-        TaskDelegation()
-        Machine()
-        OperationDelegation()
-        Condition()
-        Cnc()
-        HeadVarible()
-        Insert()
-        Comment()
-        Uncomment()
-        Remove()
-        HeadVarDelegation()
-        Rename()
-        Numeration()
-        Replace()
-        SearchString()
+def check_bad_attribute_name():
+    TaskDelegation()
+    Machine()
+    OperationDelegation()
+    Condition()
+    Cnc()
+    HeadVarible()
+    Insert()
+    Comment()
+    Uncomment()
+    Remove()
+    HeadVarDelegation()
+    Rename()
+    Numeration()
+    Replace()
+    SearchString()
 
-    def test_unique_primary_key_column_name(field_name: str):
-        """ Уникальность названия для столбца первичного ключа по всем таблицам """
-        def primary_keys():
-            for m in (TaskDelegation(), Machine(), OperationDelegation(), Condition(), Cnc(), HeadVarible(), Insert(), Comment(),
-                      Uncomment(), Remove(), HeadVarDelegation(), Rename(), Numeration(), Replace(), SearchString(),):
-                yield {m.__class__.__name__: getattr(m, field_name)}
-        repeat_table_names = []
-        primary_key_field_names = list(itertools.chain(*tuple(map(lambda x: tuple(x.values()), primary_keys()))))
-        for elem in primary_keys():
-            model_name, pk_key = tuple(elem.keys())[0], tuple(elem.values())[0]
-            if primary_key_field_names.count(pk_key) > 1:
-                repeat_table_names.append(model_name)
-        if repeat_table_names:
-            raise KeyError(f"Во всём проекте названия полей-первичных ключей должны быть уникальными! "
-                           f" Повторы в таблицах: {', '.join(repeat_table_names)}")
+
+def test_unique_primary_key_column_name(field_name: str):
+    """ Уникальность названия для столбца первичного ключа по всем таблицам """
+    def primary_keys():
+        for m in (TaskDelegation(), Machine(), OperationDelegation(), Condition(), Cnc(), HeadVarible(), Insert(), Comment(),
+                  Uncomment(), Remove(), HeadVarDelegation(), Rename(), Numeration(), Replace(), SearchString(),):
+            yield {m.__class__.__name__: getattr(m, field_name)}
+    repeat_table_names = []
+    primary_key_field_names = list(itertools.chain(*tuple(map(lambda x: tuple(x.values()), primary_keys()))))
+    for elem in primary_keys():
+        model_name, pk_key = tuple(elem.keys())[0], tuple(elem.values())[0]
+        if primary_key_field_names.count(pk_key) > 1:
+            repeat_table_names.append(model_name)
+    if repeat_table_names:
+        raise KeyError(f"Во всём проекте названия полей-первичных ключей должны быть уникальными! "
+                       f" Повторы в таблицах: {', '.join(repeat_table_names)}")
+
+
+def drop_db():
+    with app.app_context():
+        db.drop_all()
+
+
+def create_db():
     check_bad_attribute_name()
-    #test_unique_primary_key_column_name("__primary_key__")  # test database PK
-    #test_unique_primary_key_column_name("__db_queue_primary_field_name__")
-    db.drop_all()
-    db.create_all()
+    with app.app_context():
+        db.create_all()
+
+
+if __name__ == "__main__":
+    drop_db()
+    create_db()

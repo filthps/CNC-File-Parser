@@ -12,9 +12,9 @@
 """
 import unittest
 import time
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from database.models import Machine, Cnc, OperationDelegation, SearchString, db as sqlalchemy_instance, Condition, \
-    Numeration, Comment
+    Numeration, Comment, drop_db, create_db
 from database.procedures import init_all_triggers
 from orm import *
 
@@ -23,14 +23,14 @@ DEBUG = True
 
 
 def is_database_empty(session, empty=True, tables=15, procedures=52, test_db_name="testdb"):
-    table_counter = session.execute('SELECT COUNT(table_name) '
-                                    'FROM information_schema."tables" '
-                                    'WHERE table_type=\'BASE TABLE\' AND table_schema=\'public\';').scalar()
-    procedures_counter = session.execute(f'SELECT COUNT(*) '
-                                         f'FROM information_schema."triggers" '
-                                         f'WHERE trigger_schema=\'public\' AND '
-                                         f'trigger_catalog=\'{test_db_name}\' AND '
-                                         f'event_object_catalog=\'{test_db_name}\';').scalar()
+    table_counter = session.execute(text('SELECT COUNT(table_name) '
+                                         'FROM information_schema."tables" '
+                                         'WHERE table_type=\'BASE TABLE\' AND table_schema=\'public\';')).scalar()
+    procedures_counter = session.execute(text(f'SELECT COUNT(*) '
+                                              f'FROM information_schema."triggers" '
+                                              f'WHERE trigger_schema=\'public\' AND '
+                                              f'trigger_catalog=\'{test_db_name}\' AND '
+                                              f'event_object_catalog=\'{test_db_name}\';')).scalar()
     if empty:
         if table_counter or procedures_counter:
             time.sleep(1)
@@ -46,9 +46,10 @@ def is_database_empty(session, empty=True, tables=15, procedures=52, test_db_nam
 
 def db_reinit(m):
     def wrap(self: "TestORMHelper"):
-        sqlalchemy_instance.drop_all()
+        drop_db()
         if is_database_empty(self.orm_manager.database):
-            sqlalchemy_instance.create_all()
+            create_db()
+            print(is_database_empty(self.orm_manager.database, empty=False), "is_database_empty(self.orm_manager.database, empty=False)")
             init_all_triggers()
             if is_database_empty(self.orm_manager.database, empty=False):
                 return m(self)
@@ -187,23 +188,27 @@ class TestORMHelper(unittest.TestCase, SetUp):
     @db_reinit
     def test_set_item(self):
         # GOOD
-        self.orm_manager.set_item(_insert=True, _model=Cnc, name="Fid")
+        self.orm_manager.set_item(_insert=True, _model=Cnc, name="Fid", commentsymbol="$")
         self.assertIsNotNone(self.orm_manager.cache.get("ORMItems"))
         self.assertIsInstance(self.orm_manager.cache.get("ORMItems"), ORMItemQueue)
         self.assertEqual(self.orm_manager.cache.get("ORMItems").__len__(), 1)
         self.assertTrue(self.orm_manager.items[0]["name"] == "Fid")
-        self.orm_manager.set_item(_insert=True, _model=Machine, machinename="Helller")
-        self.assertEqual(len(self.orm_manager.items[0]), 2)
-        self.assertEqual(len(self.orm_manager.items[0]), len(self.orm_manager.cache.get("ORMItems")))
-        self.assertTrue(self.orm_manager.items[1]["machinename"] == "Helller")
-        self.assertEqual(self.orm_manager.items[1].model, Machine)
-        self.assertEqual(self.orm_manager.items[0].model, Cnc)
+        self.orm_manager.set_item(_insert=True, _model=Machine, machinename="Helller",
+                                  inputcatalog=r"C:\\wdfg", outputcatalog=r"D:\\hfghfgh")
+        self.assertEqual(len(self.orm_manager.items), 2)
+        self.assertEqual(len(self.orm_manager.items), len(self.orm_manager.cache.get("ORMItems")))
+        self.assertTrue(any(map(lambda x: x.value.get("machinename", None), self.orm_manager.items)))
+        self.assertIs(self.orm_manager.items[1].model, Machine)
+        self.assertIs(self.orm_manager.items[0].model, Cnc)
         self.orm_manager.set_item(_model=OperationDelegation, _update=True, operationdescription="text")
         self.assertEqual(self.orm_manager.items[2].value["operationdescription"], "text")
         self.orm_manager.set_item(_insert=True, _model=Condition, findfull=True, parentconditionbooleanvalue=True)
         self.assertEqual(self.orm_manager.items.__len__(), 4)
         self.orm_manager.set_item(_delete=True, machinename="Some_name", _model=Machine)
         self.orm_manager.set_item(_delete=True, machinename="Some_name_2", _model=Machine)
+        time.sleep(3)
+        result = self.orm_manager.get_item(_model=Machine, machinename="Helller", _only_db=True)
+        self.assertTrue(result)
         # start Invalid ...
         # плохой path
         self.assertRaises(NodeColumnError, self.orm_manager.set_item, _insert=True, _model=Machine, input_path="path")  # inputcatalog

@@ -13,13 +13,13 @@ from pymemcache.exceptions import MemcacheError
 from pymemcache_dill_serde import DillSerde
 from pymemcache.test.utils import MockMemcacheClient
 from psycopg2.errors import Error as PsycopgError
-from sqlalchemy import create_engine, ColumnDefault, delete
+from sqlalchemy import create_engine, ColumnDefault, delete, insert
 from sqlalchemy.sql.dml import Insert, Update, Delete
 from sqlalchemy.sql.expression import select
 from sqlalchemy.orm import Query, sessionmaker as session_factory, Session
 from sqlalchemy.exc import DisconnectionError, OperationalError, SQLAlchemyError
 from gui.datatype import LinkedList, LinkedListItem
-from database.models import CustomModel, ModelController, DATABASE_PATH, DATABASE_PATH_FOR_TESTS
+from database.models import app, CustomModel, ModelController, DATABASE_PATH, DATABASE_PATH_FOR_TESTS
 from gui.orm.exceptions import *
 
 
@@ -283,7 +283,7 @@ class ORMItem(LinkedListItem, ModelTools):
         else:
             where = where if where else self.get_primary_key_and_value()
         if self.__insert:
-            query = self.model(**value)
+            query = insert(self.model).values(**value)
         if self.__update or self.__delete:
             query = self.model.query.filter_by(**where).first()
             if query is not None:
@@ -380,7 +380,7 @@ class ORMItem(LinkedListItem, ModelTools):
             autoincrement, type_ = data["autoincrement"], data["type"]
             if default_:
                 return {
-                    field_name: default_.execute(bind=create_engine(DATABASE_PATH_FOR_TESTS if DEBUG else DATABASE_PATH))
+                    field_name: default_.arg({})
                 }
             if type_ is str:
                 return {field_name: self._select_primary_key_value_from_scalars(self, field_name)}
@@ -717,7 +717,8 @@ class SQLAlchemyQueryManager:
             return self._query_objects
         for node_grop in self._sort_nodes():
             for left_node in node_grop:
-                self._query_objects.update({left_node.index: left_node.make_query()})
+                query = left_node.make_query()
+                self._query_objects.update({left_node.index: query}) if query is not None else None
         return self._query_objects
 
     def _open_connection_and_push(self):
@@ -729,7 +730,6 @@ class SQLAlchemyQueryManager:
         engine = create_engine(self.path)
         engine.execution_options(isolation_level="AUTOCOMMIT")
         factory_instance = session_factory()
-        factory_instance.close_all()
         factory_instance.configure(bind=engine)
         session = factory_instance()
         while sorted_data:
@@ -737,55 +737,36 @@ class SQLAlchemyQueryManager:
             if not node_group:
                 break
             multiple_items_in_transaction = True if len(node_group) > 1 else False
-            has_error = False
-            point = None
-            counter = 0
             if multiple_items_in_transaction:
                 point = session.begin_nested()
+            else:
+                point = session
+            items_to_commit = []
             for node in node_group:
                 dml = self._query_objects.get(node.index)
-                if not node.type == "_delete":
-                    try:
-                        session.add(dml)
-                        print(f"session.add {repr(node)}")
-                    except SQLAlchemyError as error:
-                        self.remaining_nodes += node_group  # todo: O(n**2)!
-                        has_error = True
-                        print(error)
-                    except PsycopgError as error:
-                        self.remaining_nodes += node_group  # todo: O(n**2)!
-                        print(error)
-                        has_error = True
-                    if multiple_items_in_transaction and counter < len(node_group) - 1:
-                        session.flush()
-                else:
-                    try:
-                        session.delete(dml)
-                    except SQLAlchemyError as err:
-                        self.remaining_nodes += node_group  # todo: O(n**2)!
-                        has_error = True
-                        print(err)
-                    except PsycopgError as error:
-                        self.remaining_nodes += node_group  # todo: O(n**2)!
-                        print(error)
-                        has_error = True
-                counter += 1
-            if has_error:
-                if point:
-                    point.rollback()
-                    print("rollback")
-            else:
-                if not multiple_items_in_transaction:
-                    point = session
+                items_to_commit.append(dml)
+            if multiple_items_in_transaction:
                 try:
-                    print("COMMIT")
-                    point.commit()
+                    session.add_all(items_to_commit)
                 except SQLAlchemyError as error:
                     print(error)
                     self.remaining_nodes += node_group
-                except PsycopgError as error:
-                    self.remaining_nodes += node_group  # todo: O(n**2)!
+                    point.rollback()
+            else:
+                try:
+                    session.execute(items_to_commit.pop())
+                except SQLAlchemyError as error:
                     print(error)
+                    self.remaining_nodes += node_group
+            try:
+                print("COMMIT")
+                session.commit()
+            except SQLAlchemyError as error:
+                print(error)
+                self.remaining_nodes += node_group
+            except PsycopgError as error:
+                self.remaining_nodes += node_group  # todo: O(n**2)!
+                print(error)
         self._sorted = []
         self._query_objects = {}
 
@@ -947,6 +928,7 @@ class ORMHelper(ORMAttributes):
     @classmethod
     @property
     def database(cls) -> Session:
+        app.app_context().push()
         if cls._database_session is None:
             try:
                 engine = create_engine(cls.DATABASE_PATH if not cls.TESTING else cls.DATABASE_MOCK_PATH)
@@ -968,7 +950,7 @@ class ORMHelper(ORMAttributes):
     @classmethod
     def init_timer(cls):
         timer = threading.Timer(cls.RELEASE_INTERVAL_SECONDS if not cls.TESTING else cls.RELEASE_INTERVAL_SECONDS_DEBUG, cls.release)
-        timer.daemon = True
+        timer.daemon = False
         timer.setName("ORMHelper(database push queue)")
         timer.start()
         return timer
