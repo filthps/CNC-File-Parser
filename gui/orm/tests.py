@@ -33,12 +33,12 @@ def is_database_empty(session, empty=True, tables=15, procedures=52, test_db_nam
                                               f'event_object_catalog=\'{test_db_name}\';')).scalar()
     if empty:
         if table_counter or procedures_counter:
-            time.sleep(1)
+            time.sleep(2)
             return is_database_empty(session, empty=empty, tables=tables, procedures=procedures,
                                      test_db_name=test_db_name)
         return True
     if table_counter < tables or procedures_counter < procedures:
-        time.sleep(1)
+        time.sleep(2)
         return is_database_empty(session, empty=empty, tables=tables, procedures=procedures,
                                  test_db_name=test_db_name)
     return True
@@ -49,7 +49,6 @@ def db_reinit(m):
         drop_db()
         if is_database_empty(self.orm_manager.database):
             create_db()
-            print(is_database_empty(self.orm_manager.database, empty=False), "is_database_empty(self.orm_manager.database, empty=False)")
             init_all_triggers()
             if is_database_empty(self.orm_manager.database, empty=False):
                 return m(self)
@@ -431,3 +430,7 @@ class TestORMHelper(unittest.TestCase, SetUp):
         #
         self.assertTrue(result.pointer.has_changes("Результат в списке 2"))
         self.assertTrue(result.pointer.has_changes("Результат в списке 1"))
+
+    @db_reinit
+    def test_someone(self):
+        self.assertEqual(1, 1)

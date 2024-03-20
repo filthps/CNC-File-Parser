@@ -1,6 +1,7 @@
 import datetime
 import itertools
 import hashlib
+import os.path
 import sys
 import copy
 import threading
@@ -14,12 +15,13 @@ from pymemcache_dill_serde import DillSerde
 from pymemcache.test.utils import MockMemcacheClient
 from psycopg2.errors import Error as PsycopgError
 from sqlalchemy import create_engine, ColumnDefault, delete, insert
+from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.sql.dml import Insert, Update, Delete
 from sqlalchemy.sql.expression import select
 from sqlalchemy.orm import Query, sessionmaker as session_factory, Session
 from sqlalchemy.exc import DisconnectionError, OperationalError, SQLAlchemyError
 from gui.datatype import LinkedList, LinkedListItem
-from database.models import app, CustomModel, ModelController, DATABASE_PATH, DATABASE_PATH_FOR_TESTS
+from database.models import create_app, CustomModel, ModelController, DATABASE_PATH, DATABASE_PATH_FOR_TESTS
 from gui.orm.exceptions import *
 
 
@@ -928,10 +930,16 @@ class ORMHelper(ORMAttributes):
     @classmethod
     @property
     def database(cls) -> Session:
-        app.app_context().push()
         if cls._database_session is None:
+            app = create_app(cls.DATABASE_PATH if not cls.TESTING else cls.DATABASE_MOCK_PATH,
+                             #app_name=os.path.basename(__file__),
+                             app_name=__name__
+                             )
+            sqlalchemy_ = SQLAlchemy(app)
+            app.app_context().push()
+            engine = sqlalchemy_.engine
+            engine.execution_options(isolation_level="AUTOCOMMIT")
             try:
-                engine = create_engine(cls.DATABASE_PATH if not cls.TESTING else cls.DATABASE_MOCK_PATH)
                 session_f = session_factory(bind=engine)
                 cls._database_session = session_f()
             except DisconnectionError:

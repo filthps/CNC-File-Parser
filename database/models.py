@@ -11,15 +11,20 @@ from sqlalchemy.orm import relationship, InstrumentedAttribute
 from flask_sqlalchemy import SQLAlchemy as FlaskSQLAlchemy
 from flask import Flask
 
-
 load_dotenv()
 
 DATABASE_PATH = "postgresql://postgres:g8ln7ze5vm6a@localhost:5432/intex1"
 DATABASE_PATH_FOR_TESTS = "postgresql://testuser:0000@localhost:5432/testdb"
 RESERVED_WORDS = ("__insert", "__update", "__delete", "__ready", "__model", "__primary_key__", "column_names")  # Используются в классе ORMHelper
 
-app = Flask(__name__)
-app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_PATH_FOR_TESTS
+
+def create_app(path=None, app_name=None):
+    app = Flask(app_name or __name__)
+    app.config["SQLALCHEMY_DATABASE_URI"] = path or DATABASE_PATH
+    return app
+
+
+app = create_app()
 db = FlaskSQLAlchemy(app)
 
 
@@ -346,14 +351,14 @@ def test_unique_primary_key_column_name(field_name: str):
 
 
 def drop_db():
-    with app.app_context():
-        db.drop_all()
+    app.app_context().push()
+    db.drop_all()
 
 
 def create_db():
     check_bad_attribute_name()
-    with app.app_context():
-        db.create_all()
+    app.app_context().push()
+    db.create_all()
 
 
 if __name__ == "__main__":

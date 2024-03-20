@@ -1,6 +1,7 @@
 """ Postgres диалект! """
 from sqlalchemy import DDL
-from database.models import db, app
+from flask_sqlalchemy import SQLAlchemy
+from database.models import create_app
 
 
 def init_operation_delegation_table_triggers(s):
@@ -737,7 +738,9 @@ def init_searchstring_table_triggers(s):
 
 
 def init_all_triggers():
-    with app.app_context():
+    context = create_app()
+    db = SQLAlchemy(context)
+    with context.app_context():
         with db.session() as session:
             init_rename_table_triggers(session)
             init_uncomment_table_triggers(session)
