@@ -1,8 +1,9 @@
 """
 Назначить каждому классу модели атрибут __db_queue_primary_field_name__, который необходим для класса tools.ORMHelper
 """
-import itertools
+import os
 import sys
+import itertools
 from uuid import uuid4
 from abc import ABC, abstractmethod
 from dotenv import load_dotenv
@@ -11,12 +12,15 @@ from sqlalchemy.orm import relationship, InstrumentedAttribute
 from flask_sqlalchemy import SQLAlchemy as FlaskSQLAlchemy
 from flask import Flask
 
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 load_dotenv()
 
 DATABASE_PATH = "postgresql://postgres:g8ln7ze5vm6a@localhost:5432/intex1"
 DATABASE_PATH_FOR_TESTS = "postgresql://testuser:0000@localhost:5432/testdb"
 RESERVED_WORDS = ("__insert", "__update", "__delete", "__ready", "__model", "__primary_key__", "column_names")  # Используются в классе ORMHelper
+DATABASE_PATH = os.environ.get("DATABASE_PATH")
+
 
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_PATH_FOR_TESTS
