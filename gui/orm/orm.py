@@ -219,7 +219,6 @@ class ORMItem(LinkedListItem, ModelTools):
 
     def get_primary_key_and_value(self, as_tuple=False, only_key=False, only_value=False) -> Union[dict, tuple, int, str]:
         """
-        False - '__db_queue_primary_field_name__' - который определяет уникальность ноды в ORMQueue
         :param as_tuple: ключ-значение в виде кортежа
         :param only_key: только название столбца - PK
         :param only_value: только значение столбца первичного ключа
@@ -530,7 +529,7 @@ class ORMItemQueue(LinkedList):
         if len(primary_key_data) != 1:
             raise NodePrimaryKeyError
         nodes = iter(self)
-        while nodes:  # O(n) * O(k)
+        while nodes:
             try:
                 left_node: Optional[ORMItem] = next(nodes)
             except StopIteration:
@@ -1282,20 +1281,25 @@ class ORMHelper(ORMAttributes):
         """
         model = _model or cls._model_obj
         cls.is_valid_model_instance(model)
-        primary_key_field_name = getattr(model, "__db_queue_primary_field_name__")
+        if not isinstance(field_or_fields, (tuple, list, set, frozenset, str,)):
+            raise TypeError
+        primary_key_field_name = [attr_val for attr_name, attr_val in model().column_names
+                                  if attr_name == "primary_key"][0]
         old_node = cls.items.get_node(model, **{primary_key_field_name: pk_field_value})
         if not old_node:
             return
         node_data = old_node.get_attributes()
-        if not isinstance(field_or_fields, (tuple, list, set, frozenset, str,)):
-            raise TypeError
-        if isinstance(field_or_fields, (tuple, list, set, frozenset,)):
+        if isinstance(field_or_fields, (list, tuple, set, frozenset)):
+            if set.intersection(set(field_or_fields), set(RESERVED_WORDS)):
+                raise NodeAttributeError
             if primary_key_field_name in field_or_fields:
                 raise NodePrimaryKeyError("Нельзя удалить поле, которое является первичным ключом")
             for field in field_or_fields:
                 if field in node_data:
                     del node_data[field]
         if type(field_or_fields) is str:
+            if field_or_fields in RESERVED_WORDS:
+                raise NodeAttributeError
             if primary_key_field_name == field_or_fields:
                 raise NodePrimaryKeyError("Нельзя удалить поле, которое является первичным ключом")
             if field_or_fields in node_data:
@@ -1330,10 +1334,8 @@ class ORMHelper(ORMAttributes):
 
     @classmethod
     def __getattribute__(cls, item):
-        if not cls._was_initialized and not item == "__new__":
-            raise ORMInitializationError("В первую очередь заупскается метод '__new__'")
-        if not item == "set_model":
-            if cls._model_obj is None:
+        if not cls._was_initialized:
+            if not item == "set_model":
                 raise ORMInitializationError("Сначала нужно установить модель Flask-SQLAlchemy, используя метод set_model")
         super().__getattribute__(item)
 
