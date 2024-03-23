@@ -43,16 +43,17 @@ class ModelController:
 
         def collect_column_attributes():
             """ Собрать в атрибут класса column_names все имена стоблцов таблицы """
+            column_names = cls.column_names
             for value in cls.__dict__.values():
                 if type(value) is InstrumentedAttribute and hasattr(value.expression, "name"):
-                    cls.column_names.update({value.expression.name: {"type": value.expression.type.python_type, 
-                                                                     "nullable": value.expression.nullable,
-                                                                     "primary_key": value.expression.primary_key,
-                                                                     "autoincrement": value.expression.autoincrement,
-                                                                     "unique": value.expression.unique,
-                                                                     "default": value.expression.default}})  # todo: Доработать остальные аналоги default, согласно документации https://docs.sqlalchemy.org/en/20/core/defaults.html
+                    column_names.update({value.expression.name: {"type": value.expression.type.python_type,
+                                                                 "nullable": value.expression.nullable,
+                                                                 "primary_key": value.expression.primary_key,
+                                                                 "autoincrement": value.expression.autoincrement,
+                                                                 "unique": value.expression.unique,
+                                                                 "default": value.expression.default}})  # todo: Доработать остальные аналоги default, согласно документации https://docs.sqlalchemy.org/en/20/core/defaults.html
                     if hasattr(value, "length"):
-                        cls.column_names[value.expression.name].update({"length": value.length})
+                        column_names[value.expression.name].update({"length": value.length})
 
         def collect_foreign_keys():
             cls.foreign_keys = tuple(cls.__table__.foreign_keys)
