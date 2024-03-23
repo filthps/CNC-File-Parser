@@ -1,5 +1,5 @@
 """ Postgres диалект! """
-from sqlalchemy import DDL
+from sqlalchemy import DDL, text
 from flask_sqlalchemy import SQLAlchemy
 from database.models import create_app
 
@@ -737,8 +737,8 @@ def init_searchstring_table_triggers(s):
     """))
 
 
-def init_all_triggers():
-    context = create_app()
+def init_all_triggers(db_path=None):
+    context = create_app(path=db_path)
     db = SQLAlchemy(context)
     with context.app_context():
         with db.session() as session:

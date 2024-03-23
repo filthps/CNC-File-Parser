@@ -1,8 +1,9 @@
 """
 Назначить каждому классу модели атрибут __db_queue_primary_field_name__, который необходим для класса tools.ORMHelper
 """
-import itertools
+import os
 import sys
+import itertools
 from uuid import uuid4
 from abc import ABC, abstractmethod
 from dotenv import load_dotenv
@@ -11,11 +12,10 @@ from sqlalchemy.orm import relationship, InstrumentedAttribute
 from flask_sqlalchemy import SQLAlchemy as FlaskSQLAlchemy
 from flask import Flask
 
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
-DATABASE_PATH = "postgresql://postgres:g8ln7ze5vm6a@localhost:5432/intex1"
-DATABASE_PATH_FOR_TESTS = "postgresql://testuser:0000@localhost:5432/testdb"
 RESERVED_WORDS = ("__insert", "__update", "__delete", "__ready", "__model", "__primary_key__", "column_names")  # Используются в классе ORMHelper
+DATABASE_PATH = os.environ.get("DATABASE_PATH")
 
 
 def create_app(path=None, app_name=None):
@@ -46,7 +46,7 @@ class ModelController:
             """ Собрать в атрибут класса column_names все имена стоблцов таблицы """
             for value in cls.__dict__.values():
                 if type(value) is InstrumentedAttribute and hasattr(value.expression, "name"):
-                    cls.column_names.update({value.expression.name: {"type": value.expression.type.python_type, 
+                    cls.column_names.update({value.expression.name: {"type": value.expression.type.python_type,
                                                                      "nullable": value.expression.nullable,
                                                                      "primary_key": value.expression.primary_key,
                                                                      "autoincrement": value.expression.autoincrement,
@@ -350,7 +350,7 @@ def test_unique_primary_key_column_name(field_name: str):
                        f" Повторы в таблицах: {', '.join(repeat_table_names)}")
 
 
-def drop_db():
+def drop_db():  # todo: После обновления SQLAlchemy().drop_all() не удаляет хранимые процедуры! Имей это в виду
     app.app_context().push()
     db.drop_all()
 
