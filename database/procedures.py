@@ -1,11 +1,17 @@
 """ Postgres диалект! """
-from sqlalchemy import DDL, text
-from flask_sqlalchemy import SQLAlchemy
-from database.models import create_app
+import os
+from dotenv import load_dotenv
+from sqlalchemy import DDL, create_engine
+from sqlalchemy.orm import Session, create_session
+from database.models import *
 
 
-def init_operation_delegation_table_triggers(s):
-    s.execute(DDL("""
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+DB_PATH = os.environ.get("DATABASE_PATH")
+
+
+def init_operation_delegation_table_triggers(s: Session):
+    func_check_unique_delegation = DDL("""
         CREATE OR REPLACE FUNCTION check_unique_delegation() RETURNS trigger
         AS $body$
         BEGIN
@@ -26,16 +32,16 @@ def init_operation_delegation_table_triggers(s):
             END IF;
         END; $body$
         LANGUAGE PLPGSQL 
-    """))
+    """)
 
-    s.execute(DDL("""
+    trigger_check_unique_delegation = DDL("""
         CREATE TRIGGER operation_delegation_trigger
         BEFORE INSERT OR UPDATE
         ON operationdelegation FOR EACH ROW
         EXECUTE PROCEDURE check_unique_delegation();
-    """))
+    """)
 
-    s.execute(DDL("""
+    func_check_count_delegation_options = DDL("""
         CREATE OR REPLACE FUNCTION check_count_delegation_options() RETURNS trigger
         AS $body$
         DECLARE
@@ -58,19 +64,25 @@ def init_operation_delegation_table_triggers(s):
             END IF;             
         END; $body$
         LANGUAGE PLPGSQL 
-    """))
+    """)
 
-    s.execute(DDL("""
+    trigger_check_count_delegation_options = DDL("""
         CREATE TRIGGER delegation_trigger_counter
         BEFORE INSERT OR UPDATE
         ON operationdelegation FOR EACH ROW
         EXECUTE PROCEDURE check_count_delegation_options();
-    """))
+    """)
 
+    s.execute(func_check_count_delegation_options)
+    s.execute(func_check_unique_delegation)
+    s.execute(trigger_check_count_delegation_options)
+    s.execute(trigger_check_unique_delegation)
+    s.commit()
+    
 
-def init_cnc_table_triggers(s):
-    s.execute(DDL("""
-        CREATE OR REPLACE FUNCTION tets_unique_cnc() RETURNS trigger
+def init_cnc_table_triggers(s: Session):
+    test_unique_cnc_func = DDL("""
+        CREATE OR REPLACE FUNCTION test_unique_cnc() RETURNS trigger
         AS $body$
         BEGIN
             IF (SELECT 1
@@ -85,18 +97,22 @@ def init_cnc_table_triggers(s):
             END IF;
         END; $body$
         LANGUAGE PLPGSQL
-    """))
+    """)
 
-    s.execute(DDL("""
+    test_unique_cnc_trigger = DDL("""
         CREATE TRIGGER unique_cnc_control
         BEFORE INSERT OR UPDATE
         ON cnc FOR EACH ROW
-        EXECUTE PROCEDURE tets_unique_cnc();
-        """))
+        EXECUTE PROCEDURE test_unique_cnc();
+        """)
+
+    s.execute(test_unique_cnc_func)
+    s.execute(test_unique_cnc_trigger)
+    s.commit()
 
 
-def init_condition_table_triggers(s):
-    s.execute(DDL("""
+def init_condition_table_triggers(s: Session):
+    self_parent_control_func = DDL("""
         CREATE OR REPLACE FUNCTION control_self_parent_condition() RETURNS trigger
         AS $body$
         BEGIN
@@ -107,16 +123,16 @@ def init_condition_table_triggers(s):
             END IF;
         END; $body$
         LANGUAGE PLPGSQL
-        """))
+        """)
 
-    s.execute(DDL("""
+    self_parent_control_trigger = DDL("""
         CREATE TRIGGER check_self_parent_condition
         BEFORE INSERT OR UPDATE
         ON cond FOR EACH ROW
         EXECUTE PROCEDURE control_self_parent_condition();
-        """))
+        """)
 
-    s.execute(DDL("""
+    condition_unique_validation_func = DDL("""
         CREATE OR REPLACE FUNCTION check_condition() RETURNS trigger
         AS $body$
         BEGIN
@@ -143,16 +159,16 @@ def init_condition_table_triggers(s):
             END IF;
         END; $body$
         LANGUAGE PLPGSQL
-        """))
+        """)
 
-    s.execute(DDL("""
+    condition_unique_validation_trigger = DDL("""
         CREATE TRIGGER check_unique_condition
         BEFORE INSERT OR UPDATE
         ON cond FOR EACH ROW
         EXECUTE PROCEDURE check_condition();
-        """))
+        """)
 
-    s.execute(DDL("""
+    condition_options_validation = DDL("""
         CREATE OR REPLACE FUNCTION check_condition_options() RETURNS trigger
         AS $body$
         DECLARE
@@ -173,18 +189,26 @@ def init_condition_table_triggers(s):
             END IF;
         END; $body$
         LANGUAGE PLPGSQL
-        """))
+        """)
 
-    s.execute(DDL("""
+    condition_options_trigger = DDL("""
         CREATE TRIGGER check_condition_values
         BEFORE INSERT OR UPDATE
         ON cond FOR EACH ROW
         EXECUTE PROCEDURE check_condition_options();
-    """))
+    """)
+
+    s.execute(self_parent_control_func)
+    s.execute(self_parent_control_trigger)
+    s.execute(condition_unique_validation_func)
+    s.execute(condition_unique_validation_trigger)
+    s.execute(condition_options_validation)
+    s.execute(condition_options_trigger)
+    s.commit()
 
 
-def init_numeration_table_triggers(s):
-    s.execute(DDL("""
+def init_numeration_table_triggers(s: Session):
+    numeration_check_unique = DDL("""
         CREATE OR REPLACE FUNCTION check_num_options() RETURNS trigger
         AS $body$
         BEGIN
@@ -200,18 +224,22 @@ def init_numeration_table_triggers(s):
             END IF;
         END; $body$
         LANGUAGE PLPGSQL
-        """))
+        """)
 
-    s.execute(DDL("""
+    numeration_trigger = DDL("""
         CREATE TRIGGER check_unique_num 
         BEFORE INSERT OR UPDATE
         ON num FOR EACH ROW
         EXECUTE PROCEDURE check_num_options();
-        """))
+        """)
+
+    s.execute(numeration_check_unique)
+    s.execute(numeration_trigger)
+    s.commit()
 
 
-def init_replace_table_triggers(s):
-    s.execute(DDL("""
+def init_replace_table_triggers(s: Session):
+    replace_table_check_options_func = DDL("""
         CREATE OR REPLACE FUNCTION check_repl_options() RETURNS trigger
         AS $body$
         BEGIN
@@ -229,19 +257,23 @@ def init_replace_table_triggers(s):
             END IF;
         END; $body$
         LANGUAGE PLPGSQL
-        """))
+        """)
 
-    s.execute(DDL("""
+    replace_trigger = DDL("""
         CREATE TRIGGER check_unique_replace
         BEFORE INSERT OR UPDATE
         ON repl FOR EACH ROW
         EXECUTE PROCEDURE check_repl_options();
-        """))
+        """)
+
+    s.execute(replace_table_check_options_func)
+    s.execute(replace_trigger)
+    s.commit()
 
 
-def init_comment_table_triggers(s):
-    s.execute(DDL("""
-        CREATE OR REPLACE FUNCTION check_comm_options() RETURNS trigger
+def init_comment_table_triggers(s: Session):
+    comment_unique = DDL("""
+        CREATE OR REPLACE FUNCTION check_unique_cmt() RETURNS trigger
         AS $body$
         BEGIN
             IF EXISTS(
@@ -257,17 +289,17 @@ def init_comment_table_triggers(s):
             END IF;
         END; $body$
         LANGUAGE PLPGSQL
-        """))
+        """)
 
-    s.execute(DDL("""
+    comment_unique_trigger = DDL("""
         CREATE TRIGGER check_unique_comment
         BEFORE INSERT OR UPDATE
         ON comment FOR EACH ROW
-        EXECUTE PROCEDURE check_comm_options();
-        """))
+        EXECUTE PROCEDURE check_unique_cmt();
+        """)
 
-    s.execute(DDL("""
-        CREATE OR REPLACE FUNCTION comment_trigger_func() RETURNS trigger
+    comment_options_validation = DDL("""
+        CREATE OR REPLACE FUNCTION check_comment_options() RETURNS trigger
         AS $body$
         DECLARE
             counter smallint := 0;
@@ -282,18 +314,24 @@ def init_comment_table_triggers(s):
             END IF;
         END; $body$
         LANGUAGE PLPGSQL
-        """))
+        """)
 
-    s.execute(DDL("""
-        CREATE TRIGGER comment_trigger
+    comment_options_trigger = DDL("""
+        CREATE TRIGGER comment_trigger_check_options
         BEFORE INSERT OR UPDATE
         ON comment FOR EACH ROW
-        EXECUTE PROCEDURE comment_trigger_func();
-    """))
+        EXECUTE PROCEDURE check_comment_options();
+    """)
+
+    s.execute(comment_unique)
+    s.execute(comment_unique_trigger)
+    s.execute(comment_options_validation)
+    s.execute(comment_options_trigger)
+    s.commit()
 
 
-def init_remove_table_triggers(s):
-    s.execute(DDL("""
+def init_remove_table_triggers(s: Session):
+    rename_unique = DDL("""
         CREATE OR REPLACE FUNCTION check_rem_options() RETURNS trigger
         AS $body$
         BEGIN
@@ -310,16 +348,16 @@ def init_remove_table_triggers(s):
             END IF;
         END; $body$
         LANGUAGE PLPGSQL
-        """))
+        """)
 
-    s.execute(DDL("""
-            CREATE TRIGGER check_unique_remove
-            BEFORE INSERT OR UPDATE
-            ON remove FOR EACH ROW
-            EXECUTE PROCEDURE check_rem_options();
-            """))
+    rename_unique_trigger = DDL("""
+        CREATE TRIGGER check_unique_remove
+        BEFORE INSERT OR UPDATE
+        ON remove FOR EACH ROW
+        EXECUTE PROCEDURE check_rem_options();
+        """)
 
-    s.execute(DDL("""
+    rename_options_validation = DDL("""
         CREATE OR REPLACE FUNCTION remove_trigger_func() RETURNS trigger
         AS $body$
         DECLARE
@@ -336,18 +374,24 @@ def init_remove_table_triggers(s):
             END IF;
         END; $body$
         LANGUAGE PLPGSQL
-        """))
+        """)
 
-    s.execute(DDL("""
+    rename_options_trigger = DDL("""
         CREATE TRIGGER remove_trigger
         BEFORE INSERT OR UPDATE
         ON remove FOR EACH ROW
         EXECUTE PROCEDURE remove_trigger_func();
-    """))
+    """)
+
+    s.execute(rename_unique)
+    s.execute(rename_unique_trigger)
+    s.execute(rename_options_validation)
+    s.execute(rename_options_trigger)
+    s.commit()
 
 
-def init_uncomment_table_triggers(s):
-    s.execute(DDL("""
+def init_uncomment_table_triggers(s: Session):
+    uncomment_unique_func = DDL("""
         CREATE OR REPLACE FUNCTION check_uncomment_options() RETURNS trigger
         AS $body$
         BEGIN
@@ -364,16 +408,16 @@ def init_uncomment_table_triggers(s):
             END IF;
         END; $body$
         LANGUAGE PLPGSQL
-        """))
+        """)
 
-    s.execute(DDL("""
+    uncomment_unique_trigger = DDL("""
         CREATE TRIGGER check_unique_uncomment 
         BEFORE INSERT OR UPDATE
         ON uncomment FOR EACH ROW
         EXECUTE PROCEDURE check_uncomment_options();
-        """))
+        """)
 
-    s.execute(DDL("""
+    uncomment_options_func = DDL("""
         CREATE OR REPLACE FUNCTION uncomment_trigger_func() RETURNS trigger
         AS $body$
         DECLARE
@@ -387,18 +431,24 @@ def init_uncomment_table_triggers(s):
             RETURN NEW;
         END; $body$
         LANGUAGE PLPGSQL
-        """))
+        """)
 
-    s.execute(DDL("""
+    uncomment_options_trigger = DDL("""
         CREATE TRIGGER uncomment_trigger
         BEFORE INSERT OR UPDATE
         ON uncomment FOR EACH ROW
         EXECUTE PROCEDURE uncomment_trigger_func();
-    """))
+    """)
+
+    s.execute(uncomment_unique_func)
+    s.execute(uncomment_unique_trigger)
+    s.execute(uncomment_options_func)
+    s.execute(uncomment_options_trigger)
+    s.commit()
 
 
-def init_rename_table_triggers(s):
-    s.execute(DDL("""
+def init_rename_table_triggers(s: Session):
+    rename_table_unique = DDL("""
     CREATE OR REPLACE FUNCTION rename_count_instances() RETURNS trigger
     AS $body$
     BEGIN
@@ -419,16 +469,16 @@ def init_rename_table_triggers(s):
             END IF;
     END; $body$
     LANGUAGE PLPGSQL
-    """))
+    """)
 
-    s.execute(DDL("""
+    rename_table_unique_trigger = DDL("""
     CREATE TRIGGER check_unique_instance_rename
     BEFORE INSERT OR UPDATE
     ON renam FOR EACH ROW
     EXECUTE PROCEDURE rename_count_instances();
-    """))
+    """)
 
-    s.execute(DDL("""
+    rename_table_options_validation = DDL("""
         CREATE OR REPLACE FUNCTION rename_filter_values() RETURNS trigger
         AS $body$
         DECLARE
@@ -457,18 +507,24 @@ def init_rename_table_triggers(s):
             RETURN NEW;
         END; $body$
         LANGUAGE PLPGSQL
-        """))
+        """)
 
-    s.execute(DDL("""
+    rename_table_options_trigger = DDL("""
         CREATE TRIGGER rename_trigger
         BEFORE INSERT OR UPDATE
         ON renam FOR EACH ROW
         EXECUTE PROCEDURE rename_filter_values();
-    """))
+    """)
+
+    s.execute(rename_table_unique)
+    s.execute(rename_table_unique_trigger)
+    s.execute(rename_table_options_validation)
+    s.execute(rename_table_options_trigger)
+    s.commit()
 
 
-def init_insert_table_triggers(s):
-    s.execute(DDL("""
+def init_insert_table_triggers(s: Session):
+    insert_table_unique = DDL("""
     CREATE OR REPLACE FUNCTION insert_count_instances() RETURNS trigger
     AS $body$
     BEGIN
@@ -486,16 +542,16 @@ def init_insert_table_triggers(s):
             END IF;
     END; $body$
     LANGUAGE PLPGSQL
-    """))
+    """)
 
-    s.execute(DDL("""
+    insert_table_unique_trigger = DDL("""
     CREATE TRIGGER check_unique_instance_insert
     BEFORE INSERT OR UPDATE
     ON insert FOR EACH ROW
     EXECUTE PROCEDURE insert_count_instances();
-    """))
+    """)
 
-    s.execute(DDL("""
+    insert_table_options = DDL("""
         CREATE OR REPLACE FUNCTION insert_filter_values() RETURNS trigger
         AS $body$
         DECLARE
@@ -511,18 +567,24 @@ def init_insert_table_triggers(s):
             END IF;
         END; $body$
         LANGUAGE PLPGSQL
-        """))
+        """)
 
-    s.execute(DDL("""
+    insert_table_options_trigger = DDL("""
         CREATE TRIGGER insert_trigger
         BEFORE INSERT OR UPDATE
         ON insert FOR EACH ROW
         EXECUTE PROCEDURE insert_filter_values();
-    """))
+    """)
+
+    s.execute(insert_table_unique)
+    s.execute(insert_table_unique_trigger)
+    s.execute(insert_table_options)
+    s.execute(insert_table_options_trigger)
+    s.commit()
 
 
-def init_machine_table_triggers(s):
-    s.execute(DDL("""
+def init_machine_table_triggers(s: Session):
+    machine_table_unique = DDL("""
         CREATE OR REPLACE FUNCTION machine_count_instances() RETURNS trigger
         AS $body$
         BEGIN
@@ -547,18 +609,22 @@ def init_machine_table_triggers(s):
                 END IF;
         END; $body$
         LANGUAGE PLPGSQL
-        """))
+        """)
 
-    s.execute(DDL("""
+    machine_table_unique_trigger = DDL("""
         CREATE TRIGGER check_machine
         BEFORE INSERT OR UPDATE
         ON machine FOR EACH ROW
         EXECUTE PROCEDURE machine_count_instances();
-        """))
+        """)
+
+    s.execute(machine_table_unique)
+    s.execute(machine_table_unique_trigger)
+    s.commit()
 
 
-def init_headvarible_table_triggers(s):
-    s.execute(DDL("""
+def init_headvarible_table_triggers(s: Session):
+    headvar_unique = DDL("""
         CREATE OR REPLACE FUNCTION headvarible_count_instances() RETURNS trigger
         AS $body$
         BEGIN
@@ -575,18 +641,22 @@ def init_headvarible_table_triggers(s):
                 END IF;
         END; $body$
         LANGUAGE PLPGSQL
-        """))
+        """)
 
-    s.execute(DDL("""
+    headvar_unique_trigger = DDL("""
         CREATE TRIGGER check_headvarible
         BEFORE INSERT OR UPDATE
         ON headvar FOR EACH ROW
         EXECUTE PROCEDURE headvarible_count_instances();
-        """))
+        """)
+
+    s.execute(headvar_unique)
+    s.execute(headvar_unique_trigger)
+    s.commit()
 
 
-def init_headvardelegation_table_triggers(s):
-    s.execute(DDL("""
+def init_headvardelegation_table_triggers(s: Session):
+    head_varible_delegation_table_unique = DDL("""
         CREATE OR REPLACE FUNCTION varsec_check_unique() RETURNS trigger
         AS $body$
         BEGIN
@@ -602,16 +672,16 @@ def init_headvardelegation_table_triggers(s):
             END IF;
         END; $body$
         LANGUAGE PLPGSQL
-        """))
+        """)
 
-    s.execute(DDL("""
+    head_varible_delegation_table_unique_trigger = DDL("""
         CREATE TRIGGER check_varsec_instance
         BEFORE INSERT OR UPDATE
         ON varsec FOR EACH ROW
         EXECUTE PROCEDURE varsec_check_unique();
-        """))
+        """)
 
-    s.execute(DDL("""
+    head_varible_delegation_table_options = DDL("""
         CREATE OR REPLACE FUNCTION varsec_check_options() RETURNS trigger
         AS $body$
         DECLARE
@@ -626,18 +696,24 @@ def init_headvardelegation_table_triggers(s):
             END IF;
         END; $body$
         LANGUAGE PLPGSQL
-        """))
+        """)
 
-    s.execute(DDL("""
+    head_varible_delegation_table_options_trigger = DDL("""
         CREATE TRIGGER check_varsec_options
         BEFORE INSERT OR UPDATE
         ON varsec FOR EACH ROW
         EXECUTE PROCEDURE varsec_check_options();
-        """))
+        """)
+
+    s.execute(head_varible_delegation_table_unique)
+    s.execute(head_varible_delegation_table_unique_trigger)
+    s.execute(head_varible_delegation_table_options)
+    s.execute(head_varible_delegation_table_options_trigger)
+    s.commit()
 
 
-def init_taskdelegation_table_triggers(s):
-    s.execute(DDL("""
+def init_taskdelegation_table_triggers(s: Session):
+    task_delegation_table_unique = DDL("""
         CREATE OR REPLACE FUNCTION taskdelegate_check_unique() RETURNS trigger
         AS $body$
         BEGIN
@@ -651,18 +727,22 @@ def init_taskdelegation_table_triggers(s):
             END IF;
         END; $body$
         LANGUAGE PLPGSQL
-        """))
+        """)
 
-    s.execute(DDL("""
+    task_delegation_table_unique_trigger = DDL("""
         CREATE TRIGGER check_taskdelegate_instance
         BEFORE INSERT OR UPDATE
         ON taskdelegate FOR EACH ROW
         EXECUTE PROCEDURE taskdelegate_check_unique();
-        """))
+        """)
+
+    s.execute(task_delegation_table_unique)
+    s.execute(task_delegation_table_unique_trigger)
+    s.commit()
 
 
-def init_searchstring_table_triggers(s):
-    s.execute(DDL("""
+def init_searchstring_table_triggers(s: Session):
+    search_string_table_unique = DDL("""
         CREATE OR REPLACE FUNCTION search_other_item() RETURNS trigger
         AS $body$
         BEGIN
@@ -682,17 +762,16 @@ def init_searchstring_table_triggers(s):
             END IF;
         END; $body$
         LANGUAGE PLPGSQL
-    """))
+    """)
 
-    s.execute(DDL("""
+    search_string_table_unique_trigger = DDL("""
         CREATE TRIGGER check_unique_searchstring
         BEFORE INSERT OR UPDATE
         ON sstring FOR EACH ROW
         EXECUTE PROCEDURE search_other_item();
-    """))
+    """)
 
-    #  Если диапазон выборки и диапазон игнорирования пересекаются, то это полное говно
-    s.execute(DDL("""
+    search_string_table_indexes_validation_inner = DDL("""
         CREATE OR REPLACE FUNCTION count_inner() RETURNS trigger
         AS $body$
         BEGIN
@@ -703,18 +782,18 @@ def init_searchstring_table_triggers(s):
             END IF;
         END; $body$
         LANGUAGE PLPGSQL
-    """))
+    """)
 
-    s.execute(DDL("""
+    search_string_table_indexes_validation_inner_trigger = DDL("""
         CREATE TRIGGER check_selected_place
         BEFORE INSERT OR UPDATE
         ON sstring FOR EACH ROW
         EXECUTE PROCEDURE count_inner();
-    """))
+    """)
 
-    #  Если Диапазон с игнорируемыми символами находится правее диапазона выборки, то он не имеет смысла,
+    #  Если Диапазон с игнорируемыми символами находится ПРАВЕЕ диапазона выборки, то он не имеет смысла,
     #  заменим значения на NULL
-    s.execute(DDL("""
+    search_string_table_indexes_validation_right = DDL("""
         CREATE OR REPLACE FUNCTION replace_ignore_separators() RETURNS trigger
         AS $body$
         BEGIN
@@ -727,36 +806,42 @@ def init_searchstring_table_triggers(s):
             END IF;
         END; $body$
         LANGUAGE PLPGSQL
-    """))
+    """)
 
-    s.execute(DDL("""
+    search_string_table_indexes_validation_right_trigger = DDL("""
         CREATE TRIGGER check_separators_to_replace
         BEFORE INSERT OR UPDATE
         ON sstring FOR EACH ROW
         EXECUTE PROCEDURE replace_ignore_separators();
-    """))
+    """)
+
+    s.execute(search_string_table_unique)
+    s.execute(search_string_table_unique_trigger)
+    s.execute(search_string_table_indexes_validation_inner)
+    s.execute(search_string_table_indexes_validation_inner_trigger)
+    s.execute(search_string_table_indexes_validation_right)
+    s.execute(search_string_table_indexes_validation_right_trigger)
+    s.commit()
 
 
 def init_all_triggers(db_path=None):
-    context = create_app(path=db_path)
-    db = SQLAlchemy(context)
-    with context.app_context():
-        with db.session() as session:
-            init_rename_table_triggers(session)
-            init_uncomment_table_triggers(session)
-            init_remove_table_triggers(session)
-            init_comment_table_triggers(session)
-            init_replace_table_triggers(session)
-            init_numeration_table_triggers(session)
-            init_condition_table_triggers(session)
-            init_cnc_table_triggers(session)
-            init_insert_table_triggers(session)
-            init_operation_delegation_table_triggers(session)
-            init_machine_table_triggers(session)
-            init_headvarible_table_triggers(session)
-            init_headvardelegation_table_triggers(session)
-            init_taskdelegation_table_triggers(session)
-            init_searchstring_table_triggers(session)
+    engine = create_engine(db_path or DB_PATH)
+    session = create_session(bind=engine)
+    init_rename_table_triggers(session)
+    init_uncomment_table_triggers(session)
+    init_remove_table_triggers(session)
+    init_comment_table_triggers(session)
+    init_replace_table_triggers(session)
+    init_numeration_table_triggers(session)
+    init_condition_table_triggers(session)
+    init_cnc_table_triggers(session)
+    init_insert_table_triggers(session)
+    init_operation_delegation_table_triggers(session)
+    init_machine_table_triggers(session)
+    init_headvarible_table_triggers(session)
+    init_headvardelegation_table_triggers(session)
+    init_taskdelegation_table_triggers(session)
+    init_searchstring_table_triggers(session)
 
 
 if __name__ == "__main__":
