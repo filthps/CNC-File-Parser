@@ -12,8 +12,8 @@ from sqlalchemy.orm import relationship, InstrumentedAttribute
 from flask_sqlalchemy import SQLAlchemy as FlaskSQLAlchemy
 from flask import Flask
 
-load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 RESERVED_WORDS = ("__insert", "__update", "__delete", "__ready", "__model", "__primary_key__", "column_names")  # Используются в классе ORMHelper
 DATABASE_PATH = os.environ.get("DATABASE_PATH")
 
@@ -48,11 +48,11 @@ class ModelController:
             for value in cls.__dict__.values():
                 if type(value) is InstrumentedAttribute and hasattr(value.expression, "name"):
                     column_names.update({value.expression.name: {"type": value.expression.type.python_type,
-                                                                     "nullable": value.expression.nullable,
-                                                                     "primary_key": value.expression.primary_key,
-                                                                     "autoincrement": value.expression.autoincrement,
-                                                                     "unique": value.expression.unique,
-                                                                     "default": value.expression.default}})  # todo: Доработать остальные аналоги default, согласно документации https://docs.sqlalchemy.org/en/20/core/defaults.html
+                                                                 "nullable": value.expression.nullable,
+                                                                 "primary_key": value.expression.primary_key,
+                                                                 "autoincrement": value.expression.autoincrement,
+                                                                 "unique": value.expression.unique,
+                                                                 "default": value.expression.default}})  # todo: Доработать остальные аналоги default, согласно документации https://docs.sqlalchemy.org/en/20/core/defaults.html
                     if hasattr(value, "length"):
                         column_names[value.expression.name].update({"length": value.length})
 
@@ -351,7 +351,7 @@ def test_unique_primary_key_column_name(field_name: str):
                        f" Повторы в таблицах: {', '.join(repeat_table_names)}")
 
 
-def drop_db():  # todo: После обновления SQLAlchemy().drop_all() не удаляет хранимые процедуры! Имей это в виду
+def drop_db():
     app.app_context().push()
     db.drop_all()
 
