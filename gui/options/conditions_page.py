@@ -8,7 +8,7 @@ from PySide2.QtCore import Slot, Qt
 from PySide2.QtGui import QSyntaxHighlighter
 from gui.tools import Tools, Constructor, MyAbstractDialog
 from database.models import Condition, HeadVarible, HeadVarDelegation, SearchString
-from gui.orm.orm import JoinedORMItem, ORMHelper
+from gui.orm.orm import JoinSelectResult, ORMHelper
 from gui.ui import Ui_main_window as Ui
 from gui.validation import Validator
 from gui.threading_ import QThreadInstanceDecorator
@@ -440,7 +440,7 @@ class ConditionsPage(Constructor, Tools, InputTools):
         self.ui = ui
         self.db_items: ORMHelper = app_instance.db_items_queue
         self.validator: Optional[ConditionsPageValidator] = None
-        self.join_select_result: Optional[JoinedORMItem] = None
+        self.join_select_result: Optional[JoinSelectResult] = None
         self.current_item_hash = None
         self.add_condition_dialog: Optional[AddConditionDialog] = None
         self.field_signals_status = False
@@ -457,7 +457,7 @@ class ConditionsPage(Constructor, Tools, InputTools):
         self.connect_main_signals()
 
     def reload(self, in_new_qthread: bool = True):
-        def add_(select_result: JoinedORMItem):
+        def add_(select_result: JoinSelectResult):
             def auto_select_condition_item(index=0) -> Optional[QListWidgetItem]:
                 m = self.ui.conditions_list.takeItem(index)
                 self.ui.conditions_list.addItem(m)
