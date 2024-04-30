@@ -1,11 +1,10 @@
-import datetime
-import itertools
-import hashlib
-import os.path
 import sys
 import copy
 import threading
 import warnings
+import datetime
+import itertools
+import hashlib
 from weakref import ref, ReferenceType
 from typing import Union, Iterator, Iterable, Optional, Literal, Callable, Type
 from collections import ChainMap
@@ -15,13 +14,12 @@ from pymemcache_dill_serde import DillSerde
 from pymemcache.test.utils import MockMemcacheClient
 from psycopg2.errors import Error as PsycopgError
 from sqlalchemy import create_engine, ColumnDefault, delete, insert
-from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.sql.dml import Insert, Update, Delete
 from sqlalchemy.sql.expression import select
 from sqlalchemy.orm import Query, sessionmaker as session_factory, Session
 from sqlalchemy.exc import DisconnectionError, OperationalError, SQLAlchemyError
 from gui.datatype import LinkedList, LinkedListItem
-from database.models import RESERVED_WORDS, create_app, CustomModel, ModelController, DATABASE_PATH
+from database.models import RESERVED_WORDS, CustomModel, ModelController, DATABASE_PATH
 from gui.orm.exceptions import *
 
 
@@ -81,6 +79,8 @@ class ModelTools(ORMAttributes):
         model_data = node.model().column_names
         for column_name, value in node.value.items():
             if model_data[column_name]["unique"]:
+                if node.container is None:
+                    return True  # Ожидается, что ленивая ссылка умрёт, если в контейнере оставался 1 элемент
                 for n in node.container:
                     if n.model.__name__ == node.model.__name__:
                         if column_name in n.value:
@@ -728,11 +728,7 @@ class SQLAlchemyQueryManager:
             return
         if not self._query_objects:
             return
-        engine = create_engine(self.path)
-        engine.execution_options(isolation_level="AUTOCOMMIT")
-        factory_instance = session_factory()
-        factory_instance.configure(bind=engine)
-        session = factory_instance()
+        session = ORMHelper.database
         while sorted_data:
             node_group = sorted_data.pop(-1)
             if not node_group:
@@ -929,13 +925,7 @@ class ORMHelper(ORMAttributes):
     @property
     def database(cls) -> Session:
         if cls._database_session is None:
-            app = create_app(path=cls.DATABASE_PATH,
-                             app_name=os.path.basename(__file__),
-                             )
-            sqlalchemy_ = SQLAlchemy(app)
-            app.app_context().push()
-            engine = sqlalchemy_.engine
-            engine.execution_options(isolation_level="AUTOCOMMIT")
+            engine = create_engine(cls.DATABASE_PATH)
             try:
                 session_f = session_factory(bind=engine)
                 cls._database_session = session_f()
@@ -1120,7 +1110,7 @@ class ORMHelper(ORMAttributes):
                             raise TypeError("Наименование столбца может быть только строкой")
                         if not isinstance(value, (str, int,)):
                             raise TypeError
-            if len(on.keys()) + len(on.values()) != len(models):
+            if len(on.keys()) + len(on.values()) != len(models) + 1:
                 raise ValueError(
                     "Правильный способ работы с данным методом: join_select(model_a, model,b, on={model_b.column_name: 'model_a.column_name'})"
                 )
@@ -1148,9 +1138,13 @@ class ORMHelper(ORMAttributes):
         def collect_db_data(self):
             def create_request() -> str:  # O(n) * O(m)
                 s = f"orm_helper.database.query({', '.join(map(lambda x: x.__name__, models))}).filter("  # O(l) * O(1)
+                on_keys_counter = 0
                 for left_table_dot_field, right_table_dot_field in on.items():  # O(n)
-                    left_table, left_table_field = left_table_dot_field.split(".")  # O(m)
-                    s += f"{left_table}.{left_table_field} == {right_table_dot_field})"
+                    s += f"{left_table_dot_field} == {right_table_dot_field}"
+                    on_keys_counter += 1
+                    if not on_keys_counter == len(on):
+                        s += ", "
+                s += ")"
                 if _where:
                     on_keys_counter = 0
                     s += f".filter("
