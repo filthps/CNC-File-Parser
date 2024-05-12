@@ -96,9 +96,13 @@ class SetUp:
         self.orm_manager.cache.set("ORMItems", items, ORMHelper.CACHE_LIFETIME_HOURS)
 
     def update_exists_items(self):
-        self.orm_manager.set_item(_update=True, _model=Cnc, cncid=2, name="Ramnewname", commentsymbol="&")
-        self.orm_manager.set_item(_update=True, _model=Machine, machineid=2, inputcatalog=r"C:\Fidia")
-        self.orm_manager.set_item(cncid=1, name="Test", _model=Cnc, _update=True)
+        queue = self.orm_manager.items
+        queue.enqueue(_update=True, _model=Cnc, cncid=2, name="Ramnewname", commentsymbol="&", _container=queue)
+        queue.enqueue(_update=True, _model=Machine, machineid=2, inputcatalog=r"C:\Fidia", _container=queue)
+        queue.enqueue(cncid=1, name="Test", _model=Cnc, _update=True, _container=queue)
+        queue.enqueue(numerationid=2, endat=4, _model=Numeration, _update=True, _container=queue)
+        queue.enqueue(_model=Comment, commentid=2, findstr="test_str_new", _update=True, _container=queue)
+        queue.enqueue(_model=Machine, machinename="testname", machineid=1, _insert=True, _container=queue)
 
 
 class TestORMHelper(unittest.TestCase, SetUp):
@@ -404,6 +408,18 @@ class TestORMHelper(unittest.TestCase, SetUp):
 
     @drop_cache
     @db_reinit
+    def test_join_select__has_changes(self):
+        """ Метод has_changes класса JoinSelectResult принимает в качестве аргумента хеш-сумму от одного контейнера
+        со связанными моделями. """
+        self.set_data_into_queue()
+        self.set_data_into_database()
+        join_select_result = self.orm_manager.join_select(Machine, Cnc, on={"Machine.machineid": "Cnc.cncid"})
+        self.assertFalse(join_select_result.has_changes())  # Для всей выборки результатов
+        self.update_exists_items()
+        self.assertTrue(join_select_result.has_changes())  # Для всей выборки результатов
+
+    @drop_cache
+    @db_reinit
     def test_pointer_instance(self):
         """ Тестирование Pointer
         Pointer нужен для связывания данных на стороне UI с готовыми инструментами для повторного запроса на эти данные,
@@ -423,10 +439,11 @@ class TestORMHelper(unittest.TestCase, SetUp):
         #
         self.assertFalse(result.pointer.has_changes("Результат в списке 1"))
         self.assertFalse(result.pointer.has_changes("Результат в списке 2"))
+        self.assertFalse(result.pointer.has_changes("Результат в списке 2"))
+        self.assertFalse(result.pointer.has_changes("Результат в списке 1"))
         #
         # Добавить изменения и проверить повторно
         self.update_exists_items()
-        time.sleep(5)
         #
         self.assertTrue(result.pointer.has_changes("Результат в списке 2"))
         self.assertTrue(result.pointer.has_changes("Результат в списке 1"))
