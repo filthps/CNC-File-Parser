@@ -16,7 +16,7 @@ from psycopg2.errors import Error as PsycopgError
 from sqlalchemy import create_engine, ColumnDefault, delete, insert
 from sqlalchemy.sql.dml import Insert, Update, Delete
 from sqlalchemy.sql.expression import select
-from sqlalchemy.orm import Query, sessionmaker as session_factory, Session
+from sqlalchemy.orm import Query, sessionmaker as session_factory, Session, scoped_session
 from sqlalchemy.exc import DisconnectionError, OperationalError, SQLAlchemyError
 from gui.datatype import LinkedList, LinkedListItem
 from database.models import RESERVED_WORDS, CustomModel, ModelController, DATABASE_PATH
@@ -928,13 +928,13 @@ class ORMHelper(ORMAttributes):
             engine = create_engine(cls.DATABASE_PATH)
             try:
                 session_f = session_factory(bind=engine)
-                cls._database_session = session_f()
+                cls._database_session = scoped_session(session_f)
             except DisconnectionError:
                 print("Ошибка соединения с базой данных!")
                 raise DisconnectionError
             else:
                 print("Подключение к базе данных")
-        return cls._database_session
+        return cls._database_session()
 
     @classmethod
     @property
