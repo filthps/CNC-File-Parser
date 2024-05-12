@@ -1110,10 +1110,16 @@ class ORMHelper(ORMAttributes):
                             raise TypeError("Наименование столбца может быть только строкой")
                         if not isinstance(value, (str, int,)):
                             raise TypeError
-            if len(on.keys()) + len(on.values()) != len(models) + 1:
-                raise ValueError(
-                    "Правильный способ работы с данным методом: join_select(model_a, model,b, on={model_b.column_name: 'model_a.column_name'})"
-                )
+            if len(models) == 2:
+                if len(on.keys()) + len(on.values()) != len(models):
+                    raise ValueError(
+                        "Правильный способ работы с данным методом: join_select(model_a, model,b, on={model_b.column_name: 'model_a.column_name'})"
+                    )
+            if len(models) > 2:
+                if len(on.keys()) + len(on.values()) != len(models) + 1:
+                    raise ValueError(
+                        "Правильный способ работы с данным методом: join_select(model_a, model,b, on={model_b.column_name: 'model_a.column_name'})"
+                    )
             for left_table_dot_field, right_table_dot_field in on.items():
                 if not type(left_table_dot_field) is str or not isinstance(right_table_dot_field, str):
                     raise TypeError("...on={model_b.column_name: 'model_a.column_name'}")
@@ -1362,7 +1368,6 @@ class JoinSelectResult:
         wrap_items: Optional[list[str]] = None
 
         def __init__(self, joined_item: "JoinSelectResult"):
-            self._blocked = False  # Если длина wrap_items и итератора joined_item начали отличаться - бракуем этот экземпляр
             self._joined_item = joined_item
             self._previous_hash = self._joined_item.previous_hash
             self._joined_item_data = self._joined_item.__iter__()
@@ -1374,15 +1379,16 @@ class JoinSelectResult:
             return dict(zip(self.wrap_items, self._joined_item_data))
 
         def has_changes(self, name: str = None) -> bool:
-            if self._blocked:
-                return True
             hash_names_map = {
                 name: self._previous_hash[index] for index, name in enumerate(self.wrap_items)
             }
             if type(name) is not str:
                 raise TypeError
+            if not name:
+                raise ValueError
             hash_ = hash_names_map[name]
             status = self._joined_item.has_changes(hash_, strict_mode=False)
+            self._previous_hash = self._joined_item.previous_hash
             return status
 
         def __getitem__(self, item: str):
@@ -1405,7 +1411,6 @@ class JoinSelectResult:
             if not isinstance(data, (list, tuple,)):
                 raise TypeError
             if len(self.wrap_items) != len(data):
-                self._blocked = True
                 raise warnings.warn("Появились новые записи")
             if data:
                 if not all(map(lambda x: isinstance(x, (ORMItemQueue, SpecialOrmContainer,)), data)):
@@ -1425,18 +1430,17 @@ class JoinSelectResult:
         self._only_queue = only_local
         self._only_db = only_database
         self._pointer = None
+        _ = self._merge()  # Для сохранения кеша с хеш-суммой, иначе неправильно работает метод has_changes
 
     def has_changes(self, hash_=None, strict_mode=True) -> bool:
         current_hash = self.previous_hash
         self.__iter__()
         new_hash = self.previous_hash
         if hash_:
-            if hash_ not in current_hash:
-                if strict_mode:
-                    raise ValueError
-                return True
             if hash_ in new_hash:
                 return False
+            if strict_mode:
+                raise ValueError
             return True
         return not current_hash == new_hash
 
