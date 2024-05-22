@@ -11,15 +11,11 @@
     База данных, её соответствие модели ACID, тестируется отдельными тестами!
 """
 import unittest
-import time
-from sqlalchemy import func, select, text
+from sqlalchemy import text
 from database.models import Machine, Cnc, OperationDelegation, SearchString, db as sqlalchemy_instance, Condition, \
     Numeration, Comment, drop_db, create_db
 from database.procedures import init_all_triggers
 from orm import *
-
-
-DEBUG = True
 
 
 def is_database_empty(session, empty=True, tables=15, procedures=52, test_db_name="testdb"):
@@ -102,13 +98,13 @@ class SetUp:
         queue.enqueue(cncid=1, name="Test", _model=Cnc, _update=True, _container=queue)
         queue.enqueue(numerationid=2, endat=4, _model=Numeration, _update=True, _container=queue)
         queue.enqueue(_model=Comment, commentid=2, findstr="test_str_new", _update=True, _container=queue)
-        queue.enqueue(_model=Machine, machinename="testname", machineid=1, _insert=True, _container=queue)
+        queue.enqueue(_model=Machine, machinename="testname", machineid=1, cncid=1, _insert=True, _container=queue)
+        self.orm_manager.cache.set("ORMItems", queue, self.orm_manager.CACHE_LIFETIME_HOURS)
 
 
 class TestORMHelper(unittest.TestCase, SetUp):
     def setUp(self) -> None:
         ORMHelper.TESTING = True
-        ORMHelper.CACHE_LIFETIME_HOURS = 60
         self.orm_manager = ORMHelper
 
     def test_cache_property(self):
@@ -430,6 +426,10 @@ class TestORMHelper(unittest.TestCase, SetUp):
         result = self.orm_manager.join_select(Machine, Cnc, on={"Machine.cncid": "Cnc.cncid"})
         wrapper = ["Результат в списке 1", "Результат в списке 2"]
         result.pointer = wrapper
+        result = self.orm_manager.join_select(Machine, Cnc, on={"Machine.cncid": "Cnc.cncid"})
+        # Старый экземпляр Puinter должен обнулиться
+        self.assertIsNone(result.pointer)
+        result.pointer = wrapper
         #
         # Тест wrap_items
         #
@@ -443,11 +443,20 @@ class TestORMHelper(unittest.TestCase, SetUp):
         self.assertFalse(result.pointer.has_changes("Результат в списке 1"))
         #
         # Добавить изменения и проверить повторно
+        #
         self.update_exists_items()
         #
         self.assertTrue(result.pointer.has_changes("Результат в списке 2"))
         self.assertTrue(result.pointer.has_changes("Результат в списке 1"))
-
-    @db_reinit
-    def test_someone(self):
-        self.assertEqual(1, 1)
+        #
+        # Ошибки связанные недействительным первым позиционным аргументом - name
+        #
+        self.assertRaises(TypeError, result.pointer.has_changes, 4)
+        self.assertRaises(TypeError, result.pointer.has_changes, 7.8)
+        self.assertRaises(TypeError, result.pointer.has_changes, None)
+        self.assertRaises(TypeError, result.pointer.has_changes, [])
+        self.assertRaises(ValueError, result.pointer.has_changes, "Этого нет в wrapper")
+        self.assertRaises(TypeError, result.pointer.has_changes, ["sdfsf"])
+        self.assertRaises(TypeError, result.pointer.has_changes, {"1": 3})
+        self.assertRaises(ValueError, result.pointer.has_changes, "")
+        self.assertRaises(ValueError, result.pointer.has_changes, "Этого тоже нет в wrapper")
