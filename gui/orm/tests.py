@@ -11,6 +11,7 @@
     База данных, её соответствие модели ACID, тестируется отдельными тестами!
 """
 import unittest
+import time
 from sqlalchemy import text
 from database.models import Machine, Cnc, OperationDelegation, SearchString, db as sqlalchemy_instance, Condition, \
     Numeration, Comment, drop_db, create_db
@@ -115,7 +116,6 @@ class TestORMHelper(unittest.TestCase, SetUp):
 
     def test_cache(self):
         self.orm_manager.cache.set("1", 1)
-        time.sleep(3)
         value = self.orm_manager.cache.get("1")
         self.assertEqual(value, 1, msg="Результирующее значение, полученное из кеша отличается от заданного в тесте")
 
@@ -205,7 +205,6 @@ class TestORMHelper(unittest.TestCase, SetUp):
         self.assertEqual(self.orm_manager.items.__len__(), 4)
         self.orm_manager.set_item(_delete=True, machinename="Some_name", _model=Machine)
         self.orm_manager.set_item(_delete=True, machinename="Some_name_2", _model=Machine)
-        time.sleep(3)
         result = self.orm_manager.get_item(_model=Machine, machinename="Helller", _only_db=True)
         self.assertTrue(result)
         # start Invalid ...
