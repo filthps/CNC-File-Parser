@@ -880,7 +880,7 @@ class ORMHelper(ORMAttributes):
     RELEASE_INTERVAL_SECONDS = 5.0
     RELEASE_INTERVAL_SECONDS_DEBUG = 0.5
     CACHE_LIFETIME_HOURS = 6 * 60 * 60
-    JOIN_SELECT_DIFF_CACHE_MINUTES = 60 * 60
+    JOIN_SELECT_DIFF_CACHE_MINUTES = 8 * 60
     _memcache_connection: Optional[Union[Client, MockMemcacheClient]] = None
     _database_session = None
     _timer: Optional[threading.Timer] = None
@@ -1221,6 +1221,7 @@ class ORMHelper(ORMAttributes):
             return compare_by_matched_fk()
         JoinSelectResult.get_nodes_from_database = collect_db_data
         JoinSelectResult.get_local_nodes = collect_local_data
+        JoinSelectResult._pointer = None
         return JoinSelectResult(only_database=_db_only, only_local=_queue_only)
 
     @classmethod
@@ -1370,35 +1371,83 @@ class JoinSelectResult:
         def __init__(self, joined_item: "JoinSelectResult"):
             self._joined_item = joined_item
             self._previous_hash = self._joined_item.previous_hash
-            self._joined_item_data = self._joined_item.__iter__()
+            self._joined_item = self._joined_item
             self._is_valid()
-            self.wrap_items = copy.copy(self.wrap_items)  # Для защиты cls.wrap_items от дурака на стороне UI
+            self._is_invalid = False
 
         @property
-        def items(self) -> dict[str, int]:
-            return dict(zip(self.wrap_items, self._joined_item_data))
+        def items(self) -> Union[dict[str, int], Exception]:
+            self._is_valid(strict=False)
+            return dict(zip(self.wrap_items, self._joined_item))
 
-        def has_changes(self, name: str = None) -> bool:
-            hash_names_map = {
-                name: self._previous_hash[index] for index, name in enumerate(self.wrap_items)
-            }
+        @property
+        def is_valid(self):
+            self._is_valid(strict=False)
+            return not self._is_invalid
+
+        def has_changes(self, name: str = None) -> Union[bool, Exception]:
+            def update_previous_hash(hash_index=None):
+                """ Если has_changes запрашивался на конкретное имя, то после получения статуса нужно подменить
+                 именно эту хеш-сумму на новую.
+                 Если has_changes запрашивался на всё в целом, то заменяем всё _previous_hash полностью. """
+                new_hash = self._joined_item.previous_hash
+                if hash_index is not None:
+                    self._previous_hash[hash_index] = new_hash[hash_index]
+                    return
+                self._previous_hash = new_hash
             if type(name) is not str:
                 raise TypeError
             if not name:
                 raise ValueError
+            if name not in self.wrap_items:
+                raise ValueError
+            hash_names_map = {
+                name: self._previous_hash[index] for index, name in enumerate(self.wrap_items)
+            }
             hash_ = hash_names_map[name]
-            status = self._joined_item.has_changes(hash_, strict_mode=False)
-            self._previous_hash = self._joined_item.previous_hash
+            iter(self._joined_item)
+            new_hash = self._joined_item.previous_hash
+            status = hash_ not in new_hash
+            self._is_valid(strict=False)
+            if status:
+                if not self._is_invalid:
+                    update_previous_hash(list(hash_names_map).index(name) if name else None)
+                else:
+                    update_previous_hash()
             return status
+
+        def replace_wrap_item(self, new_name, index=None, old_name=None):
+            if not new_name or type(new_name) is not str:
+                raise TypeError
+            if index:
+                if not isinstance(index, int):
+                    raise TypeError
+                if index < 0:
+                    index = len(self.wrap_items) - index
+                if len(self.wrap_items) - 1 >= index:
+                    self.wrap_items[index] = new_name
+            if old_name:
+                try:
+                    index = self.wrap_items.index(old_name)
+                except ValueError:
+                    return
+                else:
+                    self.wrap_items[index] = new_name
+            self._is_valid(strict=False)
+
+        def set_items(self, items: list):
+            self.wrap_items = copy.copy(items)
+            self._is_valid()
 
         def __getitem__(self, item: str):
             return self.items[item]
 
         def __str__(self):
-            return "".join(map(lambda x: f"{x[0]}:{x[1]} /n", zip(self.wrap_items, copy.copy(self._joined_item))))
+            self._is_valid(strict=False)
+            return "".join(map(lambda x: f"{x[0]}:{x[1]} /n", zip(self.wrap_items, list(self._joined_item))))
 
-        def _is_valid(self):
-            data = tuple(copy.copy(self._joined_item_data))
+        def _is_valid(self, strict=True):
+            data = tuple(self._joined_item)
             """ Если длины 2 последовательностей (см init) отличаются, то вызвать исключение """
             if type(self._joined_item) is not JoinSelectResult:
                 raise JoinedItemPointerError(
@@ -1411,12 +1460,15 @@ class JoinSelectResult:
             if not isinstance(data, (list, tuple,)):
                 raise TypeError
             if len(self.wrap_items) != len(data):
-                raise warnings.warn("Появились новые записи")
+                if strict:
+                    raise Exception("Длины wrap_items и данных не совпадают")
+                self._is_invalid = True
             if data:
                 if not all(map(lambda x: isinstance(x, (ORMItemQueue, SpecialOrmContainer,)), data)):
                     raise TypeError
     get_local_nodes: Optional[Callable] = None
     get_nodes_from_database: Optional[Callable] = None
+    _pointer: Optional[Pointer] = None
 
     def __init__(self, only_local=False, only_database=False):
         if not callable(self.get_nodes_from_database) or not callable(self.get_local_nodes):
@@ -1429,7 +1481,6 @@ class JoinSelectResult:
             raise ValueError
         self._only_queue = only_local
         self._only_db = only_database
-        self._pointer = None
         _ = self._merge()  # Для сохранения кеша с хеш-суммой, иначе неправильно работает метод has_changes
 
     def has_changes(self, hash_=None, strict_mode=True) -> bool:
@@ -1445,17 +1496,18 @@ class JoinSelectResult:
         return not current_hash == new_hash
 
     @property
-    def pointer(self) -> Pointer:
-        return self._pointer(self)
+    def pointer(self):
+        return self._pointer
 
     @pointer.setter
     def pointer(self, items: list):
-        self._pointer = self.Pointer
-        self._pointer.wrap_items = items
+        pointer = self.Pointer
+        pointer.wrap_items = items
+        self._pointer = pointer(self)
 
     @property
-    def previous_hash(self) -> Optional[tuple[int]]:
-        return ORMHelper.cache.get("join_select_hash")
+    def previous_hash(self) -> list[int]:
+        return ORMHelper.cache.get("join_select_hash", [])
 
     @property
     def items(self) -> list[ChainMap]:
@@ -1504,12 +1556,12 @@ class JoinSelectResult:
         if local_items:
             while local_items:
                 result.append(local_items.pop(0))
-        self.__set_previous_hash(tuple([hash(group) for group in result]))
+        self.__set_previous_hash(list([hash(group) for group in result]))
         return result
 
     @staticmethod
-    def __set_previous_hash(values: tuple[int]):
-        if type(values) is not tuple:
+    def __set_previous_hash(values: list[int]):
+        if type(values) is not list:
             raise TypeError
         if not all(map(lambda b: type(b) is int, values)):
             raise TypeError
