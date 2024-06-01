@@ -47,6 +47,8 @@ class ORMAttributes:
 
     @staticmethod
     def is_valid_container(container):
+        if container is None:
+            TypeError("Необходимо указать ссылку на экземпляр контейнера")
         if not isinstance(container, (ORMItemQueue, SpecialOrmContainer,)):
             raise TypeError
 
@@ -55,13 +57,13 @@ class ModelTools(ORMAttributes):
     """ Высокоуровневый инструментарий для валидации полей данных в локальной очереди, производства ключей, и другого,
      что требует 'живой' связи между очередью в локальном хранилище и/или базой данных"""
     @classmethod
-    def _create_autoincrement_pk(cls, node: Union["ORMItem", "SpecialOrmItem"]):
-        return len(list(cls._get_nodes_by_current_model(node.container, node.model.__name__))) + 1
+    def _create_autoincrement_pk(cls, node: Union["ORMItem", "SpecialOrmItem"]) -> int:
+        pass
 
     @classmethod
     def _select_primary_key_value_from_scalars(cls, node: "ORMItem", field_name: str):
         """ Выбрать значние из значений ноды,
-        если primary_key=True установлено для строки или другого поля со скалярными значекниями"""
+        если primary_key=True установлено для строки или другого поля со скалярными значениями"""
         try:
             value = node.value[field_name]
         except KeyError:
@@ -69,10 +71,19 @@ class ModelTools(ORMAttributes):
         return value
 
     @staticmethod
-    def _get_nodes_by_current_model(container: "ORMItemQueue", model_name: str) -> Iterator[int]:
-        for node in container:
-            if node.model.__name__ == model_name:
-                yield node.get_primary_key_and_value(only_value=True)
+    def _get_highest_autoincrement_pk_from_db(node: "ORMItem") -> int:
+        primary_key = node.get_primary_key_and_value(only_key=True)
+        return ORMHelper.database.execute(f"SELECT MAX({primary_key}) "
+                                          f"FROM {node.model.__tablename__}").scalar()
+
+    @staticmethod
+    def _get_highest_autoincrement_pk_from_local(node: "ORMItem") -> int:
+        try:
+            val = max(map(lambda x: x.get_primary_key_and_value(only_value=True),
+                          node.container.search_nodes(node.model)))
+        except ValueError:
+            return 0
+        return val
 
     @staticmethod
     def _check_unique_values(node) -> bool:
@@ -130,8 +141,6 @@ class ORMItem(LinkedListItem, ModelTools):
             Все остальные параметры являются парами 'поле-значение'
             """
         super().__init__()
-        if _container is None:
-            raise ValueError("Необходимо указать ссылку на экземпляр контейнера")
         self.is_valid_container(_container)
         self._container: ReferenceType[Union["ORMItemQueue", "SpecialOrmContainer"]] = ref(_container)
         self.__model: Union[Type[CustomModel], Type[ModelController]] = kw.pop("_model")
@@ -183,9 +192,7 @@ class ORMItem(LinkedListItem, ModelTools):
         return self.__relative_primary_key
 
     @property
-    def container(self):
-        if not hasattr(self, "_container"):
-            return
+    def container(self) -> "ORMItemQueue":
         return self._container()
 
     @container.setter
@@ -250,15 +257,18 @@ class ORMItem(LinkedListItem, ModelTools):
     def ready(self, status: bool):
         if not isinstance(status, bool):
             raise NodeAttributeError("Статус готовности - это тип данных boolean")
-        self.__is_ready = status
+        self.container.enqueue(**{**self.get_attributes(), "_ready": status})
 
     @property
     def type(self) -> str:
         return "_insert" if self.__insert else "_update" if self.__update else "_delete"
 
-    def get_attributes(self, with_update: Optional[dict] = None) -> dict:
+    def get_attributes(self, with_update: Optional[dict] = None, new_container: Optional["ORMItemQueue"] = None) -> dict:
         if with_update is not None and type(with_update) is not dict:
             raise TypeError
+        if new_container:
+            if not isinstance(new_container, type(self.container)):
+                raise TypeError
         result = {}
         result.update(self.value)
         if self.__update or self.__delete:
@@ -269,6 +279,8 @@ class ORMItem(LinkedListItem, ModelTools):
                        "_delete": False, "_count_retries": self.retries, "_container": self.container})
         result.update({self.type: True})
         result.update(with_update) if with_update else None
+        if new_container is not None:
+            result.update({"_container": new_container})
         return result
 
     def make_query(self) -> Optional[Query]:
@@ -286,7 +298,7 @@ class ORMItem(LinkedListItem, ModelTools):
         if self.__insert:
             query = insert(self.model).values(**value)
         if self.__update or self.__delete:
-            query = self.model.query.filter_by(**where).first()
+            query = ORMHelper.database.query(self.model).filter_by(**where).first()
             if query is not None:
                 if self.__update:
                     [setattr(query, key, value) for key, value in value.items()]
@@ -352,7 +364,7 @@ class ORMItem(LinkedListItem, ModelTools):
         if any_:
             if from_polymorphizm:
                 return any_
-            raise NodeColumnError
+            raise NodeColumnError(any_)
 
     @property
     def __should_remove_primary_key(self) -> bool:
@@ -365,7 +377,8 @@ class ORMItem(LinkedListItem, ModelTools):
             if data["autoincrement"]:
                 return True
             if data["default"]:
-                return True
+                pass
+                return True  # todo Тест
             return False
     
     def __create_primary_key(self) -> dict[str, Union[str, int]]:
@@ -374,21 +387,17 @@ class ORMItem(LinkedListItem, ModelTools):
         for field_name, data in attributes.items():
             if not data["primary_key"]:
                 continue
-            if field_name in self._value:
-                # Если первичный ключ и значение были переданы в ноду при инициализации - считать это первичным ключом
-                return {field_name: self._value[field_name]}
-            default_: Optional[ColumnDefault] = data["default"]
-            autoincrement, type_ = data["autoincrement"], data["type"]
-            if default_:
-                return {
-                    field_name: default_.arg({})
-                }
-            if type_ is str:
-                return {field_name: self._select_primary_key_value_from_scalars(self, field_name)}
-            if type_ is int:
+            if self.ready:
+                default_: Optional[ColumnDefault] = data["default"]
+                autoincrement = data["autoincrement"]
+                if default_:
+                    return {
+                        field_name: default_.arg({})
+                    }
                 if autoincrement:
                     return {field_name: self._create_autoincrement_pk(self)}
                 return {field_name: self._select_primary_key_value_from_scalars(self, field_name)}
+            return {field_name: self._get_highest_autoincrement_pk_from_local(self)}
 
 
 class EmptyOrmItem(LinkedListItem):
@@ -508,16 +517,16 @@ class ORMItemQueue(LinkedList):
                 return items
             if left_node.model.__name__ == model.__name__:  # O(u * k)
                 if not _filter and not negative_selection:
-                    items.append(**left_node.get_attributes())
+                    items.append(**left_node.get_attributes(new_container=items))
                 for field_name, value in _filter.items():
                     if field_name in left_node.value:
                         if negative_selection:
                             if not left_node.value[field_name] == value:
-                                items.append(**left_node.get_attributes())
+                                items.append(**left_node.get_attributes(new_container=items))
                                 break
                         else:
                             if left_node.value[field_name] == value:
-                                items.append(**left_node.get_attributes())
+                                items.append(**left_node.get_attributes(new_container=items))
                                 break
         return items
 
@@ -558,8 +567,8 @@ class ORMItemQueue(LinkedList):
         if not type(other) is self.__class__:
             raise TypeError
         result_instance = self.__class__()
-        [result_instance.append(**n.get_attributes(with_update={"_container": result_instance})) for n in self]  # O(n)
-        [result_instance.enqueue(**n.get_attributes(with_update={"_container": result_instance})) for n in other]  # O(n**2) todo n**2!
+        [result_instance.append(**n.get_attributes(new_container=result_instance)) for n in self]  # O(n)
+        [result_instance.enqueue(**n.get_attributes(new_container=result_instance)) for n in other]  # O(n**2) todo n**2!
         return result_instance
 
     def __iadd__(self, other):
@@ -627,6 +636,7 @@ class ORMItemQueue(LinkedList):
             new_node_data.update(old_value)
             new_node_data.update({"_insert": False, "_update": False, "_delete": False})
             new_node_data.update({dml_type: True, "_ready": new_node.ready})
+            new_node_data.update({"_container": self})
             return self.LinkedListItem(**new_node_data)
 
         def find_node_to_replace_by_unique_values() -> Optional[ORMItem]:
@@ -654,9 +664,7 @@ class ORMItemQueue(LinkedList):
             nodes_with_unique_fields = self.search_nodes(potential_new_item.model, **unique_values_in_new_node)
             if not nodes_with_unique_fields:
                 return
-            items_counter = dict(enumerate(map(lambda node: count_(node), nodes_with_unique_fields)))  # index: counter
-            items_counter = dict(zip(items_counter.values(), items_counter.keys()))
-            return nodes_with_unique_fields[items_counter[max(items_counter)]]
+            return nodes_with_unique_fields[0]
         exists_item = self.get_node(potential_new_item.model, **potential_new_item.get_primary_key_and_value())  # O(n)
         if not exists_item:
             exists_item = find_node_to_replace_by_unique_values()
@@ -798,7 +806,8 @@ class SQLAlchemyQueryManager:
                         if node_ not in itertools.chain(*self._sorted):
                             other_single_nodes.append(**node_.get_attributes())
                 else:
-                    self.remaining_nodes.append(**node_.get_attributes())
+
+                    self.remaining_nodes.append(**node_.get_attributes(new_container=self.remaining_nodes))
             node_ = self._node_items.dequeue()
         self._sorted.append(other_single_nodes) if other_single_nodes else None
         return self._sorted
@@ -1234,8 +1243,8 @@ class ORMHelper(ORMAttributes):
         cls.is_valid_model_instance(model)
         if not isinstance(node_pk_value, (str, int,)):
             raise TypeError
-        primary_key_field_name = [attr_val for attr_name, attr_val in model().column_names
-                                  if attr_name == "primary_key"][0]
+        primary_key_field_name = [attr_name for attr_name, attr_d in model().column_names.items()
+                                  if attr_d["primary_key"]][0]
         left_node = cls.items.get_node(model, **{primary_key_field_name: node_pk_value})
         return left_node.type if left_node is not None else None
 
