@@ -1,12 +1,14 @@
 import sys
 import copy
 import threading
+import time
 import warnings
 import datetime
 import itertools
 import hashlib
+import operator
 from weakref import ref, ReferenceType
-from typing import Union, Iterator, Iterable, Optional, Literal, Callable, Type
+from typing import Union, Iterator, Iterable, Optional, Literal, Callable, Type, Generator
 from collections import ChainMap
 from pymemcache.client.base import Client
 from pymemcache.exceptions import MemcacheError
@@ -54,11 +56,9 @@ class ORMAttributes:
 
 
 class ModelTools(ORMAttributes):
-    """ Высокоуровневый инструментарий для валидации полей данных в локальной очереди, производства ключей, и другого,
-     что требует 'живой' связи между очередью в локальном хранилище и/или базой данных"""
     @classmethod
     def _create_autoincrement_pk(cls, node: Union["ORMItem", "SpecialOrmItem"]) -> int:
-        pass
+        ...
 
     @classmethod
     def _select_primary_key_value_from_scalars(cls, node: "ORMItem", field_name: str):
@@ -150,7 +150,7 @@ class ORMItem(LinkedListItem, ModelTools):
         self.__delete = kw.pop("_delete", False)
         self.__is_ready = kw.pop("_ready", True if self.__delete else False)
         self.__where = kw.pop("_where", None)
-        self._create_at = kw.pop("_create_at", datetime.datetime.now())
+        self._create_at = kw.pop("_create_at")
         self.__transaction_counter = kw.pop('_count_retries', 0)  # Инкрементируется при вызове self.make_query()
         # Подразумевая тем самым, что это попытка сделать транзакцию в базу
         if not kw:
@@ -269,7 +269,7 @@ class ORMItem(LinkedListItem, ModelTools):
         if new_container:
             if not isinstance(new_container, type(self.container)):
                 raise TypeError
-        result = {}
+        result = {"_create_at": self.created_at}
         result.update(self.value)
         if self.__update or self.__delete:
             if self.__where:
@@ -290,6 +290,7 @@ class ORMItem(LinkedListItem, ModelTools):
         value: dict = self.value
         primary_key = self.get_primary_key_and_value(only_key=True)
         where = self.__where
+        del value["_create_at"]
         if self.__should_remove_primary_key:
             del value[primary_key]
             where = value if not where else where
@@ -425,7 +426,67 @@ class EmptyOrmItem(LinkedListItem):
         return 0
 
 
-class ORMItemQueue(LinkedList):
+class ORMQueueOrderBy:
+
+    def __init__(self, *args, **kwargs):
+        self.__sorted = None
+        super().__init__(*args, **kwargs)
+        self.__order_by_args: Optional[tuple] = None
+        self.__order_by_kwargs: Optional[dict] = None
+
+    def order_by(self: Union["ORMItemQueue", "ORMQueueOrderBy"], model: Type[CustomModel],
+                 by_column_name: Optional[str] = None, by_primary_key: bool = False,
+                 by_create_time: bool = True, decr: bool = False):
+        if self.__sorted:
+            return
+        self.__is_valid(model, by_column_name, by_primary_key, by_create_time, decr)
+        self.__order_by_args = (model,)
+        self.__order_by_kwargs = {"by_column_name": by_column_name, "by_primary_key": by_primary_key,
+                                  "by_create_time": by_create_time, "decr": decr}
+        if by_column_name:
+            collection = self.search_nodes(model, **{by_column_name: "*"})
+        if by_primary_key:
+            collection = self.search_nodes(model)
+            if collection:
+                rand_node: ORMItem = collection[0]
+                collection = self.search_nodes(model, **{rand_node.get_primary_key_and_value(only_key=True): "*"})
+        if by_create_time:
+            items = map(lambda node: (node, node.created_at,), self)
+            getter = operator.itemgetter(1)
+            sorted_result = sorted(items, key=getter)
+            self.__sorted = (n[0] for n in sorted_result)
+
+    def __iter__(self):
+        if self.__sorted is None:  # Сортировка не применялась
+            return super().__iter__()
+        if self.__sorted_iterator_is_empty:
+            self.order_by(*self.__order_by_args, **self.__order_by_kwargs)
+        return self.__sorted
+
+    @property
+    def __sorted_iterator_is_empty(self):
+        return not any(map(lambda x: True, copy.copy(self.__sorted)))
+
+    @staticmethod
+    def __is_valid(model, by_column_name, by_primary_key, by_create_time, decr):
+        if not isinstance(model, ModelController):
+            raise TypeError
+        if by_column_name is not None:
+            if type(by_column_name) is not str:
+                raise TypeError
+            if not by_column_name:
+                raise ValueError
+        if type(by_primary_key) is not bool:
+            raise TypeError
+        if type(by_create_time) is not bool:
+            raise TypeError
+        if type(decr) is not bool:
+            raise TypeError
+        if not sum([bool(by_column_name), by_primary_key, bool(by_create_time)]) == 1:
+            raise ValueError("Нужно выбрать один из вариантов")
+
+
+class ORMItemQueue(LinkedList, ORMQueueOrderBy):
     """
     Очередь на основе связанного списка.
     Управляется через адаптер ORMHelper.
@@ -435,7 +496,7 @@ class ORMItemQueue(LinkedList):
     LinkedListItem = ORMItem
 
     def __init__(self, items: Optional[Iterable[dict]] = None):
-        super().__init__()
+        super().__init__(items)
         if items is not None:
             for inner in items:
                 self.enqueue(**inner)
@@ -500,11 +561,13 @@ class ORMItemQueue(LinkedList):
                                     container.append(**related_node.get_attributes())  # O(1)
         return container
 
-    def search_nodes(self, model, negative_selection=False, **_filter) -> "ORMItemQueue":  # O(n)
+    def search_nodes(self, model: Type[CustomModel], negative_selection=False,
+                     **_filter: dict[str, Union[str, int, Literal["*"]]]) -> "ORMItemQueue":  # O(n)
         """
         Искать ноды по совпадениям любых полей
         :arg model: кастомный объект, смотри модуль database/models
-        :arg _filter: словарь содержащий набор полей и их значений для поиска
+        :arg _filter: словарь содержащий набор полей и их значений для поиска, вместо значений допустим знак '*',
+        который будет засчитывать любые значения у полей
         :arg negative_selection: режим отбора нод (найти нады КРОМЕ ... [filter])
         """
         ORMItem.is_valid_model_instance(model)
@@ -519,12 +582,21 @@ class ORMItemQueue(LinkedList):
                 if not _filter and not negative_selection:
                     items.append(**left_node.get_attributes(new_container=items))
                 for field_name, value in _filter.items():
+
                     if field_name in left_node.value:
                         if negative_selection:
+                            if value == "*":
+                                if field_name not in left_node.value:
+                                    items.append(**left_node.get_attributes())
+                                continue
                             if not left_node.value[field_name] == value:
                                 items.append(**left_node.get_attributes(new_container=items))
                                 break
                         else:
+                            if value == "*":
+                                if field_name in left_node.value:
+                                    items.append(**left_node.get_attributes())
+                                    continue
                             if left_node.value[field_name] == value:
                                 items.append(**left_node.get_attributes(new_container=items))
                                 break
@@ -637,6 +709,7 @@ class ORMItemQueue(LinkedList):
             new_node_data.update({"_insert": False, "_update": False, "_delete": False})
             new_node_data.update({dml_type: True, "_ready": new_node.ready})
             new_node_data.update({"_container": self})
+            new_node_data.update({"_create_at": new_node.created_at})
             return self.LinkedListItem(**new_node_data)
 
         def find_node_to_replace_by_unique_values() -> Optional[ORMItem]:
@@ -650,13 +723,6 @@ class ORMItemQueue(LinkedList):
                         d.update({field: n.value[field]})
                 return d
 
-            def count_(node: ORMItem) -> int:
-                counter = 0
-                for key, value in node.value.items():
-                    if key in unique_values_in_new_node:
-                        if value == unique_values_in_new_node[key]:
-                            counter += 1
-                return counter
             unique_fields = get_unique_column_names()
             unique_values_in_new_node = collect_values(potential_new_item, *unique_fields)
             if not unique_values_in_new_node:
@@ -1604,10 +1670,13 @@ class JoinSelectResult:
 
 
 if __name__ == "__main__":
+    import time
     from database.models import Machine, Cnc
 
     container = ORMItemQueue()
-    container.enqueue(_model=Cnc, name="test", _delete=True, _container=container)
-    container.enqueue(_model=Machine, machine_name="Heller", _insert=True, _container=container)
-    container.enqueue(_model=Cnc, name="Testname", _container=container, _update=True)
-    print(container)
+    container.enqueue(_model=Cnc, name="test", _delete=True, _container=container, _create_at=datetime.datetime.now())
+    time.sleep(1)
+    container.enqueue(_model=Machine, machinename="Heller", _insert=True, _container=container, _create_at=datetime.datetime.now())
+    container.enqueue(_model=Cnc, name="Testname", _container=container, _update=True, _create_at=datetime.datetime.now())
+    time.sleep(3)
+    container.order_by(model=Cnc, by_create_time=True)
