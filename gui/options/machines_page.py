@@ -15,20 +15,20 @@ from gui.threading_ import QThreadInstanceDecorator
 empty_string = repeat("")
 
 
-
 class OptionsPageCreateMachine(Constructor, Tools):
-    UI__TO_SQL_COLUMN_LINK__LINE_EDIT = {"lineEdit_10": "input_catalog",
-                                          "lineEdit_21": "output_catalog",
-                                          "lineEdit_11": "x_over", "lineEdit_12": "y_over", "lineEdit_13": "z_over",
-                                          "lineEdit_14": "x_fspeed", "lineEdit_15": "y_fspeed", "lineEdit_16": "z_fspeed",
-                                          "lineEdit_17": "spindele_speed"}
+    UI__TO_SQL_COLUMN_LINK__LINE_EDIT = {"lineEdit_10": "inputcatalog",
+                                         "lineEdit_21": "outputcatalog",
+                                         "lineEdit_11": "xover", "lineEdit_12": "yover", "lineEdit_13": "zover",
+                                         "lineEdit_14": "xfspeed", "lineEdit_15": "yfspeed", "lineEdit_16": "zfspeed",
+                                         "lineEdit_17": "spindelespeed"}
     UI__TO_SQL_COLUMN_LINK__COMBO_BOX = {"choice_cnc": "name"}
     COMBO_BOX_DEFAULT_VALUES = {"choice_cnc": "Выберите стойку"}
     LINE_EDIT_DEFAULT_VALUES = {"lineEdit_10": empty_string, "lineEdit_21": empty_string,
-                                 "lineEdit_11": empty_string, "lineEdit_12": empty_string, "lineEdit_13": empty_string,
-                                 "lineEdit_14": empty_string, "lineEdit_15": empty_string, "lineEdit_16": empty_string, "lineEdit_17": empty_string}
+                                "lineEdit_11": empty_string, "lineEdit_12": empty_string, "lineEdit_13": empty_string,
+                                "lineEdit_14": empty_string, "lineEdit_15": empty_string, "lineEdit_16": empty_string,
+                                "lineEdit_17": empty_string}
     INTEGER_FIELDS = ("lineEdit_11", "lineEdit_12", "lineEdit_13", "lineEdit_14",
-                       "lineEdit_15", "lineEdit_16", "lineEdit_17")  # Для замены пустых значений нулями при отправке в бд
+                      "lineEdit_15", "lineEdit_16", "lineEdit_17")  # Для замены пустых значений нулями при отправке в бд
 
     def __init__(self, main_app_instance, ui: Ui):
         self.validator = None
@@ -54,10 +54,10 @@ class OptionsPageCreateMachine(Constructor, Tools):
         def callback(machines, cnc_items):
             self.ui.add_machine_list_0.clear()
             for data in machines:
-                name = data.pop('machine_name')
+                name = data.pop('machinename')
                 item = QListWidgetItem(name)
                 self.ui.add_machine_list_0.addItem(item)
-                if self.db_items.is_node_from_cache(machine_name=name):
+                if self.db_items.is_node_from_cache(machinename=name):
                     self.validator.set_not_complete_edit_attributes(item)
             self.clear_property_fields()
             self.insert_all_cnc_from_db(cnc_items)
@@ -66,7 +66,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
 
         @QThreadInstanceDecorator(result_callback=callback, in_new_qthread=create_thread)
         def load_items():
-            machines = self.db_items.get_items()
+            machines = self.db_items.get_items(_model=Machine)
             cnc_items = self.db_items.get_items(_model=Cnc, _db_only=True)
             return machines, cnc_items
         load_items()
@@ -166,7 +166,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
 
         @QThreadInstanceDecorator(result_callback=insert_machine_info_in_ui)
         def load_selected_machine():
-            machine = self.db_items.get_item(machine_name=machine_item_name)
+            machine = self.db_items.get_item(machinename=machine_item_name)
             cncs = self.db_items.get_items(_model=Cnc, _db_only=True)
             return machine, cncs
         if machine_ is None:
@@ -176,22 +176,22 @@ class OptionsPageCreateMachine(Constructor, Tools):
 
     @Slot()
     def add_machine(self):
-        def error(machine_name: str):
+        def error(machinename: str):
             def callback():
                 dialog_.close()
                 self.reload(create_thread=False)
-            dialog_ = self.get_alert_dialog("Ошибка", f"Станок {machine_name} уже добавлен",
+            dialog_ = self.get_alert_dialog("Ошибка", f"Станок {machinename} уже добавлен",
                                             callback=callback)
             dialog_.show()
 
-        def add(machine_name):
+        def add(machinename):
             @QThreadInstanceDecorator(result_callback=lambda: self.reload(create_thread=False))
             def inner():
-                if self.db_items.get_item(machine_name=machine_name):
-                    error(machine_name)
+                if self.db_items.get_item(machinename=machinename):
+                    error(machinename)
                     return
-                self.db_items.set_item(machine_name=machine_name, _insert=True)
-            if not machine_name:
+                self.db_items.set_item(machinename=machinename, _insert=True)
+            if not machinename:
                 return
             inner()
         dialog = self.get_prompt_dialog("Введите название станка", ok_callback=add)
@@ -202,7 +202,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
         def ok():
             @QThreadInstanceDecorator(result_callback=lambda: self.reload(create_thread=False))
             def process(name):
-                self.db_items.set_item(_delete=True, machine_name=name)
+                self.db_items.set_item(_delete=True, machinename=name)
             item: QListWidgetItem = self.ui.add_machine_list_0.currentItem()
             dialog.close()
             if item is None:
@@ -218,27 +218,28 @@ class OptionsPageCreateMachine(Constructor, Tools):
         @QThreadInstanceDecorator()
         def save_data(field_name: str, field_value: str, machine_n: str):
             def check_machine_is_exists():
-                m = self.db_items.get_item(_model=Machine, machine_name=machine_n)
+                m = self.db_items.get_item(_model=Machine, machinename=machine_n)
                 if not m:
                     self.reload(create_thread=False)
             check_machine_is_exists()
             exists_node_type = self.db_items.get_node_dml_type(machine_n)
             sql_column_name = self.UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]
             self.db_items.set_item(**{sql_column_name: self.check_output_values(field_name, value)},
-                                   _ready=self.validator.refresh(), machine_name=machine_n,
+                                   _ready=self.validator.refresh(), machinename=machine_n,
                                    **{("_update" if exists_node_type == "_update" else "_insert"): True})
         active_machine = self.ui.add_machine_list_0.currentItem()
         if active_machine is None:
             return
         value = getattr(self.ui, field_n).text()
         machine_name = active_machine.text()
+        print(machine_name, value)
         save_data(field_n, value, machine_name)
 
     @Slot(str)
     def change_cnc(self, cnc_name):
         @QThreadInstanceDecorator()
         def check_exists_machine_and_cnc_and_update_data(current_machine_name: str, selected_cnc_name: str):
-            machine = self.db_items.get_item(machine_name=current_machine_name)
+            machine = self.db_items.get_item(machinename=current_machine_name, _model=Machine)
             cnc = self.db_items.get_item(_model=Cnc, name=selected_cnc_name)
             if not cnc or not machine:
                 self.reload(create_thread=False)
@@ -246,7 +247,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
                 self.db_items.remove_field_from_node(selected_machine_name, "cncid")
                 return
             self.db_items.set_item(cncid=cnc["cncid"],
-                                   machine_name=current_machine_name,
+                                   machinename=current_machine_name,
                                    _update=True, _ready=self.validator.refresh())
         if not cnc_name:
             return

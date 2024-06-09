@@ -10,7 +10,7 @@ from gui.threading_ import QThreadInstanceDecorator
 
 
 class AddCNC(Constructor, Tools):
-    UI__TO_SQL_COLUMN_LINK__LINE_EDIT = {"textEdit_2": "except_symbols", "lineEdit_22": "comment_symbol"}
+    UI__TO_SQL_COLUMN_LINK__LINE_EDIT = {"textEdit_2": "exceptsymbols", "lineEdit_22": "commentsymbol"}
     LINE_EDIT_DEFAULT_VALUES = {"textEdit_2": "", "lineEdit_22": ""}
 
     def __init__(self, app, ui: Ui_main_window):
@@ -125,7 +125,7 @@ class AddCNC(Constructor, Tools):
 
         @QThreadInstanceDecorator(result_callback=update_fields)
         def load_cnc(item_name):
-            data = self.db_items.get_item(name=item_name)
+            data = self.db_items.get_item(name=item_name, _model=Cnc)
             if not data:
                 self.reload(in_new_qthread=False)
                 return

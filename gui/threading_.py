@@ -41,8 +41,9 @@ class QThreadInstanceDecorator:
     threadpool.setExpiryTimeout(5000)
 
     def __init__(self, result_callback: Optional[Callable] = None, in_new_qthread: bool = True):
-        if not callable(result_callback):
-            raise TypeError
+        if result_callback is not None:
+            if not callable(result_callback):
+                raise TypeError
         if not isinstance(in_new_qthread, bool):
             raise TypeError
         self.task = None
