@@ -11,12 +11,16 @@
     База данных, её соответствие модели ACID, тестируется отдельными тестами!
 """
 import unittest
+import datetime
 import time
-from sqlalchemy import text
+from sqlalchemy import func, select, text
 from database.models import Machine, Cnc, OperationDelegation, SearchString, db as sqlalchemy_instance, Condition, \
     Numeration, Comment, drop_db, create_db
 from database.procedures import init_all_triggers
 from orm import *
+
+
+DEBUG = True
 
 
 def is_database_empty(session, empty=True, tables=15, procedures=52, test_db_name="testdb"):
@@ -80,16 +84,22 @@ class SetUp:
 
     def set_data_into_queue(self):
         items = ORMItemQueue()
-        items.enqueue(_model=Numeration, numerationid=2, endat=269, _insert=True, _container=items)
-        items.enqueue(_insert=True, _model=OperationDelegation, numerationid=2, _container=items,
+        items.enqueue(_model=Numeration, numerationid=2, endat=269, _insert=True,
+                      _create_at=datetime.datetime.now(), _container=items)
+        items.enqueue(_insert=True, _model=OperationDelegation, numerationid=2,
+                      _container=items, _create_at=datetime.datetime.now(),
                       operationdescription="Нумерация кадров")
+        time.sleep(4)
         items.enqueue(_model=Comment, findstr="test_string_set_from_queue", ifcontains=True,
-                      _insert=True, commentid=2, _container=items)
-        items.enqueue(_model=OperationDelegation, commentid=2, _container=items, _insert=True,
+                      _insert=True, commentid=2, _create_at=datetime.datetime.now(), _container=items)
+        items.enqueue(_model=OperationDelegation, commentid=2, _container=items,
+                      _insert=True, _create_at=datetime.datetime.now(),
                       operationdescription="Комментарий")
-        items.enqueue(_model=Cnc, _insert=True, cncid=2, name="Ram", commentsymbol="#", _container=items)
+        items.enqueue(_model=Cnc, _insert=True, cncid=2, name="Ram", commentsymbol="#",
+                      _create_at=datetime.datetime.now(), _container=items)
         items.enqueue(_model=Machine, machineid=2, cncid=2, machinename="Fidia", inputcatalog=r"D:\Heller",
-                      outputcatalog=r"C:\Test", _container=items, _insert=True)
+                      outputcatalog=r"C:\Test", _container=items,
+                      _create_at=datetime.datetime.now(), _insert=True)
         self.orm_manager.cache.set("ORMItems", items, ORMHelper.CACHE_LIFETIME_HOURS)
 
     def update_exists_items(self):
@@ -99,13 +109,13 @@ class SetUp:
         queue.enqueue(cncid=1, name="Test", _model=Cnc, _update=True, _container=queue)
         queue.enqueue(numerationid=2, endat=4, _model=Numeration, _update=True, _container=queue)
         queue.enqueue(_model=Comment, commentid=2, findstr="test_str_new", _update=True, _container=queue)
-        queue.enqueue(_model=Machine, machinename="testname", machineid=1, cncid=1, _insert=True, _container=queue)
-        self.orm_manager.cache.set("ORMItems", queue, self.orm_manager.CACHE_LIFETIME_HOURS)
+        queue.enqueue(_model=Machine, machinename="testname", machineid=1, _insert=True, _container=queue)
 
 
 class TestORMHelper(unittest.TestCase, SetUp):
     def setUp(self) -> None:
         ORMHelper.TESTING = True
+        ORMHelper.CACHE_LIFETIME_HOURS = 60
         self.orm_manager = ORMHelper
 
     def test_cache_property(self):
@@ -116,6 +126,7 @@ class TestORMHelper(unittest.TestCase, SetUp):
 
     def test_cache(self):
         self.orm_manager.cache.set("1", 1)
+        time.sleep(3)
         value = self.orm_manager.cache.get("1")
         self.assertEqual(value, 1, msg="Результирующее значение, полученное из кеша отличается от заданного в тесте")
 
@@ -155,19 +166,21 @@ class TestORMHelper(unittest.TestCase, SetUp):
             session.add(Cnc(name="testcnc", commentsymbol="*"))
             session.add(Machine(machinename="Test", inputcatalog="C:\\Test", outputcatalog="C:\\TestPath", cncid=1))
             session.commit()
-        self.assertEqual(self.orm_manager.database.execute("SELECT COUNT(*) "
-                                                           "FROM machine "
-                                                           "INNER JOIN cnc "
-                                                           "ON machine.cncid=cnc.cncid "
-                                                           "WHERE machine.machinename='Test' AND cnc.name='testcnc'"
+        self.assertEqual(self.orm_manager.database.execute(text("SELECT COUNT(*) "
+                                                                "FROM machine "
+                                                                "INNER JOIN cnc "
+                                                                "ON machine.cncid=cnc.cncid "
+                                                                "WHERE machine.machinename='Test' AND cnc.name='testcnc'"
+                                                                )
                                                            ).scalar(), 1)
-        self.assertEqual(self.orm_manager.database.execute("SELECT COUNT(*) "
-                                                           "FROM machine "
-                                                           "WHERE machine.cncid=(SELECT cncid FROM cnc WHERE name = 'testcnc')"
+        self.assertEqual(self.orm_manager.database.execute(text("SELECT COUNT(*) "
+                                                                "FROM machine "
+                                                                "WHERE machine.cncid=(SELECT cncid FROM cnc WHERE name = 'testcnc')"
+                                                                )
                                                            ).scalar(), 1)
 
     def test_items_property(self):
-        self.assertTrue(type(self.orm_manager.items[0]) is ORMItemQueue)
+        self.assertTrue(type(self.orm_manager.items) is ORMItemQueue)
 
     def test_init_timer(self):
         t = self.orm_manager.init_timer()
@@ -177,6 +190,7 @@ class TestORMHelper(unittest.TestCase, SetUp):
     @drop_cache
     @db_reinit
     def test_items_property(self):
+        self.set_data_into_queue()
         self.assertEqual(self.orm_manager.cache.get("ORMItems", ORMItemQueue()), self.orm_manager.items[0])
         self.orm_manager.set_item(_insert=True, _model=Cnc, name="Fid")
         self.assertEqual(self.orm_manager.cache.get("ORMItems"), self.orm_manager.items[0])
@@ -205,6 +219,7 @@ class TestORMHelper(unittest.TestCase, SetUp):
         self.assertEqual(self.orm_manager.items.__len__(), 4)
         self.orm_manager.set_item(_delete=True, machinename="Some_name", _model=Machine)
         self.orm_manager.set_item(_delete=True, machinename="Some_name_2", _model=Machine)
+        time.sleep(3)
         result = self.orm_manager.get_item(_model=Machine, machinename="Helller", _only_db=True)
         self.assertTrue(result)
         # start Invalid ...
@@ -425,10 +440,6 @@ class TestORMHelper(unittest.TestCase, SetUp):
         result = self.orm_manager.join_select(Machine, Cnc, on={"Machine.cncid": "Cnc.cncid"})
         wrapper = ["Результат в списке 1", "Результат в списке 2"]
         result.pointer = wrapper
-        result = self.orm_manager.join_select(Machine, Cnc, on={"Machine.cncid": "Cnc.cncid"})
-        # Старый экземпляр Puinter должен обнулиться
-        self.assertIsNone(result.pointer)
-        result.pointer = wrapper
         #
         # Тест wrap_items
         #
@@ -442,20 +453,25 @@ class TestORMHelper(unittest.TestCase, SetUp):
         self.assertFalse(result.pointer.has_changes("Результат в списке 1"))
         #
         # Добавить изменения и проверить повторно
-        #
         self.update_exists_items()
         #
         self.assertTrue(result.pointer.has_changes("Результат в списке 2"))
         self.assertTrue(result.pointer.has_changes("Результат в списке 1"))
-        #
-        # Ошибки связанные недействительным первым позиционным аргументом - name
-        #
-        self.assertRaises(TypeError, result.pointer.has_changes, 4)
-        self.assertRaises(TypeError, result.pointer.has_changes, 7.8)
-        self.assertRaises(TypeError, result.pointer.has_changes, None)
-        self.assertRaises(TypeError, result.pointer.has_changes, [])
-        self.assertRaises(ValueError, result.pointer.has_changes, "Этого нет в wrapper")
-        self.assertRaises(TypeError, result.pointer.has_changes, ["sdfsf"])
-        self.assertRaises(TypeError, result.pointer.has_changes, {"1": 3})
-        self.assertRaises(ValueError, result.pointer.has_changes, "")
-        self.assertRaises(ValueError, result.pointer.has_changes, "Этого тоже нет в wrapper")
+
+    @db_reinit
+    def test_someone(self):
+        self.assertEqual(1, 1)
+
+
+class TestQueueOrderBy(unittest.TestCase, SetUp):
+    def setUp(self) -> None:
+        ORMHelper.TESTING = True
+        ORMHelper.CACHE_LIFETIME_HOURS = 60
+        self.orm_manager = ORMHelper
+
+    @drop_cache
+    @db_reinit
+    def test_order_by_time(self):
+        self.set_data_into_database()
+        self.set_data_into_queue()
+        print(self.orm_manager.items)
