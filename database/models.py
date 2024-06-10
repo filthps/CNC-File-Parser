@@ -14,8 +14,8 @@ from flask_sqlalchemy import SQLAlchemy as FlaskSQLAlchemy
 from flask import Flask
 
 
-load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
-RESERVED_WORDS = ("__insert", "__update", "__delete", "__ready", "__model", "__primary_key__", "column_names")  # Используются в классе ORMHelper
+load_dotenv(os.path.join(os.path.dirname(__file__), "database.env"))
+RESERVED_WORDS = ("__insert", "__update", "__delete", "__ready", "__model", "column_names")  # Используются в классе ORMHelper
 DATABASE_PATH = os.environ.get("DATABASE_PATH")
 
 
@@ -37,7 +37,7 @@ class ModelController:
         def check_class_attributes():
             """ Предотвратить использование заерезервированных в классе ORMHelper слов """
             for special_word in RESERVED_WORDS:
-                if hasattr(cls, f"_{cls.__name__}{special_word}"):
+                if hasattr(cls, f"__{cls.__name__}{special_word}"):
                     raise AttributeError(
                         f"Не удалось инциализировать класс-модель {cls.__name__}. "
                         f"Атрибут {special_word} использовать нельзя, тк он зарезервирован."
