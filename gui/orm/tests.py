@@ -32,6 +32,8 @@ def is_database_empty(session, empty=True, tables=15, procedures=52, test_db_nam
                                               f'WHERE trigger_schema=\'public\' AND '
                                               f'trigger_catalog=\'{test_db_name}\' AND '
                                               f'event_object_catalog=\'{test_db_name}\';')).scalar()
+    print(f"procedures_counter {procedures_counter}")
+    print(f"table_counter {table_counter}")
     if empty:
         if table_counter or procedures_counter:
             time.sleep(2)
@@ -474,4 +476,8 @@ class TestQueueOrderBy(unittest.TestCase, SetUp):
     def test_order_by_time(self):
         self.set_data_into_database()
         self.set_data_into_queue()
-        print(self.orm_manager.items)
+        container = self.orm_manager.items
+        container.order_by(Machine, by_create_time=True)
+        print(container.search_nodes(Machine))
+
+
