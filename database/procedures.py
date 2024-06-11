@@ -1,6 +1,4 @@
 """ Postgres диалект! """
-import os
-from dotenv import load_dotenv
 from sqlalchemy import DDL, create_engine
 from sqlalchemy.orm import Session, create_session
 from database.models import *
