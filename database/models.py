@@ -79,7 +79,7 @@ OPERATION_TYPES = (
 
 
 #  class CustomModel(db.Model, ModelController):
-class CustomModel:
+class CustomModel(ModelController):
     """
     Абстрактный класс для аннотации типов.
     класс модели SQLAlchemy для использования в классе ORMHelper модуля tools!

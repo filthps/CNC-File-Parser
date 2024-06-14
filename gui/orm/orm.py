@@ -8,7 +8,7 @@ import itertools
 import hashlib
 import operator
 from weakref import ref, ReferenceType
-from typing import Union, Iterator, Iterable, Optional, Literal, Callable, Type, Generator
+from typing import Union, Iterator, Iterable, Optional, Literal, Callable, Type, Generator, Any
 from collections import ChainMap
 from pymemcache.client.base import Client
 from pymemcache.exceptions import MemcacheError
@@ -56,6 +56,29 @@ class ORMAttributes:
 
 
 class ModelTools(ORMAttributes):
+    def is_autoincrement_primary_key(self, model: Type[CustomModel]) -> bool:
+        self.is_valid_model_instance(model)
+        for column_name, data in model().column_names.items():
+            if data["autoincrement"]:
+                return True
+        return False
+
+    def get_primary_key_python_type(self, model: Type[CustomModel]) -> Type:
+        self.is_valid_model_instance(model)
+        for column_name, data in model().column_names.items():
+            if data["primary_key"]:
+                return data["type"]
+
+    def get_default_column_value_or_function(self, model: Type[CustomModel], column_name: str) -> Optional[Any]:
+        self.is_valid_model_instance(model)
+        if type(column_name) is not str:
+            raise TypeError
+        return model().column_names[column_name]["default"]
+
+    @staticmethod
+    def get_primary_key_column_name(self) -> str:
+        pass
+
     @classmethod
     def _create_autoincrement_pk(cls, node: Union["ORMItem", "SpecialOrmItem"]) -> int:
         nodes = copy.deepcopy(node.container)
@@ -291,8 +314,6 @@ class ORMItem(LinkedListItem, ModelTools):
         return result
 
     def make_query(self) -> Optional[Query]:
-        if self.__transaction_counter % 2:
-            self.__insert, self.__update = self.__update, self.__insert
         query = None
         value: dict = self.value
         primary_key = self.get_primary_key_and_value(only_key=True)
@@ -721,17 +742,28 @@ class ORMItemQueue(LinkedList, ORMQueueOrderBy):
             new_node_data.update({"_create_at": new_node.created_at})
             return self.LinkedListItem(**new_node_data)
 
+        def collect_values(n: ORMItem, *fields):
+            """ Получить словарь вида {field: value} из ноды, по тем полям, что переданы в fields """
+            d = {}
+            for field in fields:
+                if field in n.value:
+                    d.update({field: n.value[field]})
+            return d
+
+        def counter_(nodes: ORMItemQueue, collected_values: dict) -> Iterator:
+            """ Посчитать макс количество совпадений данных ноды с переданным словарём collected_values """
+            for node in nodes:
+                i = 0
+                for key, value in collected_values.items():
+                    if key in node.value:
+                        if value == node.value[key]:
+                            i += 1
+                if i:
+                    yield node, i
+
         def find_node_to_replace_by_unique_values() -> Optional[ORMItem]:
             def get_unique_column_names():
-                return [name for name, data in potential_new_item.model().column_names.items() if data["unique"]]
-
-            def collect_values(n: ORMItem, *fields):
-                d = {}
-                for field in fields:
-                    if field in n.value:
-                        d.update({field: n.value[field]})
-                return d
-
+                return (name for name, data in potential_new_item.model().column_names.items() if data["unique"])
             unique_fields = get_unique_column_names()
             unique_values_in_new_node = collect_values(potential_new_item, *unique_fields)
             if not unique_values_in_new_node:
@@ -739,10 +771,24 @@ class ORMItemQueue(LinkedList, ORMQueueOrderBy):
             nodes_with_unique_fields = self.search_nodes(potential_new_item.model, **unique_values_in_new_node)
             if not nodes_with_unique_fields:
                 return
-            return nodes_with_unique_fields[0]
+            ordered_nodes = sorted(counter_(self, unique_values_in_new_node), key=lambda x: x[1], reverse=True)
+            if ordered_nodes:
+                return ordered_nodes[0][0]
+
+        def find_node_to_replace_by_any_field():
+            """ Последняя попытка отыскать ноду:
+             из всех переданных в enqueue данных выделить максимальное количество совпадений
+             с одной из нод в очереди"""
+            all_fields_in_new_node = potential_new_item.value.keys()
+            values = collect_values(potential_new_item, *all_fields_in_new_node)
+            ordered_items = sorted(counter_(self, values), key=lambda i: i[1], reverse=True)
+            if ordered_items:
+                return ordered_items[0][0]
         exists_item = self.get_node(potential_new_item.model, **potential_new_item.get_primary_key_and_value())  # O(n)
         if not exists_item:
             exists_item = find_node_to_replace_by_unique_values()
+        if not exists_item:
+            exists_item = find_node_to_replace_by_any_field()
         if not exists_item:
             new_item = potential_new_item
             return None, new_item
