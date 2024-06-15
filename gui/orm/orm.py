@@ -75,9 +75,11 @@ class ModelTools(ORMAttributes):
             raise TypeError
         return model().column_names[column_name]["default"]
 
-    @staticmethod
-    def get_primary_key_column_name(self) -> str:
-        pass
+    def get_primary_key_column_name(self, model: Type[CustomModel]):
+        self.is_valid_model_instance(model)
+        for column_name, data in model().column_names.items():
+            if data[column_name]["primary_key"]:
+                return column_name
 
     @classmethod
     def _create_autoincrement_pk(cls, node: Union["ORMItem", "SpecialOrmItem"]) -> int:
@@ -208,8 +210,9 @@ class ORMItem(LinkedListItem, ModelTools):
             Под этим понимается то, что при последующих репликациях во время
             enqueue значение первичного ключа является автоинкрементом или неким вычисляемым значением по умолчанию,
             предугадать которое не представляется возможным,- такой первичный ключ мы будем называть относительным."""
-            model_data = self.model().column_names[self.get_primary_key_and_value(only_key=True)]
-            if model_data["autoincrement"] or model_data["default"]:
+            pk_name = self.get_primary_key_column_name(self.model)
+            default_value = self.get_default_column_value_or_function(self.model, pk_name)
+            if self.is_autoincrement_primary_key(self.model) or default_value is not None:
                 self.__relative_primary_key = True
         check_current_primary_key_is_relative()
 
@@ -219,6 +222,10 @@ class ORMItem(LinkedListItem, ModelTools):
 
     @property
     def is_relative_primary_key(self):
+        """ Является ли первичный ключ относительным.
+        Под этим понимается то, что при последующих репликациях во время
+        enqueue значение первичного ключа является автоинкрементом или неким вычисляемым значением по умолчанию,
+        предугадать которое не представляется возможным,- такой первичный ключ мы будем называть относительным."""
         return self.__relative_primary_key
 
     @property
@@ -398,33 +405,19 @@ class ORMItem(LinkedListItem, ModelTools):
     @property
     def __should_remove_primary_key(self) -> bool:
         """ Нужно ли удалить первичный ключ со значением из значений во время коммита в базу """
-        self.is_valid_model_instance(self.model)
-        attributes = self.model().column_names
-        for field_name, data in attributes.items():
-            if not data["primary_key"]:
-                continue
-            if data["autoincrement"]:
-                return True
-            if data["default"]:
-                pass
-                return True  # todo Тест
-            return False
+        if self.is_autoincrement_primary_key(self.model):
+            return True
+        return False
     
     def __create_primary_key(self) -> dict[str, Union[str, int]]:
         """Повторный вызов недопустим. Вызывать в первую очередь! до добаления ноды в связанный список"""
-        attributes = self.model().column_names
-        for field_name, data in attributes.items():
-            if not data["primary_key"]:
-                continue
-            default_: Optional[ColumnDefault] = data["default"]
-            if default_:
-                return {
-                    field_name: default_.arg({})
-                }
-            autoincrement = data["autoincrement"]
-            if autoincrement:
-                return {field_name: self._create_autoincrement_pk(self)}
-            return {field_name: self._select_primary_key_value_from_scalars(self, field_name)}
+        name = self.get_primary_key_column_name(self.model)
+        if self.is_autoincrement_primary_key(self.model):
+            return {name: self._create_autoincrement_pk(self)}
+        default_value = self.get_default_column_value_or_function(self.model, name)
+        if default_value is not None:
+            return {name: default_value()}
+        return {name: self._select_primary_key_value_from_scalars(self, name)}
 
 
 class EmptyOrmItem(LinkedListItem):
@@ -1170,7 +1163,7 @@ class ORMHelper(ORMAttributes):
         if not attrs:
             raise ModelsConfigurationError
         try:
-            pk_name = [field_name for field_name, value in attrs.items() if "primary_key" in value and value["primary_key"]][0]
+            pk_name = ModelTools.get_primary_key_column_name(model)
         except IndexError:
             raise ModelsConfigurationError
         for db_item in items_db:  # O(n)
@@ -1364,8 +1357,7 @@ class ORMHelper(ORMAttributes):
         cls.is_valid_model_instance(model)
         if not isinstance(node_pk_value, (str, int,)):
             raise TypeError
-        primary_key_field_name = [attr_name for attr_name, attr_d in model().column_names.items()
-                                  if attr_d["primary_key"]][0]
+        primary_key_field_name = ModelTools.get_primary_key_column_name(model)
         left_node = cls.items.get_node(model, **{primary_key_field_name: node_pk_value})
         return left_node.type if left_node is not None else None
 
@@ -1380,8 +1372,7 @@ class ORMHelper(ORMAttributes):
         cls.is_valid_model_instance(model)
         if not isinstance(node_or_nodes, (tuple, list, set, frozenset, str, int,)):
             raise TypeError
-        primary_key_field_name = [attr_val for attr_name, attr_val in model().column_names
-                                  if attr_name == "primary_key"][0]
+        primary_key_field_name = ModelTools.get_primary_key_column_name(model)
         items = cls.items
         if isinstance(node_or_nodes, (str, int,)):
             items.remove(model, **{primary_key_field_name: node_or_nodes})
@@ -1404,8 +1395,7 @@ class ORMHelper(ORMAttributes):
         cls.is_valid_model_instance(model)
         if not isinstance(field_or_fields, (tuple, list, set, frozenset, str,)):
             raise TypeError
-        primary_key_field_name = [attr_val for attr_name, attr_val in model().column_names
-                                  if attr_name == "primary_key"][0]
+        primary_key_field_name = ModelTools.get_primary_key_column_name(model)
         old_node = cls.items.get_node(model, **{primary_key_field_name: pk_field_value})
         if not old_node:
             return
@@ -1475,7 +1465,8 @@ class ORMHelper(ORMAttributes):
         #  cls.drop_cache()
 
     @classmethod
-    def __set_cache(cls, nodes):
+    def __set_cache(cls, nodes, main_items=True):
+        key = "ORMItems" if main_items else "frozen_ORMItems"
         cls.cache.set("ORMItems", nodes, cls.CACHE_LIFETIME_HOURS)
 
 
