@@ -7,7 +7,7 @@ import datetime
 import itertools
 import hashlib
 import operator
-from abc import ABC, abstractmethod, abstractclassmethod
+from abc import ABC, abstractmethod, abstractclassmethod, abstractproperty
 from weakref import ref, ReferenceType
 from typing import Union, Iterator, Iterable, Optional, Literal, Callable, Type, Generator, Any
 from collections import ChainMap
@@ -407,16 +407,14 @@ class ORMItem(LinkedListItem, ModelTools):
     def __create_primary_key(self) -> dict[str, Union[str, int]]:
         """Повторный вызов недопустим. Вызывать в первую очередь! до добаления ноды в связанный список"""
         name = self.get_primary_key_column_name(self.model)
-        if self.is_autoincrement_primary_key(self.model):
-            try:
-                value = self._select_primary_key_value_from_scalars(self, name)
-            except KeyError:
-                raise NodePrimaryKeyError("")
-
         default_value = self.get_default_column_value_or_function(self.model, name)
         if default_value is not None:
             return {name: default_value()}
-        return {name: self._select_primary_key_value_from_scalars(self, name)}
+        try:
+            value = self._select_primary_key_value_from_scalars(self, name)
+        except KeyError:
+            raise NodePrimaryKeyError("")
+        return {name: value}
 
 
 class EmptyOrmItem(LinkedListItem):
@@ -978,40 +976,90 @@ class SpecialOrmContainer(ORMItemQueue):
         raise DoesNotExists
 
 
-class BaseResult(ABC):
+class BaseResultIterable(ABC):
+    TEMP_HASH_CACHE_KEY: str = ...
+    RESULT_CACHE_KEY: str = ...
     refresh = abstractmethod(lambda: None)
-    get_nodes_from_database: Optional[callable] = None
-    get_local_nodes: Optional[callable] = None
-
-    __iter__ = abstractmethod(lambda: None)
+    __getitem__ = abstractmethod(lambda: None)
+    __contains__ = abstractmethod(lambda: None)
+    _items: ORMItemQueue = abstractproperty(lambda: None)  # и сеттер.
+    _get_nodes_from_database: Optional[callable] = None  # Функция, в которой происходит получение контейнера с нодами из бд
+    _get_local_nodes: Optional[callable] = None  # Функция, в которой происходит получение контейнера с нодами из кеша
+    _merge = abstractmethod(lambda: Iterable)  # Функция, которая делает репликацию нод из кеша поверх нод из бд
+    _set_previous_hash = abstractmethod(lambda: None)
     _pointer: Optional["Pointer"] = None
 
     def __init__(self, only_local=False, only_database=False):
         self._is_valid(only_local=only_local, only_database=only_database)
         self._only_queue = only_local
         self._only_db = only_database
+        self.__merged_data = None
+
+    def has_changes(self, hash_=None, strict_mode=True) -> bool:
+        current_hash = self.previous_hash
+        self.__iter__()
+        new_hash = self.previous_hash
+        if hash_:
+            if hash_ in new_hash:
+                return False
+            if strict_mode:
+                raise ValueError
+            return True
+        return not current_hash == new_hash
+
+    @property
+    def pointer(self):
+        return self._pointer
+
+    @pointer.setter
+    def pointer(self: Union["Result", "JoinSelectResult"], items: list):
+        pointer = Pointer
+        pointer.wrap_items = items
+        self._pointer = pointer(self)
+
+    @property
+    def previous_hash(self) -> list[int]:
+        return ORMHelper.cache.get(self.TEMP_HASH_CACHE_KEY, [])
+
+    def __iter__(self):
+        self.__merged_data = self._merge()
+        self.__set_cache(self.__merged_data)
+        return iter(self.__merged_data)
 
     def __len__(self):
-        return sum([1 for _ in self])
+        return sum((1 for _ in self))
 
     @classmethod
     def _is_valid(cls, **kw):
-        if not callable(cls.get_nodes_from_database) or not callable(cls.get_local_nodes):
+        if not callable(cls._get_nodes_from_database) or not callable(cls._get_local_nodes):
             raise TypeError
         if not all(map(lambda i: isinstance(i, bool), kw.values())):
             raise TypeError
-        if not sum(filter(lambda x: x, kw.values())) == 1:
+        if not sum(kw.values()) in (0, 1,):
             raise ValueError
 
+    @classmethod
+    def __set_cache(cls, items):
+        ORMHelper.cache.set(cls.RESULT_CACHE_KEY, items, ORMHelper.CACHE_LIFETIME_HOURS)
 
-class Result(BaseResult):
-    """ Экземпляр данного класса возвращается функцией ORMHelper.get_item() """
-    pass
 
-
-class MultipleResult(BaseResult):
+class Result(BaseResultIterable):
     """ Экземпляр данного класса возвращается функцией ORMHelper.get_items() """
-    pass
+    RESULT_CACHE_KEY = "simple_result"
+
+    def _merge(self):
+        local_items: ORMItemQueue = self._get_local_nodes()
+        database_items: ORMItemQueue = self._get_nodes_from_database()
+        self.__is_valid(local_items=local_items, database_items=database_items)
+        [database_items.enqueue(**node.get_attributes()) for node in local_items]
+        if not database_items:
+            return local_items
+        return database_items
+
+    @staticmethod
+    def __is_valid(**kwargs):
+        if any(map(lambda x: type(x) is not ORMItemQueue, kwargs.values())):
+            raise TypeError
 
 
 class ORMHelper(ORMAttributes):
@@ -1123,47 +1171,7 @@ class ORMHelper(ORMAttributes):
         cls._timer = cls.init_timer()
 
     @classmethod
-    def get_item(cls, _model: Optional[Type[CustomModel]] = None, _only_db=False, _only_queue=False, **filter_) -> dict:
-        """
-        1) Получаем запись из таблицы в виде словаря
-        2) Получаем данные из очереди в виде словаря
-        3) db_data.update(quque_data)
-        Если primary_field со значением left_node.name найден в БД, то нода удаляется
-        """
-        model = _model or cls._model_obj
-        cls.is_valid_model_instance(model)
-        if not filter_:
-            return {}
-        left_node: Optional[ORMItem] = None
-        if _only_queue:
-            nodes = cls.items.search_nodes(model, **filter_)
-            if len(nodes):
-                left_node = nodes[0]
-            if left_node is None:
-                return {}
-            return left_node.value
-        try:
-            query = cls.database.query(model).filter_by(**filter_).first()
-        except OperationalError:
-            print("Ошибка соединения с базой данных! Смотри константу 'DATABASE_PATH' в модуле models.py, "
-                  "такая проблема обычно возникает из-за авторизации. Смотри пароль!!!")
-            raise OperationalError
-        data_db = {} if not query else query.__dict__
-        if _only_db:
-            return data_db
-        nodes = cls.items.search_nodes(model, **filter_)
-        if len(nodes):
-            left_node = nodes[0]
-        if left_node is None:
-            return data_db
-        if left_node.type == "_delete":
-            return {}
-        updated_node_data = data_db
-        updated_node_data.update(left_node.value)
-        return updated_node_data
-
-    @classmethod
-    def get_items(cls, _model: Optional[Type[CustomModel]] = None, _db_only=False, _queue_only=False, **attrs) -> Iterator[dict]:  # todo: придумать пагинатор
+    def get_items(cls, _model: Optional[Type[CustomModel]] = None, _db_only=False, _queue_only=False, **attrs) -> Result:  # todo: придумать пагинатор
         """
         1) Получаем запись из таблицы в виде словаря (CustomModel.query.all())
         2) Получаем данные из кеша, все элементы, у которых данная модель
@@ -1171,20 +1179,24 @@ class ORMHelper(ORMAttributes):
         """
         model = _model or cls._model_obj
         cls.is_valid_model_instance(model)
-        if not attrs:
-            try:
-                items_db = cls.database.query(model).all()
-            except OperationalError:
-                print("Ошибка соединения с базой данных! Смотри константу 'DATABASE_PATH' в модуле models.py, "
-                      "такая проблема обычно возникает из-за авторизации. Смотри пароль!!!")
-                raise OperationalError
-        else:
-            try:
-                items_db = cls.database.query(model).filter_by(**attrs).all()
-            except OperationalError:
-                print("Ошибка соединения с базой данных! Смотри константу 'DATABASE_PATH' в модуле models.py, "
-                      "такая проблема обычно возникает из-за авторизации. Смотри пароль!!!")
-                raise OperationalError
+
+        def select_from_db():
+            if not attrs:
+                try:
+                    items_db = cls.database.query(model).all()
+                except OperationalError:
+                    print("Ошибка соединения с базой данных! Смотри константу 'DATABASE_PATH' в модуле models.py, "
+                          "такая проблема обычно возникает из-за авторизации. Смотри пароль!!!")
+                    raise OperationalError
+            else:
+                try:
+                    items_db = cls.database.query(model).filter_by(**attrs).all()
+                except OperationalError:
+                    print("Ошибка соединения с базой данных! Смотри константу 'DATABASE_PATH' в модуле models.py, "
+                          "такая проблема обычно возникает из-за авторизации. Смотри пароль!!!")
+                    raise OperationalError
+
+
         if _db_only or not cls.items:
             return map(lambda t: t.__dict__, items_db)
         if _queue_only or not items_db:
@@ -1377,8 +1389,8 @@ class ORMHelper(ORMAttributes):
             heap = ORMItemQueue()
             collect_all()
             return compare_by_matched_fk()
-        JoinSelectResult.get_nodes_from_database = collect_db_data
-        JoinSelectResult.get_local_nodes = collect_local_data
+        JoinSelectResult._get_nodes_from_database = collect_db_data
+        JoinSelectResult._get_local_nodes = collect_local_data
         JoinSelectResult._pointer = None
         return JoinSelectResult(only_database=_db_only, only_local=_queue_only)
 
@@ -1510,18 +1522,17 @@ class Pointer:
     Объект этого класса создан для 'слежки' за изменениями с UI."""
     wrap_items: Optional[list[str]] = None
 
-    def __init__(self, joined_item: "JoinSelectResult" = None, single_item: Result = None,
-                 multiple_single_item: MultipleResult = None):
-        self._joined_item = joined_item
-        self._previous_hash = self._joined_item.previous_hash
-        self._joined_item = self._joined_item
+    def __init__(self, result_item: Union[Result, "JoinSelectResult"] = None):
+        self._result_item = result_item
+        self._previous_hash = self._result_item.previous_hash
+        self._result_item = self._result_item
         self._is_valid()
         self._is_invalid = False
 
     @property
-    def items(self) -> Union[dict[str, int], Exception]:
+    def items(self) -> dict[str, int]:
         self._is_valid(strict=False)
-        return dict(zip(self.wrap_items, self._joined_item))
+        return dict(zip(self.wrap_items, self._result_item))
 
     @property
     def is_valid(self):
@@ -1533,7 +1544,7 @@ class Pointer:
             """ Если has_changes запрашивался на конкретное имя, то после получения статуса нужно подменить
              именно эту хеш-сумму на новую.
              Если has_changes запрашивался на всё в целом, то заменяем всё _previous_hash полностью. """
-            new_hash = self._joined_item.previous_hash
+            new_hash = self._result_item.previous_hash
             if hash_index is not None:
                 self._previous_hash[hash_index] = new_hash[hash_index]
                 return
@@ -1548,8 +1559,8 @@ class Pointer:
             name: self._previous_hash[index] for index, name in enumerate(self.wrap_items)
         }
         hash_ = hash_names_map[name]
-        iter(self._joined_item)
-        new_hash = self._joined_item.previous_hash
+        iter(self._result_item)
+        new_hash = self._result_item.previous_hash
         status = hash_ not in new_hash
         self._is_valid(strict=False)
         if status:
@@ -1587,14 +1598,14 @@ class Pointer:
 
     def __str__(self):
         self._is_valid(strict=False)
-        return "".join(map(lambda x: f"{x[0]}:{x[1]} /n", zip(self.wrap_items, list(self._joined_item))))
+        return "".join(map(lambda x: f"{x[0]}:{x[1]} /n", zip(self.wrap_items, list(self._result_item))))
 
     def _is_valid(self, strict=True):
-        data = tuple(self._joined_item)
+        data = tuple(self._result_item)
         """ Если длины 2 последовательностей (см init) отличаются, то вызвать исключение """
-        if type(self._joined_item) is not JoinSelectResult:
+        if type(self._result_item) is not JoinSelectResult:
             raise JoinedItemPointerError(
-                "Экземпляр класса JoinedItemResult не установлен в атрибут класса joined_item"
+                "Экземпляр класса JoinedItemResult не установлен в атрибут класса result_item"
             )
         if type(self.wrap_items) is not list and type(self.wrap_items) is not tuple:
             raise TypeError
@@ -1611,7 +1622,7 @@ class Pointer:
                 raise TypeError
 
 
-class JoinSelectResult(BaseResult):
+class JoinSelectResult(BaseResultIterable):
     """
     Экземпляр этого класса возвращается функцией ORMHelper.join_select()
     1 экземпляр этого класса 1 результат вызова ORMHelper.join_select()
@@ -1625,37 +1636,12 @@ class JoinSelectResult(BaseResult):
         Если нода потеряла актуальность(удалена), то вместо неё будет заглушка - Экземпляр EmptyORMItem
         SpecialOrmContainer имеет свойство - is_actual на которое можно опираться
     """
+    TEMP_HASH_CACHE_KEY = "join_select_hash"
+    RESULT_CACHE_KEY = "join_result"
+    
     def __init__(self, only_local=False, only_database=False):
         super().__init__(only_database=only_database, only_local=only_local)
-        self._only_queue = only_local
-        self._only_db = only_database
         _ = self._merge()  # Для сохранения кеша с хеш-суммой, иначе неправильно работает метод has_changes
-
-    def has_changes(self, hash_=None, strict_mode=True) -> bool:
-        current_hash = self.previous_hash
-        self.__iter__()
-        new_hash = self.previous_hash
-        if hash_:
-            if hash_ in new_hash:
-                return False
-            if strict_mode:
-                raise ValueError
-            return True
-        return not current_hash == new_hash
-
-    @property
-    def pointer(self):
-        return self._pointer
-
-    @pointer.setter
-    def pointer(self, items: list):
-        pointer = self.Pointer
-        pointer.wrap_items = items
-        self._pointer = pointer(self)
-
-    @property
-    def previous_hash(self) -> list[int]:
-        return ORMHelper.cache.get("join_select_hash", [])
 
     @property
     def items(self) -> list[ChainMap]:
@@ -1667,9 +1653,6 @@ class JoinSelectResult(BaseResult):
             result.append(ChainMap(*[values for values in group]))
         return result
 
-    def __iter__(self):
-        return iter(self._merge())
-
     def __getitem__(self, item: int) -> SpecialOrmContainer:
         if not isinstance(item, int):
             raise TypeError
@@ -1679,15 +1662,20 @@ class JoinSelectResult(BaseResult):
             if hash(group) == item:
                 return group
 
-    def __contains__(self, item: int):
-        if type(item) is not int:
+    def __contains__(self, item: Union[int, ORMItemQueue, ORMItem]):
+        if not isinstance(item, (ORMItemQueue, ORMItem, int,)):
             return False
-        return item in map(lambda x: hash(x), self)
+        if type(item) is int:
+            return item in map(lambda x: hash(x), self)
+        if type(item) is ORMItemQueue:
+            return hash(item) in map(lambda x: x.__hash__(), self)
+        if type(item) is ORMItem:
+            return hash(item) in [hash(node) for group_items in self for node in group_items]
 
     def _merge(self) -> list[SpecialOrmContainer]:
         result = []
-        db_items = list(self.get_nodes_from_database()) if not self._only_queue else []
-        local_items = list(self.get_local_nodes()) if not self._only_db else []
+        db_items = list(self._get_nodes_from_database()) if not self._only_queue else []
+        local_items = list(self._get_local_nodes()) if not self._only_db else []
         for db_group_index, db_nodes_group in enumerate(db_items):
             for local_nodes_group_index, local_nodes_group in enumerate(local_items):
                 if db_nodes_group.is_containing_the_same_nodes(local_nodes_group):
@@ -1701,16 +1689,16 @@ class JoinSelectResult(BaseResult):
         if local_items:
             while local_items:
                 result.append(local_items.pop(0))
-        self.__set_previous_hash(list([hash(group) for group in result]))
+        self._set_previous_hash(list([hash(group) for group in result]))
         return result
 
-    @staticmethod
-    def __set_previous_hash(values: list[int]):
+    @classmethod
+    def _set_previous_hash(cls, values: list[int]):  # [ORMQueueInstance.__hash__(), ORMQueueInstance.__hash__(), ...]
         if type(values) is not list:
             raise TypeError
         if not all(map(lambda b: type(b) is int, values)):
             raise TypeError
-        ORMHelper.cache.set("join_select_hash", values, ORMHelper.JOIN_SELECT_DIFF_CACHE_MINUTES)
+        ORMHelper.cache.set(cls.TEMP_HASH_CACHE_KEY, values, ORMHelper.JOIN_SELECT_DIFF_CACHE_MINUTES)
 
     @staticmethod
     def __get_merged_column_names(result: tuple[SpecialOrmContainer]) -> set[str]:
