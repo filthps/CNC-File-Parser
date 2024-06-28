@@ -21,6 +21,7 @@ from sqlalchemy.sql.dml import Insert, Update, Delete
 from sqlalchemy.sql.expression import select
 from sqlalchemy.orm import Query, sessionmaker as session_factory, Session, scoped_session
 from sqlalchemy.exc import DisconnectionError, OperationalError, SQLAlchemyError
+from gui.orm.orm import Result
 from gui.datatype import LinkedList, LinkedListItem
 from database.models import RESERVED_WORDS, CustomModel, ModelController, DATABASE_PATH
 from gui.orm.exceptions import *
@@ -175,6 +176,7 @@ class ORMItem(LinkedListItem, ModelTools):
         self.__insert = kw.pop("_insert", False)
         self.__update = kw.pop("_update", False)
         self.__delete = kw.pop("_delete", False)
+        self.__from_select = kw.pop("_select", False)
         self.__is_ready = kw.pop("_ready", True if self.__delete else False)
         self.__where = kw.pop("_where", None)
         self._create_at = kw.pop("_create_at")
@@ -440,6 +442,10 @@ class EmptyOrmItem(LinkedListItem):
 
     def __hash__(self):
         return 0
+
+
+class ResultORMItem:
+    pass
 
 
 class ORMQueueOrderBy:
@@ -979,12 +985,12 @@ class SpecialOrmContainer(ORMItemQueue):
 class BaseResultIterable(ABC):
     TEMP_HASH_CACHE_KEY: str = ...
     RESULT_CACHE_KEY: str = ...
+    get_nodes_from_database: Optional[callable] = None  # Функция, в которой происходит получение контейнера с нодами из бд
+    get_local_nodes: Optional[callable] = None  # Функция, в которой происходит получение контейнера с нодами из кеша
     refresh = abstractmethod(lambda: None)
     __getitem__ = abstractmethod(lambda: None)
     __contains__ = abstractmethod(lambda: None)
     _items: ORMItemQueue = abstractproperty(lambda: None)  # и сеттер.
-    _get_nodes_from_database: Optional[callable] = None  # Функция, в которой происходит получение контейнера с нодами из бд
-    _get_local_nodes: Optional[callable] = None  # Функция, в которой происходит получение контейнера с нодами из кеша
     _merge = abstractmethod(lambda: Iterable)  # Функция, которая делает репликацию нод из кеша поверх нод из бд
     _set_previous_hash = abstractmethod(lambda: None)
     _pointer: Optional["Pointer"] = None
@@ -1029,9 +1035,12 @@ class BaseResultIterable(ABC):
     def __len__(self):
         return sum((1 for _ in self))
 
+    def __bool__(self):
+        return bool(self.__len__())
+
     @classmethod
     def _is_valid(cls, **kw):
-        if not callable(cls._get_nodes_from_database) or not callable(cls._get_local_nodes):
+        if not callable(cls.get_nodes_from_database) or not callable(cls.get_local_nodes):
             raise TypeError
         if not all(map(lambda i: isinstance(i, bool), kw.values())):
             raise TypeError
@@ -1048,8 +1057,8 @@ class Result(BaseResultIterable):
     RESULT_CACHE_KEY = "simple_result"
 
     def _merge(self):
-        local_items: ORMItemQueue = self._get_local_nodes()
-        database_items: ORMItemQueue = self._get_nodes_from_database()
+        local_items: ORMItemQueue = self.get_local_nodes()
+        database_items: ORMItemQueue = self.get_nodes_from_database()
         self.__is_valid(local_items=local_items, database_items=database_items)
         [database_items.enqueue(**node.get_attributes()) for node in local_items]
         if not database_items:
@@ -1181,69 +1190,34 @@ class ORMHelper(ORMAttributes):
         cls.is_valid_model_instance(model)
 
         def select_from_db():
-            if not attrs:
-                try:
-                    items_db = cls.database.query(model).all()
-                except OperationalError:
-                    print("Ошибка соединения с базой данных! Смотри константу 'DATABASE_PATH' в модуле models.py, "
-                          "такая проблема обычно возникает из-за авторизации. Смотри пароль!!!")
-                    raise OperationalError
-            else:
-                try:
-                    items_db = cls.database.query(model).filter_by(**attrs).all()
-                except OperationalError:
-                    print("Ошибка соединения с базой данных! Смотри константу 'DATABASE_PATH' в модуле models.py, "
-                          "такая проблема обычно возникает из-за авторизации. Смотри пароль!!!")
-                    raise OperationalError
+            def select() -> list[dict]:
+                if not attrs:
+                    try:
+                        items_db = cls.database.query(model).all()
+                    except OperationalError:
+                        print("Ошибка соединения с базой данных! Смотри константу 'DATABASE_PATH' в модуле models.py, "
+                              "такая проблема обычно возникает из-за авторизации. Смотри пароль!!!")
+                        raise OperationalError
+                else:
+                    try:
+                        items_db = cls.database.query(model).filter_by(**attrs).all()
+                    except OperationalError:
+                        print("Ошибка соединения с базой данных! Смотри константу 'DATABASE_PATH' в модуле models.py, "
+                              "такая проблема обычно возникает из-за авторизации. Смотри пароль!!!")
+                        raise OperationalError
+                return items_db
 
+            def put_in_queue(items) -> ORMItemQueue:
+                queue = ORMItemQueue()
+                [queue.append(_model=model, **d) for d in items]
+                return queue
+            return put_in_queue(select())
 
-        if _db_only or not cls.items:
-            return map(lambda t: t.__dict__, items_db)
-        if _queue_only or not items_db:
-            return map(lambda t: t.value,
-                       tuple(filter(lambda x: not x.type == "_delete", cls.items.search_nodes(model, **attrs)))
-                       )
-        db_items = []
-        queue_items = {}  # index: node_value
-        nodes_implements_db = ORMItemQueue()  # Ноды, которые пересекаются с бд
-        attrs = getattr(model(), "column_names", None)
-        if not attrs:
-            raise ModelsConfigurationError
-        try:
-            pk_name = ModelTools.get_primary_key_column_name(model)
-        except IndexError:
-            raise ModelsConfigurationError
-        for db_item in items_db:  # O(n)
-            db_data: dict = db_item.__dict__
-            if pk_name not in db_data:
-                raise ORMExternalDataError
-            left_node: ORMItem = cls.items.get_node(model, **{pk_name: db_data[pk_name]})
-            if left_node:
-                left_node.container = nodes_implements_db
-                nodes_implements_db.enqueue(**left_node.get_attributes())
-                if not left_node.type == "_delete":
-                    db_data.update(left_node.value)
-                    queue_items.update({left_node.index: db_data})
-            else:
-                db_items.append(db_data)
-        for left_node in cls.items:  # O(k)
-            if left_node not in nodes_implements_db:  # O(l)
-                if left_node.model.__name__ == model.__name__:
-                    if not left_node.type == "_delete":
-                        val = left_node.value
-                        queue_items.update({left_node.index: val}) if val else None
-        # queue_items - нужен для сортировки
-        # теперь все элементы отправим в output в следующей последовательности:
-        # 1) ноды которые пересеклись со значениями из базы (сортировка по index)
-        # 2) остальные ноды из очереди (сортировка по index)
-        # 3) значения из базы
-        sorted_nodes = dict(sorted(queue_items.items(), reverse=True))
-        output = []
-        for item in sorted_nodes.values():
-            output.append(item)
-        for item in db_items:
-            output.append(item)
-        return iter(output)
+        def select_from_cache():
+            return cls.items.search_nodes(model, **attrs)
+        Result.get_nodes_from_database = select_from_db
+        Result.get_local_nodes = select_from_cache
+        return Result(only_local=_queue_only, only_database=_db_only)
 
     @classmethod
     def join_select(cls, *models: Iterable[CustomModel], on: Optional[dict] = None,
@@ -1336,7 +1310,7 @@ class ORMHelper(ORMAttributes):
             def add_items_to_orm_queue() -> Iterator[SpecialOrmContainer]:  # O(i) * O(k) * O(m) * O(n) * O(j) * O(l)
                 data = query.all()
                 for data_row in data:  # O(i)
-                    row = SpecialOrmContainer()  # todo: что будет, если в 2 таблицах есть одноимённые столбцы-primary_key?! testcase
+                    row = SpecialOrmContainer()
                     for join_select_result in data_row:
                         all_column_names = getattr(type(join_select_result), "column_names")
                         r = {col_name: col_val for col_name, col_val in join_select_result.__dict__.items()
@@ -1389,8 +1363,8 @@ class ORMHelper(ORMAttributes):
             heap = ORMItemQueue()
             collect_all()
             return compare_by_matched_fk()
-        JoinSelectResult._get_nodes_from_database = collect_db_data
-        JoinSelectResult._get_local_nodes = collect_local_data
+        JoinSelectResult.get_nodes_from_database = collect_db_data
+        JoinSelectResult.get_local_nodes = collect_local_data
         JoinSelectResult._pointer = None
         return JoinSelectResult(only_database=_db_only, only_local=_queue_only)
 
@@ -1674,8 +1648,8 @@ class JoinSelectResult(BaseResultIterable):
 
     def _merge(self) -> list[SpecialOrmContainer]:
         result = []
-        db_items = list(self._get_nodes_from_database()) if not self._only_queue else []
-        local_items = list(self._get_local_nodes()) if not self._only_db else []
+        db_items = list(self.get_nodes_from_database()) if not self._only_queue else []
+        local_items = list(self.get_local_nodes()) if not self._only_db else []
         for db_group_index, db_nodes_group in enumerate(db_items):
             for local_nodes_group_index, local_nodes_group in enumerate(local_items):
                 if db_nodes_group.is_containing_the_same_nodes(local_nodes_group):
