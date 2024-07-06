@@ -5,6 +5,7 @@ import time
 import warnings
 import datetime
 import itertools
+import importlib
 import hashlib
 import operator
 from abc import ABC, abstractmethod, abstractclassmethod, abstractproperty
@@ -21,7 +22,6 @@ from sqlalchemy.sql.dml import Insert, Update, Delete
 from sqlalchemy.sql.expression import select
 from sqlalchemy.orm import Query, sessionmaker as session_factory, Session, scoped_session
 from sqlalchemy.exc import DisconnectionError, OperationalError, SQLAlchemyError
-from gui.orm.orm import Result
 from gui.datatype import LinkedList, LinkedListItem
 from database.models import RESERVED_WORDS, CustomModel, ModelController, DATABASE_PATH
 from gui.orm.exceptions import *
@@ -835,6 +835,12 @@ class ResultORMCollection:
         self._collection = other_cls()
         [self._collection.append(**node.get_attributes()) for node in collection]
 
+    def get_node(self, *args, **kwargs):
+        return self._collection.get_node(*args, **kwargs)
+
+    def search_nones(self, *args, **kwargs):
+        return self._collection.search_nodes(*args, **kwargs)
+
     def __iter__(self):
         return self._collection.__iter__()
 
@@ -1023,7 +1029,6 @@ class BaseResultIterable(ABC):
     refresh = abstractmethod(lambda: None)
     __getitem__ = abstractmethod(lambda: None)
     __contains__ = abstractmethod(lambda: None)
-    _items: ORMItemQueue = abstractproperty(lambda: None)  # и сеттер.
     _merge = abstractmethod(lambda: Iterable)  # Функция, которая делает репликацию нод из кеша поверх нод из бд
     _pointer: Optional["Pointer"] = None
 
@@ -1054,6 +1059,11 @@ class BaseResultIterable(ABC):
         return ORMHelper.cache.get(self.TEMP_HASH_CACHE_KEY, [])
 
     @property
+    def items(self) -> Iterable:
+        self.__merged_data = self._merge()
+        return self.__merged_data
+
+    @property
     def pointer(self):
         return self._pointer
 
@@ -1062,6 +1072,13 @@ class BaseResultIterable(ABC):
         pointer = Pointer
         pointer.wrap_items = items
         self._pointer = pointer(self)
+
+    def get_item_by_hash(self, hash_: int):
+        if type(hash_) is not int:
+            raise TypeError
+        if hash_ not in map(lambda x: hash(x), self):
+            return
+        return dict(zip(map(lambda x: hash(x), self), self))[hash_]
 
     def __iter__(self):
         self.__merged_data = self._merge()
@@ -1084,7 +1101,7 @@ class BaseResultIterable(ABC):
     @classmethod
     def _set_previous_hash(cls, items):
         values = [item.__hash__() for item in items]
-        ORMHelper.cache.set(cls.TEMP_HASH_CACHE_KEY, values, ORMHelper.JOIN_SELECT_DIFF_CACHE_MINUTES)
+        ORMHelper.cache.set(cls.TEMP_HASH_CACHE_KEY, values, ORMHelper.JOIN_SELECT_DIFF_CACHE_MINUTE)
 
     @classmethod
     def _is_valid(cls, **kw):
@@ -1101,6 +1118,16 @@ class Result(BaseResultIterable):
     RESULT_CACHE_KEY = "simple_result"
     TEMP_HASH_CACHE_KEY = "simple_item_hash"
 
+    def __contains__(self, item):
+        if type(item) is str:
+            return bool(self._get_node_by_joined_primary_key_and_value(item))
+        if type(item) is int:
+            return item in [node_or_node_group.__hash__() for node_or_node_group in self]
+        raise TypeError
+
+    def __getitem__(self, item):
+        ...  # todo
+
     def _merge(self):
         local_items: ORMItemQueue = self.get_local_nodes()
         database_items: ORMItemQueue = self.get_nodes_from_database()
@@ -1109,6 +1136,20 @@ class Result(BaseResultIterable):
         if not database_items:
             return local_items
         return database_items
+
+    def _get_node_by_joined_primary_key_and_value(self, value, sep=":"):
+        if not isinstance(value, str):
+            raise TypeError
+        if not isinstance(sep, str):
+            raise TypeError
+        if not sep:
+            raise ValueError
+        if sep not in value:
+            raise ValueError
+        model_name, primary_key, value = value.split(sep)
+        model_instance = getattr(importlib.import_module("models",
+                                 package="database.models"), model_name)
+        return self.items.get_node(model_instance, **{primary_key: value})
 
     @staticmethod
     def __is_valid(**kwargs):
@@ -1262,6 +1303,7 @@ class ORMHelper(ORMAttributes):
             return cls.items.search_nodes(model, **attrs)
         Result.get_nodes_from_database = select_from_db
         Result.get_local_nodes = select_from_cache
+        Result.pointer = None
         return Result(only_local=_queue_only, only_database=_db_only)
 
     @classmethod
@@ -1410,7 +1452,7 @@ class ORMHelper(ORMAttributes):
             return compare_by_matched_fk()
         JoinSelectResult.get_nodes_from_database = collect_db_data
         JoinSelectResult.get_local_nodes = collect_local_data
-        JoinSelectResult._pointer = None
+        JoinSelectResult.pointer = None
         return JoinSelectResult(only_database=_db_only, only_local=_queue_only)
 
     @classmethod
