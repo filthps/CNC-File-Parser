@@ -1,12 +1,7 @@
-"""
-Назначить каждому классу модели атрибут __db_queue_primary_field_name__, который необходим для класса tools.ORMHelper
-"""
 import os
-import sys
 import datetime
 import itertools
 from uuid import uuid4
-from abc import ABC, abstractmethod
 from dotenv import load_dotenv
 from sqlalchemy import String, Integer, Column, ForeignKey, Boolean, SmallInteger, Text, CheckConstraint, DateTime
 from sqlalchemy.orm import relationship, InstrumentedAttribute
@@ -30,6 +25,9 @@ db = FlaskSQLAlchemy(app)
 
 
 class ModelController:
+    __table__ = ...
+    column_names = ...
+
     def __new__(cls, **k):
         cls.column_names = {}  # Если база данных инициализирована вручную, средствами sql,
         # то заполнить даный словарь вручную
@@ -79,7 +77,7 @@ OPERATION_TYPES = (
 
 
 #  class CustomModel(db.Model, ModelController):
-class CustomModel:
+class CustomModel(ModelController):
     """
     Абстрактный класс для аннотации типов.
     класс модели SQLAlchemy для использования в классе ORMHelper модуля tools!
