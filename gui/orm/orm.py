@@ -58,13 +58,7 @@ class ORMAttributes:
 class ModelTools(ORMAttributes):
     @classmethod
     def _create_autoincrement_pk(cls, node: Union["ORMItem", "SpecialOrmItem"]) -> int:
-        nodes = copy.deepcopy(node.container)
-        nodes.order_by(node.model, by_primary_key=True, decr=True)
-        if nodes:
-            last_node: ORMItem = nodes[0]
-            last_node_pk = last_node.get_primary_key_and_value(only_value=True)
-            return last_node_pk + 1
-        return 0
+        ...
 
     @classmethod
     def _select_primary_key_value_from_scalars(cls, node: "ORMItem", field_name: str):
@@ -126,7 +120,6 @@ class ModelTools(ORMAttributes):
             if column_name not in data:
                 return False
             if not isinstance(node.value[column_name], data[column_name]["type"]):
-                print(node.value[column_name], data[column_name]["type"])
                 if node.value[column_name] is None and data[column_name]["nullable"]:
                     continue
                 raise NodeColumnValueError(text=f"Столбец {column_name} должен быть производным от "
@@ -395,15 +388,17 @@ class ORMItem(LinkedListItem, ModelTools):
         for field_name, data in attributes.items():
             if not data["primary_key"]:
                 continue
-            default_: Optional[ColumnDefault] = data["default"]
-            if default_:
-                return {
-                    field_name: default_.arg({})
-                }
-            autoincrement = data["autoincrement"]
-            if autoincrement:
-                return {field_name: self._create_autoincrement_pk(self)}
-            return {field_name: self._select_primary_key_value_from_scalars(self, field_name)}
+            if self.ready:
+                default_: Optional[ColumnDefault] = data["default"]
+                autoincrement = data["autoincrement"]
+                if default_:
+                    return {
+                        field_name: default_.arg({})
+                    }
+                if autoincrement:
+                    return {field_name: self._create_autoincrement_pk(self)}
+                return {field_name: self._select_primary_key_value_from_scalars(self, field_name)}
+            return {field_name: self._get_highest_autoincrement_pk_from_local(self)}
 
 
 class EmptyOrmItem(LinkedListItem):
@@ -432,16 +427,16 @@ class EmptyOrmItem(LinkedListItem):
 
 
 class ORMQueueOrderBy:
+
     def __init__(self, *args, **kwargs):
         self.__sorted = None
+        super().__init__(*args, **kwargs)
         self.__order_by_args: Optional[tuple] = None
         self.__order_by_kwargs: Optional[dict] = None
 
     def order_by(self: Union["ORMItemQueue", "ORMQueueOrderBy"], model: Type[CustomModel],
                  by_column_name: Optional[str] = None, by_primary_key: bool = False,
-                 by_create_time: bool = False, decr: bool = False):
-        if not self:
-            return
+                 by_create_time: bool = True, decr: bool = False):
         if self.__sorted:
             return
         self.__is_valid(model, by_column_name, by_primary_key, by_create_time, decr)
@@ -474,7 +469,8 @@ class ORMQueueOrderBy:
 
     @staticmethod
     def __is_valid(model, by_column_name, by_primary_key, by_create_time, decr):
-        ORMItem.is_valid_model_instance(model)
+        if not isinstance(model, ModelController):
+            raise TypeError
         if by_column_name is not None:
             if type(by_column_name) is not str:
                 raise TypeError
@@ -486,7 +482,7 @@ class ORMQueueOrderBy:
             raise TypeError
         if type(decr) is not bool:
             raise TypeError
-        if not sum([bool(by_column_name), by_primary_key, by_create_time]) == 1:
+        if not sum([bool(by_column_name), by_primary_key, bool(by_create_time)]) == 1:
             raise ValueError("Нужно выбрать один из вариантов")
 
 
@@ -542,11 +538,6 @@ class ORMItemQueue(LinkedList, ORMQueueOrderBy):
         if left_node:
             self._remove_from_queue(left_node)
             return left_node
-
-    def order_by(self, model: Type[CustomModel],
-                 by_column_name: Optional[str] = None, by_primary_key: bool = False,
-                 by_create_time: bool = False, decr: bool = False):
-        super().order_by(model, by_column_name, by_primary_key, by_create_time, decr)
 
     def get_related_nodes(self, main_node: ORMItem) -> "ORMItemQueue":
         """ Получить все связанные (внешним ключом) с передаваемой нодой ноды.
