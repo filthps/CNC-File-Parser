@@ -53,7 +53,7 @@ class ORMAttributes:
     def is_valid_container(container):
         if container is None:
             TypeError("Необходимо указать ссылку на экземпляр контейнера")
-        if not isinstance(container, (ORMItemQueue, SpecialOrmContainer,)):
+        if not isinstance(container, (ORMItemQueue, SpecialOrmContainer, ResultORMCollection)):
             raise TypeError
 
 
@@ -168,7 +168,6 @@ class ORMItem(LinkedListItem, ModelTools):
             :arg _where: Опицонально dict
             Все остальные параметры являются парами 'поле-значение'
             """
-        super().__init__()
         self.is_valid_container(_container)
         self._container: ReferenceType[Union["ORMItemQueue", "SpecialOrmContainer"]] = ref(_container)
         self.__model: Union[Type[CustomModel], Type[ModelController]] = kw.pop("_model")
@@ -176,7 +175,6 @@ class ORMItem(LinkedListItem, ModelTools):
         self.__insert = kw.pop("_insert", False)
         self.__update = kw.pop("_update", False)
         self.__delete = kw.pop("_delete", False)
-        self.__from_select = kw.pop("_select", False)
         self.__is_ready = kw.pop("_ready", True if self.__delete else False)
         self.__where = kw.pop("_where", None)
         self._create_at = kw.pop("_create_at")
@@ -184,8 +182,7 @@ class ORMItem(LinkedListItem, ModelTools):
         # Подразумевая тем самым, что это попытка сделать транзакцию в базу
         if not kw:
             raise NodeEmptyData
-        self._value = {}  # Содержимое - пары ключ-значение: поле таблицы бд: значение
-        self._value.update(kw)
+        super().__init__(val=kw)
         self.__foreign_key_fields = self.__model().foreign_keys
         self.__relative_primary_key = False
 
@@ -212,10 +209,6 @@ class ORMItem(LinkedListItem, ModelTools):
             if self.is_autoincrement_primary_key(self.model) or default_value is not None:
                 self.__relative_primary_key = True
         check_current_primary_key_is_relative()
-
-    @property
-    def value(self):
-        return self._value.copy()
 
     @property
     def is_relative_primary_key(self):
@@ -444,8 +437,27 @@ class EmptyOrmItem(LinkedListItem):
         return 0
 
 
-class ResultORMItem:
-    pass
+class ResultORMItem(LinkedListItem, ORMAttributes):
+    def __init__(self, *a, model, values: dict, primary_key: Optional[dict] = None, **k):
+        super().__init__(val=values)
+        self._primary_key = primary_key
+        self._model = model
+        self.__is_valid()
+
+    @property
+    def model(self):
+        return self._model
+
+    def __is_valid(self):
+        if type(self._primary_key) is not dict:
+            raise TypeError
+        if not self._primary_key:
+            raise ValueError("Необходим первичный ключ")
+        if type(self.value) is not dict:
+            raise TypeError
+        if not self.value:
+            raise ValueError
+        self.is_valid_model_instance(self._model)
 
 
 class ORMQueueOrderBy:
@@ -814,6 +826,27 @@ class ORMItemQueue(LinkedList, ORMQueueOrderBy):
         del self[left_node.index]
 
 
+class ResultORMCollection:
+    """ Иммутабельная коллекция с набором кэшированного результата  """
+    def __init__(self, collection: Union["ORMItemQueue", "SpecialOrmContainer"]):
+        self.__is_valid(collection)
+        other_cls = copy.copy(ORMItemQueue)
+        other_cls.LinkedListItem = ResultORMItem
+        self._collection = other_cls()
+        [self._collection.append(**node.get_attributes()) for node in collection]
+
+    def __iter__(self):
+        return self._collection.__iter__()
+
+    def __getitem__(self, item):
+        return self._collection[item]
+
+    @staticmethod
+    def __is_valid(container):
+        if type(container).__class__ is not LinkedList:
+            raise TypeError("Принимается экземпляр коллекции, класс которой является производным от LinkedList")
+
+
 class SQLAlchemyQueryManager:
     MAX_RETRIES: Union[int, Literal["no-limit"]] = "no-limit"
 
@@ -983,8 +1016,8 @@ class SpecialOrmContainer(ORMItemQueue):
 
 
 class BaseResultIterable(ABC):
-    TEMP_HASH_CACHE_KEY: str = ...
     RESULT_CACHE_KEY: str = ...
+    TEMP_HASH_CACHE_KEY: str = ...
     get_nodes_from_database: Optional[callable] = None  # Функция, в которой происходит получение контейнера с нодами из бд
     get_local_nodes: Optional[callable] = None  # Функция, в которой происходит получение контейнера с нодами из кеша
     refresh = abstractmethod(lambda: None)
@@ -992,7 +1025,6 @@ class BaseResultIterable(ABC):
     __contains__ = abstractmethod(lambda: None)
     _items: ORMItemQueue = abstractproperty(lambda: None)  # и сеттер.
     _merge = abstractmethod(lambda: Iterable)  # Функция, которая делает репликацию нод из кеша поверх нод из бд
-    _set_previous_hash = abstractmethod(lambda: None)
     _pointer: Optional["Pointer"] = None
 
     def __init__(self, only_local=False, only_database=False):
@@ -1000,6 +1032,7 @@ class BaseResultIterable(ABC):
         self._only_queue = only_local
         self._only_db = only_database
         self.__merged_data = None
+        self.__has_changes = False
 
     def has_changes(self, hash_=None, strict_mode=True) -> bool:
         current_hash = self.previous_hash
@@ -1007,11 +1040,18 @@ class BaseResultIterable(ABC):
         new_hash = self.previous_hash
         if hash_:
             if hash_ in new_hash:
+                self.__has_changes = False
                 return False
             if strict_mode:
                 raise ValueError
+            self.__has_changes = True
             return True
-        return not current_hash == new_hash
+        self.__has_changes = not current_hash == new_hash
+        return self.__has_changes
+
+    @property
+    def previous_hash(self) -> list[int]:
+        return ORMHelper.cache.get(self.TEMP_HASH_CACHE_KEY, [])
 
     @property
     def pointer(self):
@@ -1023,20 +1063,28 @@ class BaseResultIterable(ABC):
         pointer.wrap_items = items
         self._pointer = pointer(self)
 
-    @property
-    def previous_hash(self) -> list[int]:
-        return ORMHelper.cache.get(self.TEMP_HASH_CACHE_KEY, [])
-
     def __iter__(self):
         self.__merged_data = self._merge()
-        self.__set_cache(self.__merged_data)
+        self._save_merged_collection_in_cache(self.__merged_data)
+        self._set_previous_hash(self.__merged_data)
         return iter(self.__merged_data)
 
     def __len__(self):
+
         return sum((1 for _ in self))
 
     def __bool__(self):
         return bool(self.__len__())
+
+    @classmethod
+    def _save_merged_collection_in_cache(cls, items: Iterable):
+        """ Сохранить выводимый в ui результат в кеш. В дальнейшем из него можно будет доставать первичные ключи """
+        ORMHelper.cache.set(cls.RESULT_CACHE_KEY, items, ORMHelper.CACHE_LIFETIME_HOURS)
+
+    @classmethod
+    def _set_previous_hash(cls, items):
+        values = [item.__hash__() for item in items]
+        ORMHelper.cache.set(cls.TEMP_HASH_CACHE_KEY, values, ORMHelper.JOIN_SELECT_DIFF_CACHE_MINUTES)
 
     @classmethod
     def _is_valid(cls, **kw):
@@ -1047,14 +1095,11 @@ class BaseResultIterable(ABC):
         if not sum(kw.values()) in (0, 1,):
             raise ValueError
 
-    @classmethod
-    def __set_cache(cls, items):
-        ORMHelper.cache.set(cls.RESULT_CACHE_KEY, items, ORMHelper.CACHE_LIFETIME_HOURS)
-
 
 class Result(BaseResultIterable):
     """ Экземпляр данного класса возвращается функцией ORMHelper.get_items() """
     RESULT_CACHE_KEY = "simple_result"
+    TEMP_HASH_CACHE_KEY = "simple_item_hash"
 
     def _merge(self):
         local_items: ORMItemQueue = self.get_local_nodes()
@@ -1663,16 +1708,7 @@ class JoinSelectResult(BaseResultIterable):
         if local_items:
             while local_items:
                 result.append(local_items.pop(0))
-        self._set_previous_hash(list([hash(group) for group in result]))
         return result
-
-    @classmethod
-    def _set_previous_hash(cls, values: list[int]):  # [ORMQueueInstance.__hash__(), ORMQueueInstance.__hash__(), ...]
-        if type(values) is not list:
-            raise TypeError
-        if not all(map(lambda b: type(b) is int, values)):
-            raise TypeError
-        ORMHelper.cache.set(cls.TEMP_HASH_CACHE_KEY, values, ORMHelper.JOIN_SELECT_DIFF_CACHE_MINUTES)
 
     @staticmethod
     def __get_merged_column_names(result: tuple[SpecialOrmContainer]) -> set[str]:
