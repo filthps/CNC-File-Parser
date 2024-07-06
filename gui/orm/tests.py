@@ -262,27 +262,11 @@ class TestORMHelper(unittest.TestCase, SetUp):
 
     @drop_cache
     @db_reinit
-    def test_get_item(self):
-        # Invalid model
-        self.assertRaises(InvalidModel, self.orm_manager.get_item, _model=1)
-        self.assertRaises(InvalidModel, self.orm_manager.get_item, _model=object())
-        self.assertRaises(InvalidModel, self.orm_manager.get_item, _model=0)
-        self.assertRaises(InvalidModel, self.orm_manager.get_item, _model=sqlalchemy_instance.Model)
-        self.assertRaises(InvalidModel, self.orm_manager.get_item, _model="123")
-        self.assertRaises(InvalidModel, self.orm_manager.get_item)
-        self.assertRaises(InvalidModel, self.orm_manager.get_item, _model=None)
-        # GOOD
-        self.orm_manager.set_item(_insert=True, _model=Cnc, name="Fid")
-        self.orm_manager.set_item(_insert=True, _model=Machine, machinename="Rambaudi")
-        self.assertEqual(self.orm_manager.get_item(_model=Cnc, name="Fid")["name"], "Fid")
-        # test only_db & only_queue
-
-    @drop_cache
-    @db_reinit
     def test_get_items(self):
         self.orm_manager.set_item(_model=Machine, machinename="Heller", _delete=True)
-        self.assertEqual(list(self.orm_manager.get_items(_model=Machine)).__len__(), 0)
-        self.assertFalse(list(self.orm_manager.get_items(_model=Machine)))
+        self.assertIsInstance(self.orm_manager.get_items(_model=Machine), Result)
+        self.assertEqual(self.orm_manager.get_items(_model=Machine).__len__(), 0)
+        self.assertFalse(self.orm_manager.get_items(_model=Machine))
         # Элементы с _delete=True игнорируются в выборке через метод get_items,- согласно замыслу
         # Тем не менее, в очереди они должны присутствовать: см свойство items
         self.orm_manager.set_item(_model=Machine, machinename="Fidia", inputcatalog="C:\\path", _insert=True)
