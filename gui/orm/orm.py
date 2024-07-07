@@ -80,7 +80,7 @@ class ModelTools(ORMAttributes):
     def get_primary_key_column_name(self, model: Type[CustomModel]):
         self.is_valid_model_instance(model)
         for column_name, data in model().column_names.items():
-            if data[column_name]["primary_key"]:
+            if data["primary_key"]:
                 return column_name
 
     @classmethod
@@ -196,7 +196,7 @@ class ORMItem(LinkedListItem, ModelTools):
         is_valid_dml_type()
         self._field_names_validation()
         self.__primary_key = self.__create_primary_key()
-        self._value.update(self.__primary_key)
+        self._val.update(self.__primary_key)
         _ = self.ready
 
         def check_current_primary_key_is_relative():
@@ -336,9 +336,7 @@ class ORMItem(LinkedListItem, ModelTools):
         return query
 
     def __len__(self):
-        if not hasattr(self, "_value"):
-            return 0
-        return len(self._value)
+        return len(self._val)
 
     def __eq__(self, other: "ORMItem"):
         if type(other) is not type(self):
@@ -390,7 +388,7 @@ class ORMItem(LinkedListItem, ModelTools):
         if any_:
             if from_polymorphizm:
                 return any_
-            raise NodeColumnError(any_)
+            raise NodeColumnError(any_, model_name=self.model.__name__)
 
     @property
     def __should_remove_primary_key(self) -> bool:
@@ -404,7 +402,7 @@ class ORMItem(LinkedListItem, ModelTools):
         name = self.get_primary_key_column_name(self.model)
         default_value = self.get_default_column_value_or_function(self.model, name)
         if default_value is not None:
-            return {name: default_value()}
+            return {name: default_value.arg(None)}
         try:
             value = self._select_primary_key_value_from_scalars(self, name)
         except KeyError:
@@ -771,7 +769,8 @@ class ORMItemQueue(LinkedList, ORMQueueOrderBy):
 
         def find_node_to_replace_by_unique_values() -> Optional[ORMItem]:
             def get_unique_column_names():
-                return (name for name, data in potential_new_item.model().column_names.items() if data["unique"])
+                return (name for name, data in potential_new_item.model().column_names.items()
+                        if data["unique"])
             unique_fields = get_unique_column_names()
             unique_values_in_new_node = collect_values(potential_new_item, *unique_fields)
             if not unique_values_in_new_node:
@@ -830,7 +829,7 @@ class ResultORMCollection:
     """ Иммутабельная коллекция с набором кэшированного результата  """
     def __init__(self, collection: Union["ORMItemQueue", "SpecialOrmContainer"]):
         self.__is_valid(collection)
-        other_cls = copy.copy(ORMItemQueue)
+        other_cls = object.__new__(collection.__class__)
         other_cls.LinkedListItem = ResultORMItem
         self._collection = other_cls()
         [self._collection.append(**node.get_attributes()) for node in collection]
@@ -1021,15 +1020,14 @@ class SpecialOrmContainer(ORMItemQueue):
         raise DoesNotExists
 
 
-class BaseResultIterable(ABC):
+class BaseResult(ABC):
     RESULT_CACHE_KEY: str = ...
     TEMP_HASH_CACHE_KEY: str = ...
     get_nodes_from_database: Optional[callable] = None  # Функция, в которой происходит получение контейнера с нодами из бд
     get_local_nodes: Optional[callable] = None  # Функция, в которой происходит получение контейнера с нодами из кеша
-    refresh = abstractmethod(lambda: None)
-    __getitem__ = abstractmethod(lambda: None)
-    __contains__ = abstractmethod(lambda: None)
     _merge = abstractmethod(lambda: Iterable)  # Функция, которая делает репликацию нод из кеша поверх нод из бд
+    _get_node_by_joined_primary_key_and_value = abstractmethod(lambda model_pk_val_str: ...)  # Вернуть ноду по
+    # входящей строке вида: 'имя_таблицы:primary_key:значение'
     _pointer: Optional["Pointer"] = None
 
     def __init__(self, only_local=False, only_database=False):
@@ -1041,8 +1039,8 @@ class BaseResultIterable(ABC):
 
     def has_changes(self, hash_=None, strict_mode=True) -> bool:
         current_hash = self.previous_hash
-        self.__iter__()
-        new_hash = self.previous_hash
+        new_hash = [item.__hash__() for item in self]
+        self._set_previous_hash(new_hash)
         if hash_:
             if hash_ in new_hash:
                 self.__has_changes = False
@@ -1073,25 +1071,33 @@ class BaseResultIterable(ABC):
         pointer.wrap_items = items
         self._pointer = pointer(self)
 
-    def get_item_by_hash(self, hash_: int):
-        if type(hash_) is not int:
-            raise TypeError
-        if hash_ not in map(lambda x: hash(x), self):
-            return
-        return dict(zip(map(lambda x: hash(x), self), self))[hash_]
-
     def __iter__(self):
         self.__merged_data = self._merge()
         self._save_merged_collection_in_cache(self.__merged_data)
-        self._set_previous_hash(self.__merged_data)
         return iter(self.__merged_data)
 
     def __len__(self):
-
         return sum((1 for _ in self))
 
     def __bool__(self):
         return bool(self.__len__())
+
+    def __contains__(self, item: Union[str, int]):
+        try:
+            _ = self[item]
+        except KeyError:
+            return False
+        return True
+
+    def __getitem__(self, item: Union[str, int]):
+        if type(item) is str:
+            node = self._get_node_by_joined_primary_key_and_value(item)
+            if node is None:
+                raise KeyError
+            return node
+        if type(item) is int:
+            return dict(zip([node_or_node_group.__hash__() for node_or_node_group in self], self))[item]
+        raise TypeError
 
     @classmethod
     def _save_merged_collection_in_cache(cls, items: Iterable):
@@ -1099,34 +1105,24 @@ class BaseResultIterable(ABC):
         ORMHelper.cache.set(cls.RESULT_CACHE_KEY, items, ORMHelper.CACHE_LIFETIME_HOURS)
 
     @classmethod
-    def _set_previous_hash(cls, items):
-        values = [item.__hash__() for item in items]
-        ORMHelper.cache.set(cls.TEMP_HASH_CACHE_KEY, values, ORMHelper.JOIN_SELECT_DIFF_CACHE_MINUTE)
+    def _set_previous_hash(cls, hash_: list[int]):
+        ORMHelper.cache.set(cls.TEMP_HASH_CACHE_KEY, hash_, ORMHelper.JOIN_SELECT_DIFF_CACHE_MINUTE)
 
     @classmethod
     def _is_valid(cls, **kw):
         if not callable(cls.get_nodes_from_database) or not callable(cls.get_local_nodes):
-            raise TypeError
+            raise AttributeError("Установите 2 функции в атрибуты 'get_nodes_from_database' и 'get_local_nodes', "
+                                 "которые возвращают коллекции с нодами из базы данных и из локального хранилища")
         if not all(map(lambda i: isinstance(i, bool), kw.values())):
             raise TypeError
         if not sum(kw.values()) in (0, 1,):
             raise ValueError
 
 
-class Result(BaseResultIterable):
+class Result(BaseResult):
     """ Экземпляр данного класса возвращается функцией ORMHelper.get_items() """
     RESULT_CACHE_KEY = "simple_result"
     TEMP_HASH_CACHE_KEY = "simple_item_hash"
-
-    def __contains__(self, item):
-        if type(item) is str:
-            return bool(self._get_node_by_joined_primary_key_and_value(item))
-        if type(item) is int:
-            return item in [node_or_node_group.__hash__() for node_or_node_group in self]
-        raise TypeError
-
-    def __getitem__(self, item):
-        ...  # todo
 
     def _merge(self):
         local_items: ORMItemQueue = self.get_local_nodes()
@@ -1586,7 +1582,6 @@ class Pointer:
     def __init__(self, result_item: Union[Result, "JoinSelectResult"] = None):
         self._result_item = result_item
         self._previous_hash = self._result_item.previous_hash
-        self._result_item = self._result_item
         self._is_valid()
         self._is_invalid = False
 
@@ -1600,38 +1595,30 @@ class Pointer:
         self._is_valid(strict=False)
         return not self._is_invalid
 
-    def has_changes(self, name: str = None) -> Union[bool, Exception]:
-        def update_previous_hash(hash_index=None):
-            """ Если has_changes запрашивался на конкретное имя, то после получения статуса нужно подменить
-             именно эту хеш-сумму на новую.
-             Если has_changes запрашивался на всё в целом, то заменяем всё _previous_hash полностью. """
-            new_hash = self._result_item.previous_hash
-            if hash_index is not None:
-                self._previous_hash[hash_index] = new_hash[hash_index]
-                return
-            self._previous_hash = new_hash
+    def has_changes(self, name: str) -> Union[bool, Exception]:
         if type(name) is not str:
             raise TypeError
         if not name:
             raise ValueError
         if name not in self.wrap_items:
-            raise ValueError
+            raise KeyError
         hash_names_map = {
             name: self._previous_hash[index] for index, name in enumerate(self.wrap_items)
         }
         hash_ = hash_names_map[name]
-        iter(self._result_item)
+        _ = self._result_item.has_changes(hash_=hash_)
         new_hash = self._result_item.previous_hash
         status = hash_ not in new_hash
         self._is_valid(strict=False)
-        if status:
-            if not self._is_invalid:
-                update_previous_hash(list(hash_names_map).index(name) if name else None)
-            else:
-                update_previous_hash()
         return status
 
     def replace_wrap_item(self, new_name, index=None, old_name=None):
+        """ Заменить один из элементов 'обёртке' на новый.
+        Найти старый элемент можно как по индексу,
+        так и по старому имени.
+        :param new_name: новый текст
+        :param index: число - индекс в обёртках
+        :param old_name: старое имя"""
         if not new_name or type(new_name) is not str:
             raise TypeError
         if index:
@@ -1683,7 +1670,7 @@ class Pointer:
                 raise TypeError
 
 
-class JoinSelectResult(BaseResultIterable):
+class JoinSelectResult(BaseResult):
     """
     Экземпляр этого класса возвращается функцией ORMHelper.join_select()
     1 экземпляр этого класса 1 результат вызова ORMHelper.join_select()

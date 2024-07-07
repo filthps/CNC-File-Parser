@@ -50,8 +50,9 @@ class NodeAttributeError(NodeError):
 
 
 class NodeColumnError(NodeError):
-    def __init__(self, field_name="", text="Ошибка названия столбца в ноде"):
-        super().__init__(f"Столбец {field_name} не найден в таблице" if field_name else text)
+    def __init__(self, field_name="", model_name="", text="Ошибка названия столбца в ноде"):
+        super().__init__(f"Столбец {field_name} не найден в таблице {model_name if model_name else ''}"
+                         if field_name else text)
 
 
 class NodeColumnValueError(NodeError):
