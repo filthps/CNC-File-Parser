@@ -106,12 +106,18 @@ class SetUp:
 
     def update_exists_items(self):
         queue = self.orm_manager.items
-        queue.enqueue(_update=True, _model=Cnc, cncid=2, name="Ramnewname", commentsymbol="&", _container=queue)
-        queue.enqueue(_update=True, _model=Machine, machineid=2, inputcatalog=r"C:\Fidia", _container=queue)
-        queue.enqueue(cncid=1, name="Test", _model=Cnc, _update=True, _container=queue)
-        queue.enqueue(numerationid=2, endat=4, _model=Numeration, _update=True, _container=queue)
-        queue.enqueue(_model=Comment, commentid=2, findstr="test_str_new", _update=True, _container=queue)
-        queue.enqueue(_model=Machine, machinename="testname", machineid=1, _insert=True, _container=queue)
+        queue.enqueue(_update=True, _model=Cnc, cncid=2, name="Ramnewname", commentsymbol="&", _container=queue,
+                      _create_at=datetime.datetime.now())
+        queue.enqueue(_update=True, _model=Machine, machineid=2, inputcatalog=r"C:\Fidia", _container=queue,
+                      _create_at=datetime.datetime.now())
+        queue.enqueue(cncid=1, name="Test", _model=Cnc, _update=True, _container=queue,
+                      _create_at=datetime.datetime.now())
+        queue.enqueue(numerationid=2, endat=4, _model=Numeration, _update=True, _container=queue,
+                      _create_at=datetime.datetime.now())
+        queue.enqueue(_model=Comment, commentid=2, findstr="test_str_new", _update=True, _container=queue,
+                      _create_at=datetime.datetime.now())
+        queue.enqueue(_model=Machine, machinename="testname", machineid=1, _insert=True, _container=queue,
+                      _create_at=datetime.datetime.now())
 
 
 class TestORMHelper(unittest.TestCase, SetUp):
