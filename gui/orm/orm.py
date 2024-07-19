@@ -101,7 +101,16 @@ class ModelTools(ORMAttributes):
             value = node.value[field_name]
         except KeyError:
             raise NodePrimaryKeyError("Должно быть значение для поля первичного ключа")
+            try:
+                self.select_primary_key_from_results()
+            except ...
         return value
+
+    @staticmethod
+    def select_primary_key_from_results(node: "ORMItem"):
+        """ Найти значение первичного ключа в коллекции результатов """
+        result: ResultORMCollection = ORMHelper.cache.get("frozen_ORMItems", [])
+
 
     @staticmethod
     def _get_highest_autoincrement_pk_from_local(node: "ORMItem") -> int:
@@ -293,8 +302,9 @@ class ORMItem(LinkedListItem, ModelTools):
         if with_update is not None and type(with_update) is not dict:
             raise TypeError
         if new_container:
-            if not isinstance(new_container, type(self.container)):
-                raise TypeError
+            if self.container is not None:
+                if not isinstance(new_container, type(self.container)):
+                    raise TypeError
         result = {"_create_at": self.created_at}
         result.update(self.value)
         if self.__update or self.__delete:
@@ -302,7 +312,8 @@ class ORMItem(LinkedListItem, ModelTools):
                 result.update({"_where": self.where})
         result.update({"_model": self.__model, "_insert": False,
                        "_update": False, "_ready": self.__is_ready,
-                       "_delete": False, "_count_retries": self.retries, "_container": self.container})
+                       "_delete": False, "_count_retries": self.retries})
+        result.update({"_container": self.container}) if self.container is not None else None
         result.update({self.type: True})
         result.update(with_update) if with_update else None
         if new_container is not None:
@@ -1033,7 +1044,6 @@ class BaseResult(ABC):
     _get_node_by_joined_primary_key_and_value = abstractmethod(lambda model_pk_val_str,
                                                                sep="...": ...)  # Вернуть ноду по
     # входящей строке вида: 'имя_таблицы:primary_key:значение'
-    _pointer: Optional["Pointer"] = None
 
     def __init__(self, only_local=False, only_database=False):
         self._is_valid(only_local=only_local, only_database=only_database)
@@ -1041,6 +1051,7 @@ class BaseResult(ABC):
         self._only_db = only_database
         self.__merged_data = None
         self.__has_changes = False
+        self._pointer: Optional["Pointer"] = None
 
     def has_changes(self, hash_=None, strict_mode=True) -> bool:
         current_hash = self.previous_hash
