@@ -71,6 +71,14 @@ class ModelTools(ORMAttributes):
             if data["primary_key"]:
                 return data["type"]
 
+    @staticmethod
+    def get_unique_columns(node) -> Iterator[str]:
+        ORMAttributes.is_valid_node(node)
+        model_data = node.model().column_names
+        for column_name, value in node.value.items():
+            if model_data[column_name]["unique"]:
+                yield column_name
+
     def get_default_column_value_or_function(self, model: Type[CustomModel], column_name: str) -> Optional[Any]:
         self.is_valid_model_instance(model)
         if type(column_name) is not str:
@@ -97,20 +105,18 @@ class ModelTools(ORMAttributes):
     def _select_primary_key_value_from_scalars(cls, node: "ORMItem", field_name: str):
         """ Выбрать значние из значений ноды,
         если primary_key=True установлено для строки или другого поля со скалярными значениями"""
-        try:
-            value = node.value[field_name]
-        except KeyError:
-            raise NodePrimaryKeyError("Должно быть значение для поля первичного ключа")
-            try:
-                self.select_primary_key_from_results()
-            except ...
-        return value
+        return node.value[field_name]
 
-    @staticmethod
-    def select_primary_key_from_results(node: "ORMItem"):
-        """ Найти значение первичного ключа в коллекции результатов """
+    @classmethod
+    def _select_primary_key_from_results(cls, node_from_main_queue: "ORMItem") -> dict:
+        """ Найти значение первичного ключа в коллекции результатов
+            Если не удаётся найти ноду по первичному ключу и значению,
+            то искать её по совпадающим значениям уникальных полей
+        """
         result: ResultORMCollection = ORMHelper.cache.get("frozen_ORMItems", [])
-
+        node = result.get_node(node_from_main_queue.model, **node_from_main_queue.get_primary_key_and_value())
+        if node is None:
+            pass
 
     @staticmethod
     def _get_highest_autoincrement_pk_from_local(node: "ORMItem") -> int:
@@ -121,18 +127,19 @@ class ModelTools(ORMAttributes):
             return 0
         return val
 
-    @staticmethod
-    def _check_unique_values(node) -> bool:
-        model_data = node.model().column_names
-        for column_name, value in node.value.items():
-            if model_data[column_name]["unique"]:
-                if node.container is None:
-                    return True  # Ожидается, что ленивая ссылка умрёт, если в контейнере оставался 1 элемент
-                for n in node.container:
-                    if n.model.__name__ == node.model.__name__:
-                        if column_name in n.value:
-                            if n.value[column_name] == value:
-                                return False
+    @classmethod
+    def _check_unique_values(cls, node) -> bool:
+        """ Валидация на предмет нарушения уникальности в полях разных нод """
+        unique_fields = cls.get_unique_columns(node)
+        for unique_field in unique_fields:
+            value = node.value[unique_field]
+            if not node.container:
+                return True  # Ожидается, что ленивая ссылка умрёт, если в контейнере оставался 1 элемент
+            for n in node.container:
+                if n.model.__name__ == node.model.__name__:
+                    if unique_field in n.value:
+                        if n.value[unique_field] == value:
+                            return False
         return True
 
     @staticmethod
@@ -164,7 +171,63 @@ class ModelTools(ORMAttributes):
         return True
 
 
-class ORMItem(LinkedListItem, ModelTools):
+class QueueSearchTools:
+    """ Инструменты для поиска нод. Поиск идентичных [переданной] нод в указанном контейнере. """
+    @classmethod
+    def get_node_by_any_fields(cls, queue, right_node) -> Optional["SpecialOrmItem", "ORMItem", "ResultORMItem"]:
+        """ Вернуть ноду, у которой максимальное кол-во совпадений [по любым полям] """
+        cls.__is_valid(queue, right_node)
+        values = []
+        for left_node in queue:
+            if not left_node.model.__name__ == right_node.model.__name__:
+                values.append(None)
+                continue
+            values.append(cls.__collect_values(left_node, right_node))
+        if not any(values):
+            return
+        index = cls.__get_max_matches(values)
+        return queue[index]
+
+    @classmethod
+    def get_node_by_unique_fields(cls, queue, right_node) -> Optional["SpecialOrmItem", "ORMItem", "ResultORMItem"]:
+        """ Вернуть ноду, у которой максимальное кол-во совпадений по полям с unique=True """
+        cls.__is_valid(queue, right_node)
+        values = []
+        for left_node in queue:
+            if not left_node.model.__name__ == right_node.model.__name__:
+                values.append(None)
+                continue
+            values.append(cls.__collect_values(left_node, right_node, names=ModelTools.get_unique_columns(left_node)))
+        if not any(values):
+            return
+        index = cls.__get_max_matches(values)
+        return queue[index]
+
+    @staticmethod
+    def __collect_values(left_node, right_node, names=None) -> Optional[dict]:
+        if not left_node.model.__name__ == right_node.model.__name__:
+            return
+        data = {}
+        keys = frozenset(left_node.value).intersection(frozenset(right_node.value)) \
+            if names is None else names
+        for key in keys:
+            if left_node.value[key] == right_node.value[key]:
+                data.update({key: left_node.value[key]})
+        return data
+
+    @staticmethod
+    def __get_max_matches(data: list[dict]) -> int:  # Индекс
+        counter = dict(map(lambda x: (x[1], x[0],), enumerate(map(lambda x: len(x), data))))
+        max_value = max([len(k) for k in data])
+        return counter[max_value]
+
+    @staticmethod
+    def __is_valid(queue, node):
+        ORMAttributes.is_valid_model_instance(node)
+        ORMAttributes.is_valid_container(queue)
+
+
+class ORMItem(LinkedListItem, ModelTools, QueueSearchTools):
     """ Иммутабельный класс ноды для ORMItemQueue. """
     def __init__(self, _container=None, **kw):
         """
@@ -253,7 +316,7 @@ class ORMItem(LinkedListItem, ModelTools):
                 table, column = string.split(".")
                 yield {"table_name": table, "column_name": column}
         return parse_foreign_key_table_name_and_column_name()
-    
+
     def get(self, k, default_value=None):
         try:
             value = self.__getitem__(k)
@@ -410,13 +473,14 @@ class ORMItem(LinkedListItem, ModelTools):
     def __create_primary_key(self) -> dict[str, Union[str, int]]:
         """Повторный вызов недопустим. Вызывать в первую очередь! до добаления ноды в связанный список"""
         name = self.get_primary_key_column_name(self.model)
-        default_value = self.get_default_column_value_or_function(self.model, name)
-        if default_value is not None:
-            return {name: default_value.arg(None)}
         try:
             value = self._select_primary_key_value_from_scalars(self, name)
         except KeyError:
-            raise NodePrimaryKeyError("")
+
+            default_value = self.get_default_column_value_or_function(self.model, name)
+            if default_value is not None:
+                return {name: default_value.arg(None)}
+            result_node = self.get_node_by_unique_fields()
         return {name: value}
 
 
