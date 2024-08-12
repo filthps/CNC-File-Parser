@@ -145,7 +145,6 @@ class OperationDelegation(db.Model, ModelController, GlobalFields):
     numerationid = Column(Integer, ForeignKey("num.numerationid"), nullable=True, default=None)
     isactive = Column(Boolean, default=True, nullable=False)
     operationdescription = Column(String(300), default="", nullable=False)
-    machines = relationship("Machine", secondary=TaskDelegation.__table__)
 
 
 class Condition(db.Model, ModelController, GlobalFields):

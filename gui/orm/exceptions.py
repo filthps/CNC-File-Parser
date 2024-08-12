@@ -50,12 +50,15 @@ class NodeAttributeError(NodeError):
 
 
 class NodeColumnError(NodeError):
-    def __init__(self, field_name="", model_name="", text="Ошибка названия столбца в ноде"):
+    def __init__(self, text="", field_name="", model_name=""):
+        if text:
+            super().__init__(text)
+            return
         super().__init__(f"Столбец {field_name} не найден в таблице {model_name if model_name else ''}"
                          if field_name else text)
 
 
-class NodeColumnValueError(NodeError):
+class NodeColumnValueError(NodeColumnError):
     def __init__(self, value=None, text="Ошибка значения столбца в ноде"):
         super().__init__(f"Значение {value} не является корректным" if value else text)
 
@@ -83,3 +86,8 @@ class JoinedResultError(ORMException):
 class JoinedItemPointerError(JoinedResultError):
     def __init__(self, message="Ошибка указателя Pointer"):
         super().__init__(message)
+
+
+class WrapperError(JoinedItemPointerError):
+    def __init__(self, msg="В качестве элементов-указателей на содержимое принимается список строк"):
+        super().__init__(msg)
