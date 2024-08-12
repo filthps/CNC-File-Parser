@@ -8,7 +8,7 @@ from typing import Optional, Iterable, Union, Any, Iterator
 class LinkedListItem:
 
     def __init__(self, val=None):
-        self.val = val
+        self._val = val
         self._index = 0
         self.__next = None
         self.__prev = None
@@ -53,6 +53,10 @@ class LinkedListItem:
         else:
             item.index = self._index - 1
 
+    @property
+    def value(self):
+        return copy.copy(self._val)
+
     @classmethod
     def _is_valid_item(cls, item):
         if item is None:
@@ -62,19 +66,20 @@ class LinkedListItem:
 
     def __eq__(self, other: "LinkedListItem"):
         self._is_valid_item(other)
-        return self.val == other.val
+        return self._val == other.value
 
     def __repr__(self):
-        return f"{type(self)}({self.val})"
+        return f"{type(self)}({self._val})"
 
     def __str__(self):
-        return str(self.val)
+        return str(self._val)
 
 
 class LinkedList:
     LinkedListItem = LinkedListItem
 
     def __init__(self, items: Optional[Iterable[Any]] = None):
+        super().__init__(items)
         self._head: Optional[LinkedListItem] = None
         self._tail: Optional[LinkedListItem] = None
         if items is not None:
@@ -88,11 +93,11 @@ class LinkedList:
     def tail(self):
         return self._tail
 
-    def append(self, **kwargs):
+    def append(self, *args, **kwargs):
         """
         Добавить ноду в нонец
         """
-        new_element = self.LinkedListItem(**kwargs)
+        new_element = self.LinkedListItem(*args, **kwargs)
         if self:
             last_elem = self._tail
             self.__set_next(last_elem, new_element)

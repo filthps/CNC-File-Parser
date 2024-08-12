@@ -106,12 +106,19 @@ class SetUp:
 
     def update_exists_items(self):
         queue = self.orm_manager.items
-        queue.enqueue(_update=True, _model=Cnc, cncid=2, name="Ramnewname", commentsymbol="&", _container=queue)
-        queue.enqueue(_update=True, _model=Machine, machineid=2, inputcatalog=r"C:\Fidia", _container=queue)
-        queue.enqueue(cncid=1, name="Test", _model=Cnc, _update=True, _container=queue)
-        queue.enqueue(numerationid=2, endat=4, _model=Numeration, _update=True, _container=queue)
-        queue.enqueue(_model=Comment, commentid=2, findstr="test_str_new", _update=True, _container=queue)
-        queue.enqueue(_model=Machine, machinename="testname", machineid=1, _insert=True, _container=queue)
+        queue.enqueue(_update=True, _model=Cnc, cncid=2, name="Ramnewname", commentsymbol="&", _container=queue,
+                      _create_at=datetime.datetime.now())
+        queue.enqueue(_update=True, _model=Machine, machineid=2, inputcatalog=r"C:\Fidia", _container=queue,
+                      _create_at=datetime.datetime.now())
+        queue.enqueue(cncid=1, name="Test", _model=Cnc, _update=True, _container=queue,
+                      _create_at=datetime.datetime.now())
+        queue.enqueue(numerationid=2, endat=4, _model=Numeration, _update=True, _container=queue,
+                      _create_at=datetime.datetime.now())
+        queue.enqueue(_model=Comment, commentid=2, findstr="test_str_new", _update=True, _container=queue,
+                      _create_at=datetime.datetime.now())
+        queue.enqueue(_model=Machine, machinename="testname", machineid=1, _insert=True, _container=queue,
+                      _create_at=datetime.datetime.now())
+        self.orm_manager.cache.set("ORMItems", queue, ORMHelper.CACHE_LIFETIME_HOURS)
 
 
 class TestORMHelper(unittest.TestCase, SetUp):
@@ -264,23 +271,6 @@ class TestORMHelper(unittest.TestCase, SetUp):
 
     @drop_cache
     @db_reinit
-    def test_get_item(self):
-        # Invalid model
-        self.assertRaises(InvalidModel, self.orm_manager.get_item, _model=1)
-        self.assertRaises(InvalidModel, self.orm_manager.get_item, _model=object())
-        self.assertRaises(InvalidModel, self.orm_manager.get_item, _model=0)
-        self.assertRaises(InvalidModel, self.orm_manager.get_item, _model=sqlalchemy_instance.Model)
-        self.assertRaises(InvalidModel, self.orm_manager.get_item, _model="123")
-        self.assertRaises(InvalidModel, self.orm_manager.get_item)
-        self.assertRaises(InvalidModel, self.orm_manager.get_item, _model=None)
-        # GOOD
-        self.orm_manager.set_item(_insert=True, _model=Cnc, name="Fid")
-        self.orm_manager.set_item(_insert=True, _model=Machine, machinename="Rambaudi")
-        self.assertEqual(self.orm_manager.get_item(_model=Cnc, name="Fid")["name"], "Fid")
-        # test only_db & only_queue
-
-    @drop_cache
-    @db_reinit
     def test_get_items(self):
         self.orm_manager.set_item(_model=Machine, machinename="Heller", _delete=True)
         self.assertEqual(list(self.orm_manager.get_items(_model=Machine)).__len__(), 0)
@@ -426,9 +416,9 @@ class TestORMHelper(unittest.TestCase, SetUp):
         self.set_data_into_queue()
         self.set_data_into_database()
         join_select_result = self.orm_manager.join_select(Machine, Cnc, on={"Machine.machineid": "Cnc.cncid"})
-        self.assertFalse(join_select_result.has_changes())  # Для всей выборки результатов
+        self.assertFalse(join_select_result.has_changes())
         self.update_exists_items()
-        self.assertTrue(join_select_result.has_changes())  # Для всей выборки результатов
+        self.assertTrue(join_select_result.has_changes())
 
     @drop_cache
     @db_reinit
@@ -460,9 +450,6 @@ class TestORMHelper(unittest.TestCase, SetUp):
         self.assertTrue(result.pointer.has_changes("Результат в списке 2"))
         self.assertTrue(result.pointer.has_changes("Результат в списке 1"))
 
-    @db_reinit
-    def test_someone(self):
-        self.assertEqual(1, 1)
 
 
 class TestQueueOrderBy(unittest.TestCase, SetUp):

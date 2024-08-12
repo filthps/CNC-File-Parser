@@ -1,12 +1,7 @@
-"""
-Назначить каждому классу модели атрибут __db_queue_primary_field_name__, который необходим для класса tools.ORMHelper
-"""
 import os
-import sys
 import datetime
 import itertools
 from uuid import uuid4
-from abc import ABC, abstractmethod
 from dotenv import load_dotenv
 from sqlalchemy import String, Integer, Column, ForeignKey, Boolean, SmallInteger, Text, CheckConstraint, DateTime
 from sqlalchemy.orm import relationship, InstrumentedAttribute
@@ -14,8 +9,8 @@ from flask_sqlalchemy import SQLAlchemy as FlaskSQLAlchemy
 from flask import Flask
 
 
-load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
-RESERVED_WORDS = ("__insert", "__update", "__delete", "__ready", "__model", "__primary_key__", "column_names")  # Используются в классе ORMHelper
+load_dotenv(os.path.join(os.path.dirname(__file__), "database.env"))
+RESERVED_WORDS = ("__insert", "__update", "__delete", "__ready", "__model", "column_names")  # Используются в классе ORMHelper
 DATABASE_PATH = os.environ.get("DATABASE_PATH")
 
 
@@ -30,6 +25,9 @@ db = FlaskSQLAlchemy(app)
 
 
 class ModelController:
+    __table__ = ...
+    column_names = ...
+
     def __new__(cls, **k):
         cls.column_names = {}  # Если база данных инициализирована вручную, средствами sql,
         # то заполнить даный словарь вручную
@@ -37,7 +35,7 @@ class ModelController:
         def check_class_attributes():
             """ Предотвратить использование заерезервированных в классе ORMHelper слов """
             for special_word in RESERVED_WORDS:
-                if hasattr(cls, f"_{cls.__name__}{special_word}"):
+                if hasattr(cls, f"__{cls.__name__}{special_word}"):
                     raise AttributeError(
                         f"Не удалось инциализировать класс-модель {cls.__name__}. "
                         f"Атрибут {special_word} использовать нельзя, тк он зарезервирован."
@@ -51,7 +49,7 @@ class ModelController:
                     column_names.update({value.expression.name: {"type": value.expression.type.python_type,
                                                                  "nullable": value.expression.nullable,
                                                                  "primary_key": value.expression.primary_key,
-                                                                 "autoincrement": value.expression.autoincrement,
+                                                                 "autoincrement": True if not value.expression.autoincrement == "auto" else False,
                                                                  "unique": value.expression.unique,
                                                                  "default": value.expression.default}})  # todo: Доработать остальные аналоги default, согласно документации https://docs.sqlalchemy.org/en/20/core/defaults.html
                     if hasattr(value, "length"):
@@ -79,7 +77,7 @@ OPERATION_TYPES = (
 
 
 #  class CustomModel(db.Model, ModelController):
-class CustomModel:
+class CustomModel(ModelController):
     """
     Абстрактный класс для аннотации типов.
     класс модели SQLAlchemy для использования в классе ORMHelper модуля tools!
@@ -147,7 +145,6 @@ class OperationDelegation(db.Model, ModelController, GlobalFields):
     numerationid = Column(Integer, ForeignKey("num.numerationid"), nullable=True, default=None)
     isactive = Column(Boolean, default=True, nullable=False)
     operationdescription = Column(String(300), default="", nullable=False)
-    machines = relationship("Machine", secondary=TaskDelegation.__table__)
 
 
 class Condition(db.Model, ModelController, GlobalFields):

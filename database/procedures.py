@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session, create_session
 from database.models import *
 
 
-load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+load_dotenv(os.path.join(os.path.dirname(__file__), "database.env"))
 DB_PATH = os.environ.get("DATABASE_PATH")
 
 
