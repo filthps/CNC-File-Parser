@@ -13,13 +13,13 @@ class TaskConnection(QObject):
 
 
 class Task(QRunnable):
-
     def __init__(self, func: Callable, *args, **kwargs):
         super().__init__()
         self.connection = TaskConnection()
         self.func = func
         self.args = args
         self.kwargs = kwargs
+        self.setAutoDelete(True)
 
     def run(self):
         result: Any = self.func(*self.args, **self.kwargs)
@@ -37,8 +37,8 @@ class Task(QRunnable):
 
 class QThreadInstanceDecorator:
     threadpool = QThreadPool()
-    threadpool.setMaxThreadCount(32)
-    threadpool.setExpiryTimeout(5000)
+    threadpool.setMaxThreadCount(256)
+    threadpool.setExpiryTimeout(100)
 
     def __init__(self, result_callback: Optional[Callable] = None, in_new_qthread: bool = True):
         if result_callback is not None:
@@ -73,7 +73,8 @@ class QThreadInstanceDecorator:
             result = call_f(*a, **k)
             if result is None:
                 if self.end_f:
-                    return self.end_f()
+                    self.end_f()
+                    return
             if type(result) is tuple:
                 self.end_f(*result)
                 return
