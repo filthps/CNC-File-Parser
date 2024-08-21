@@ -79,7 +79,6 @@ class LinkedList:
     LinkedListItem = LinkedListItem
 
     def __init__(self, items: Optional[Iterable[Any]] = None):
-        super().__init__(items)
         self._head: Optional[LinkedListItem] = None
         self._tail: Optional[LinkedListItem] = None
         if items is not None:
