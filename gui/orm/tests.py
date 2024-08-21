@@ -83,42 +83,24 @@ class SetUp:
         ))
         self.orm_manager.database.add(OperationDelegation(commentid=self.orm_manager.database.scalar(select(Comment)).commentid))
         self.orm_manager.database.commit()
+        time.sleep(1)
 
     def set_data_into_queue(self):
-        items = ORMItemQueue()
-        items.enqueue(_model=Numeration, numerationid=2, endat=269, _insert=True,
-                      _create_at=datetime.datetime.now(), _container=items)
-        items.enqueue(_insert=True, _model=OperationDelegation, numerationid=2,
-                      _container=items, _create_at=datetime.datetime.now(),
-                      operationdescription="Нумерация кадров")
-        time.sleep(4)
-        items.enqueue(_model=Comment, findstr="test_string_set_from_queue", ifcontains=True,
-                      _insert=True, commentid=2, _create_at=datetime.datetime.now(), _container=items)
-        items.enqueue(_model=OperationDelegation, commentid=2, _container=items,
-                      _insert=True, _create_at=datetime.datetime.now(),
-                      operationdescription="Комментарий")
-        items.enqueue(_model=Cnc, _insert=True, cncid=2, name="Ram", commentsymbol="#",
-                      _create_at=datetime.datetime.now(), _container=items)
-        items.enqueue(_model=Machine, machineid=2, cncid=2, machinename="Fidia", inputcatalog=r"D:\Heller",
-                      outputcatalog=r"C:\Test", _container=items,
-                      _create_at=datetime.datetime.now(), _insert=True)
-        self.orm_manager.cache.set("ORMItems", items, ORMHelper.CACHE_LIFETIME_HOURS)
+        self.orm_manager.set_item(_model=Numeration, numerationid=2, endat=269, _insert=True)
+        self.orm_manager.set_item(_insert=True, _model=OperationDelegation, numerationid=2, operationdescription="Нумерация кадров")
+        self.orm_manager.set_item(_model=Comment, findstr="test_string_set_from_queue", ifcontains=True, _insert=True, commentid=2)
+        self.orm_manager.set_item(_model=OperationDelegation, commentid=2, _insert=True,
+                                  operationdescription="Комментарий")
+        self.orm_manager.set_item(_model=Cnc, _insert=True, cncid=2, name="Ram", commentsymbol="#")
+        self.orm_manager.set_item(_model=Machine, machineid=2, cncid=2, machinename="Fidia", inputcatalog=r"D:\Heller",
+                                  outputcatalog=r"C:\Test", _insert=True)
 
     def update_exists_items(self):
-        queue = self.orm_manager.items
-        queue.enqueue(_update=True, _model=Cnc, cncid=2, name="Ramnewname", commentsymbol="&", _container=queue,
-                      _create_at=datetime.datetime.now())
-        queue.enqueue(_update=True, _model=Machine, machineid=2, inputcatalog=r"C:\Fidia", _container=queue,
-                      _create_at=datetime.datetime.now())
-        queue.enqueue(cncid=1, name="Test", _model=Cnc, _update=True, _container=queue,
-                      _create_at=datetime.datetime.now())
-        queue.enqueue(numerationid=2, endat=4, _model=Numeration, _update=True, _container=queue,
-                      _create_at=datetime.datetime.now())
-        queue.enqueue(_model=Comment, commentid=2, findstr="test_str_new", _update=True, _container=queue,
-                      _create_at=datetime.datetime.now())
-        queue.enqueue(_model=Machine, machinename="testname", machineid=1, _insert=True, _container=queue,
-                      _create_at=datetime.datetime.now())
-        self.orm_manager.cache.set("ORMItems", queue, ORMHelper.CACHE_LIFETIME_HOURS)
+        self.orm_manager.set_item(cncid=1, name="name", _model=Cnc, _update=True)
+        self.orm_manager.set_item(_update=True, _model=Machine, machineid=2, inputcatalog=r"C:\F")
+        self.orm_manager.set_item(numerationid=2, endat=4, _model=Numeration, _update=True)
+        self.orm_manager.set_item(_model=Comment, commentid=2, findstr="test_str_new", _update=True)
+        self.orm_manager.set_item(_model=Machine, machinename="testname", machineid=1, _insert=True)
 
 
 class TestORMHelper(unittest.TestCase, SetUp):
@@ -449,7 +431,6 @@ class TestORMHelper(unittest.TestCase, SetUp):
         #
         self.assertTrue(result.pointer.has_changes("Результат в списке 2"))
         self.assertTrue(result.pointer.has_changes("Результат в списке 1"))
-
 
 
 class TestQueueOrderBy(unittest.TestCase, SetUp):
