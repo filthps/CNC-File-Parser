@@ -1,6 +1,7 @@
 import sys
 import copy
 import threading
+import string
 import warnings
 import datetime
 import itertools
@@ -895,49 +896,123 @@ class ORMItemQueue(LinkedList, QueueSearchTools):
         del self[left_node.index]
 
 
-class Sort:
-    def _string_sort(self):
-        import string
-        string.ascii_letters
+class LettersSort:
+    """ Сортировка нод по ключевому полю.
+     Простейшая сортировка при помощи встроенной функции sorted. """
+    def __init__(self, nodes, field_name, decr=True):
+        self._input_nodes = nodes
+        self._from_top_to_down = decr
+        self._field = field_name
+        if not isinstance(nodes, ResultORMCollection):
+            raise TypeError
+        if type(self._from_top_to_down) is not bool:
+            raise TypeError
+        if not isinstance(self._field, str):
+            raise TypeError
+        if not self._field:
+            raise ValueError("Данная строка не может быть пустой")
+        self._nodes_in_sort = None  # Ноды, которые принимают участие в сортировке
+        self._other_items = None  # Ноды, которые не участвуют в сортировке (доб в конец)
+
+    def sort_by_alphabet(self):
+        """ Инициализировать словарь,
+        в котором ключами выступит первая буква из значения нашего ключевого слова, а значениями - очередь с нодой или нодами,
+        содержащими данное поле и значение"""
+        def create_mapping():
+            """  Заполнить словарь ключами """
+            keys = map(lambda x: (x.upper(), x,), string.ascii_lowercase)
+            return {key: type(self._input_nodes)() for key in keys}
+
+        def fill_mapping(data, nodes, target_column_name):
+            for item in nodes:
+                p = item.value[target_column_name][0]
+                data[(p.upper(), p,)].append(**item.get_attributes())
+        data_to_fill = create_mapping()
+        self._select_nodes_to_sort()
+        self._slice_other_nodes()
+        fill_mapping(data_to_fill, self._nodes_in_sort, self._field)
+        output = self._merge_mapping(data_to_fill)
+        output += self._other_items
+        return output
+
+    def sort_by_string_length(self):
+        def create_mapping(nodes):
+            """ Создать словарь, где ключи - длина """
+            return {len(node.value[self._field]): self._input_nodes.__class__() for node in nodes}
+
+        self._slice_other_nodes()
+        self._select_nodes_to_sort()
+        mapping = create_mapping(self._nodes_in_sort)
+        mapping = dict(sorted(mapping.items(), key=lambda x: x[0]))
+        return self._merge_mapping(mapping) + self._other_items
+
+    def _select_nodes_to_sort(self):
+        """ Вернуть ноды, которые будут участвовать в сортировке """
+        self._nodes_in_sort = self._input_nodes.__class__()
+        for node in self._input_nodes:
+            if self._field in node.value:
+                self._nodes_in_sort.append(**node.get_attributes())
+
+    def _slice_other_nodes(self):
+        """ Вырезать из коллекции ноды, ключевые поля у которых не заполнены.
+        Не изменять исходную коллекцию. Присвоить в self._other_items.
+        В дальнейшем их планируется добавить в конец сортированной коллекции """
+        self._other_items = self._input_nodes.__class__()
+        for node in self._input_nodes:
+            if self._field not in node.value:
+                self._other_items.append(**node.get_attributes())
+
+    def _merge_mapping(self, data):
+        """ Словарь, который отсортирован, - 'сжать' его значения воедино, сохраняя последовательность """
+        output = type(self._input_nodes)()
+        for val in data.values():
+            output += val
+        return output
 
 
-class BaseOrderBy(ABC):
-    """
-    Инициализация
-    1) __init__()
-    2) __set_collection_to_sort(...)
-    3) order_by(...)
-    Использование
-    1) __set_collection_to_sort(...)
-    2) _is_ordered
-    3) _get_sorted_items
-    """
-    order_by = abstractmethod(lambda *a, **k: ...)
-    __add_to_output_collection = abstractmethod(lambda: ...)
-    __set_collection_to_sort = abstractmethod(lambda: ...)
-    
-    def __init__(self):
-        self.__collection: Optional[Union[ResultORMCollection, list[ResultORMCollection]]] = None
-        self.__is_ordered = False
-        self.__order_by_args: Optional[tuple] = None
-        self.__order_by_kwargs: Optional[dict] = None
+class AbstractOrderBy(ABC):
+    def __init__(self, _input_collection: "ResultORMCollection"):
+        self._input_collection = _input_collection
+        self._sorted_collection = None
+        self._is_sort = False
+        self.__is_valid(self._input_collection)
+
+    @abstractmethod
+    def order_by(self, model: Type[CustomModel],
+                 by_column_name: Optional[str] = None, by_primary_key: bool = False,
+                 by_create_time: bool = False, decr: bool = False) -> None:
+        """
+        :param model: Класс таблицы из models.py
+        :param by_column_name: Наименование столбца таблицы, по которому будет происходить сортировка
+        :param by_primary_key: Сортировка по primary_key
+        :param by_create_time: Сортировка по времени создания
+        :param decr: Возрастание/убывание
+        :return: None
+        """
+        self.__is_valid_order_by_params(model, by_column_name=by_column_name, by_primary_key=by_primary_key,
+                                        by_create_time=by_create_time, decr=decr)
+        self._is_sort = True
+        self._sorted_collection = ...
 
     @property
-    def _is_ordered(self):
-        return self.__is_ordered
+    def sorted(self):
+        """ Вернуть результат сортировки """
+        return self._sorted_collection
 
-    @property
-    def _get_sorted_items(self):
-        return self.order_by(*self.__order_by_args, **self.__order_by_kwargs)
+    def _add_to_output_collection(self, nodes):
+        """ Упаковать выходной результат в экземпляр соответствующего класса коллекции """
+        inner = self._input_collection.container_cls()
+        [inner.append(n) for n in nodes]
+        return ResultORMCollection(inner)
 
-    @staticmethod
-    def _is_valid_order_by_params(model, by_column_name, by_primary_key, by_create_time, decr):
+    def __is_valid_order_by_params(self, model, by_column_name, by_primary_key, by_create_time, decr):
         ORMItem.is_valid_model_instance(model)
         if by_column_name is not None:
             if type(by_column_name) is not str:
                 raise TypeError
             if not by_column_name:
                 raise ValueError
+            self.__check_exists_column_name(model, by_column_name)
         if type(by_primary_key) is not bool:
             raise TypeError
         if type(by_create_time) is not bool:
@@ -946,50 +1021,55 @@ class BaseOrderBy(ABC):
             raise TypeError
         if not sum([bool(by_column_name), by_primary_key, by_create_time]) == 1:
             raise ValueError("Нужно выбрать один из вариантов")
-        
-        
-class OrderBySingleResult(BaseOrderBy):
-    def order_by(self, model: Type[CustomModel],
-                 by_column_name: Optional[str] = None, by_primary_key: bool = False,
-                 by_create_time: bool = False, decr: bool = False):
-        """
-        :param model:
-        :param by_column_name:
-        :param by_primary_key:
-        :param by_create_time:
-        :param decr:
-        :return:
-        """
-        self._is_valid_order_by_params(model, by_column_name, by_primary_key, by_create_time, decr)
-        self.__is_ordered = True
-        self.__order_by_args = (model,)
-        self.__order_by_kwargs = {"by_column_name": by_column_name, "by_primary_key": by_primary_key,
-                                  "by_create_time": by_create_time, "decr": decr}
-        if by_column_name:
-            collection = self.__collection.search_nodes(model, **{by_column_name: "*"})
-        if by_primary_key:
-            collection = self.__collection.search_nodes(model)
-            if collection:
-                rand_node: ResultORMItem = collection[0]
-                collection = self.__collection.search_nodes(model, **{rand_node.get_primary_key_and_value(only_key=True): "*"})
-        if by_create_time:
-            items = map(lambda node: (node, node.created_at,), self.__collection)
-            getter = operator.itemgetter(1)
-            sorted_result = sorted(items, key=getter)
-            return self.__add_to_output_collection(map(lambda n: n[0], sorted_result))
 
-    def __set_collection_to_sort(self, collection):
-        if type(collection) is not ResultORMCollection:
+    @staticmethod
+    def __check_exists_column_name(model, col_name):
+        if col_name not in model().column_names:
+            raise KeyError(f"В данной таблице отсутствует столбец {col_name}")
+
+    @staticmethod
+    def __is_valid(data):
+        if data.__class__ is not ResultORMCollection:
             raise TypeError
-        self.__collection = collection
-
-    def __add_to_output_collection(self, nodes):
-        inner = self.__collection.container_cls()
-        [inner.append(n) for n in nodes]
-        return ResultORMCollection(inner)
 
 
-class OrderByJoinResult(BaseOrderBy):
+class OrderByMixin(AbstractOrderBy):
+    """ Реализация функционала для сортировки экземпляров ResultORMCollection в виде примеси для класса Result* """
+    def __init__(self, input_):
+        super().__init__(input_)
+        self.__order_by_args = None
+        self.__order_by_kwargs = None
+
+    def order_by(self, *args, **kwargs):
+        self.__order_by_args = args
+        self.__order_by_kwargs = kwargs
+        super().order_by(*args, **kwargs)
+        
+        
+class OrderBySingleResultMixin(OrderByMixin):
+    """ Реализация для 'одиночного результата',- запрос к одной таблице. См ORMHelper.get_items() """
+    def order_by(self, *a, **k):
+        super().order_by(*a, **k)
+        by_column_name, by_primary_key, by_create_time = \
+            k["by_column_name"], k["by_primary_key"], k["by_create_time"]
+        if by_primary_key:
+            if self._input_collection:
+                pk_string = tuple(self._input_collection[0].get_primary_key_and_value())[0]
+                by_column_name = pk_string
+        if by_column_name:
+            nodes = self._input_collection.get_all_visible_items
+            sorting = LettersSort(nodes, by_column_name)
+            sorted_nodes = sorting.sort_by_alphabet()
+            self._sorted_collection = sorted_nodes
+        if by_create_time:
+            items = map(lambda node: (node, node.created_at,), self._input_collection)
+            getter = operator.itemgetter(1)
+            sorted_nodes = sorted(items, key=getter)
+            self._sorted_collection = self._add_to_output_collection(map(lambda n: n[0], sorted_nodes))
+
+
+class OrderByJoinResultMixin(OrderByMixin):
+    """ Реализация для запросов с join. См ORMHelper.join_select() """
     pass
 
 
@@ -1012,7 +1092,7 @@ class ResultORMCollection:
          for node in self.__collection]
         return new_items
     
-    @property 
+    @property
     def container_cls(self):
         return type(self.__collection)
     
@@ -1056,7 +1136,9 @@ class ResultORMCollection:
         new_collection = (class_ or collection.__class__)()
         new_collection.LinkedListItem = ResultORMItem
         [new_collection.append(node.model, node.get_primary_key_and_value(),
-                               **({"ui_hidden": True if node.type == "_delete" else False} if hasattr(node, "type") else {}),
+                               **({"ui_hidden": True
+                                  if node.type == "_delete" else False}
+                                  if hasattr(node, "type") else {}),
                                **node.value)
          for node in collection]
         return new_collection
@@ -1237,7 +1319,7 @@ class SpecialOrmContainer(ORMItemQueue):
         raise DoesNotExists
 
 
-class BaseResult(ABC, OrderBy):
+class BaseResult(ABC):
     RESULT_CACHE_KEY: str = ...
     TEMP_HASH_PREFIX: str = ...
     items = abstractproperty()
@@ -1247,15 +1329,15 @@ class BaseResult(ABC, OrderBy):
     # входящей строке вида: 'имя_таблицы:primary_key:значение'
 
     def __init__(self, get_nodes_from_database=None, get_local_nodes=None, only_local=False, only_database=False):
+        super().__init__()
         self.get_nodes_from_database: Optional[callable] = get_nodes_from_database  # Функция, в которой происходит получение контейнера с нодами из бд
         self.get_local_nodes: Optional[callable] = get_local_nodes  # Функция, в которой происходит получение контейнера с нодами из кеша
         self._id = uuid.uuid4()
         self._only_queue = only_local
         self._only_db = only_database
         self._pointer: Optional["Pointer"] = None
-        self.__merged_data = None
+        self._merged_data = None
         self.__is_valid()
-        super().__init__()
 
     def has_changes(self, hash_=None, strict_mode=True) -> bool:
         if hash_ is not None:
@@ -1279,7 +1361,7 @@ class BaseResult(ABC, OrderBy):
     @property
     def old_data(self):
         """ Результат работы итератора в предыдущий раз. (без выполнения merge) Для особого случая. См Pointer... """
-        return self.__merged_data
+        return self._merged_data
 
     @property
     def previous_hash(self) -> list[int]:
@@ -1298,10 +1380,7 @@ class BaseResult(ABC, OrderBy):
     def __iter__(self):
         self.__merged_data = self._merge()
         self._save_merged_collection_in_cache(self.__merged_data)
-        if self._is_ordered:
-            self.__set_collection_to_sort(self.__merged_data)
-            return self._get_sorted_items
-        return self.__merged_data
+        return iter(self._merged_data)
 
     def __len__(self):
         return sum((1 for _ in self))
@@ -1366,16 +1445,16 @@ class BaseResult(ABC, OrderBy):
                 raise ValueError
 
 
-class Result(BaseResult):
+class Result(BaseResult, OrderBySingleResultMixin):
     """ Экземпляр данного класса возвращается функцией ORMHelper.get_items() """
     RESULT_CACHE_KEY = "simple_result"
     TEMP_HASH_PREFIX = "simple_item_hash"
 
     @property
     def items(self):
-        data = self._merge()
-        self._save_merged_collection_in_cache(data)
-        return data
+        self._merged_data = self._merge()
+        self._save_merged_collection_in_cache(self._merged_data)
+        return self._merged_data
 
     def _merge(self):
         output = ORMItemQueue()
