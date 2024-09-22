@@ -974,7 +974,7 @@ class OrderByMixin(ABC):
     """ Реализация функционала для сортировки экземпляров ResultORMCollection в виде примеси для класса Result* """
     items = abstractproperty(lambda: ResultORMCollection())
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self: Union["Result", "JoinSelectResult"], *args, **kwargs):
         super().__init__(*args, **kwargs)
         if not isinstance(self, (Result, JoinSelectResult)):
             raise TypeError("Использовать данный класс в наследовании! Как миксин")
@@ -990,13 +990,17 @@ class OrderByMixin(ABC):
         self._is_valid_order_by_params(*args, **kwargs)
 
     @property
-    def sorted_items(self) -> Union[list["ResultORMCollection"], "ResultORMCollection"]:
-        nodes = self.items
-        if type(nodes) is not ResultORMCollection:
-            raise TypeError
+    def items(self) -> Union[list["ResultORMCollection"], "ResultORMCollection"]:
+        nodes = super().items
         if not self._is_sort:
             return nodes
         return self._order_by(nodes)
+
+    def __iter__(self):
+        iterator = super().__iter__()
+        if not self._is_sort:
+            return iterator
+        return self._order_by(iterator)
 
     @abstractmethod
     def _order_by(self, nodes: "ResultORMCollection") -> "ResultORMCollection":
@@ -1017,13 +1021,15 @@ class OrderByMixin(ABC):
             if not by_column_name:
                 raise ValueError
             self.__check_exists_column_name(model, by_column_name)
-        if type(by_primary_key) is not bool:
-            raise TypeError
-        if type(by_create_time) is not bool:
-            raise TypeError
+        if by_primary_key is not None:
+            if type(by_primary_key) is not bool:
+                raise TypeError
+        if by_create_time is not None:
+            if type(by_create_time) is not bool:
+                raise TypeError
         if type(decr) is not bool:
             raise TypeError
-        if not sum([bool(by_column_name), by_primary_key, by_create_time]) == 1:
+        if not sum([bool(by_column_name), bool(by_primary_key), bool(by_create_time)]) == 1:
             raise ValueError("Нужно выбрать один из вариантов")
 
     @staticmethod
@@ -1034,6 +1040,11 @@ class OrderByMixin(ABC):
         
 class OrderBySingleResultMixin(OrderByMixin):
     """ Реализация для 'одиночного результата',- запрос к одной таблице. См ORMHelper.get_items() """
+    def order_by(self, by_column_name: Optional[str] = None, by_primary_key: Optional[bool] = None,
+                 by_create_time: Optional[bool] = None, decr: bool = False):
+        return super().order_by(self._model, by_column_name=by_column_name,
+                                by_primary_key=by_primary_key, by_create_time=by_create_time, decr=decr)
+
     def _order_by(self, nodes):
         k = self._order_by_kwargs
         by_column_name, by_primary_key, by_create_time = \
@@ -1054,13 +1065,22 @@ class OrderBySingleResultMixin(OrderByMixin):
         return self._add_to_output_collection(map(lambda n: n[0], sorted_nodes), type_=nodes.container_cls)
 
 
-class OrderByJoinResultMixin(OrderByMixin):
+class OrderByJoinResultMixin(OrderByMixin, ModelTools):
     """ Реализация для запросов с join. См ORMHelper.join_select() """
-    @staticmethod
-    def _is_valid(data):
-        if type(data) is not list:
-            raise TypeError
-        [AbstractOrderBy._is_valid(g) for g in data]
+    def order_by(self: "JoinSelectResult", model, by_column_name: Optional[str] = None,
+                 by_primary_key: Optional[bool] = None,
+                 by_create_time: Optional[bool] = None, decr: bool = False):
+        self.is_valid_model_instance(model)
+        if model not in self._models:
+            raise ValueError
+        return super().order_by(model, by_column_name=by_column_name,
+                                by_primary_key=by_primary_key, by_create_time=by_create_time, decr=decr)
+
+    def _order_by(self, nodes: "ResultORMCollection") -> "ResultORMCollection":
+        model = self._order_by_args[0]
+        k = self._order_by_kwargs
+        by_column_name, by_primary_key, by_create_time = \
+            k["by_column_name"], k["by_primary_key"], k["by_create_time"]
 
 
 class ResultORMCollection:
@@ -1440,10 +1460,15 @@ class BaseResult(ABC):
                 raise ValueError
 
 
-class Result(BaseResult, OrderBySingleResultMixin):
+class Result(BaseResult, OrderBySingleResultMixin, ModelTools):
     """ Экземпляр данного класса возвращается функцией ORMHelper.get_items() """
     RESULT_CACHE_KEY = "simple_result"
     TEMP_HASH_PREFIX = "simple_item_hash"
+
+    def __init__(self, *args, model=None, **kwargs):
+        self._model = model
+        self.is_valid_model_instance(model)
+        super().__init__(*args, **kwargs)
 
     def _merge(self):
         output = ORMItemQueue()
@@ -1607,7 +1632,7 @@ class ORMHelper(ORMAttributes):
         def select_from_cache():
             return cls.items.search_nodes(model, **attrs)
         return Result(get_nodes_from_database=select_from_db, get_local_nodes=select_from_cache,
-                      only_local=_queue_only, only_database=_db_only)
+                      only_local=_queue_only, only_database=_db_only, model=model)
 
     @classmethod
     def join_select(cls, *models: Iterable[CustomModel], on: Optional[dict] = None,
@@ -1754,7 +1779,7 @@ class ORMHelper(ORMAttributes):
             collect_all()
             return compare_by_matched_fk()
         return JoinSelectResult(get_nodes_from_database=collect_db_data, get_local_nodes=collect_local_data,
-                                only_database=_db_only, only_local=_queue_only)
+                                only_database=_db_only, only_local=_queue_only, models=models)
 
     @classmethod
     def get_node_dml_type(cls, node_pk_value: Union[str, int], model=None) -> Optional[str]:
@@ -1965,7 +1990,7 @@ class Pointer:
             raise WrapperError
 
 
-class JoinSelectResult(BaseResult):
+class JoinSelectResult(BaseResult, OrderByJoinResultMixin, ModelTools):
     """
     Экземпляр этого класса возвращается функцией ORMHelper.join_select()
     1 экземпляр этого класса 1 результат вызова ORMHelper.join_select()
@@ -1981,6 +2006,13 @@ class JoinSelectResult(BaseResult):
     """
     TEMP_HASH_PREFIX = "join_select_hash"
     RESULT_CACHE_KEY = "join_result"
+
+    def __init__(self, *args, models=None, **kwargs):
+        self._models = models
+        if not models:
+            raise TypeError
+        [self.is_valid_model_instance(m) for m in models]
+        super().__init__(*args, **kwargs)
 
     @property
     def items(self) -> list[ChainMap]:
