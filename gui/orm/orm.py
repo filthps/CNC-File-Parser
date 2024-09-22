@@ -970,42 +970,46 @@ class LettersSort:
         return output
 
 
-class AbstractOrderBy(ABC):
-    def __init__(self, _input_collection: "ResultORMCollection"):
-        self._input_collection = _input_collection
-        self._sorted_collection = None
-        self._is_sort = False
-        self.__is_valid(self._input_collection)
+class OrderByMixin(ABC):
+    """ Реализация функционала для сортировки экземпляров ResultORMCollection в виде примеси для класса Result* """
+    items = abstractproperty(lambda: ResultORMCollection())
 
-    @abstractmethod
-    def order_by(self, model: Type[CustomModel],
-                 by_column_name: Optional[str] = None, by_primary_key: bool = False,
-                 by_create_time: bool = False, decr: bool = False) -> None:
-        """
-        :param model: Класс таблицы из models.py
-        :param by_column_name: Наименование столбца таблицы, по которому будет происходить сортировка
-        :param by_primary_key: Сортировка по primary_key
-        :param by_create_time: Сортировка по времени создания
-        :param decr: Возрастание/убывание
-        :return: None
-        """
-        self.__is_valid_order_by_params(model, by_column_name=by_column_name, by_primary_key=by_primary_key,
-                                        by_create_time=by_create_time, decr=decr)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not isinstance(self, (Result, JoinSelectResult)):
+            raise TypeError("Использовать данный класс в наследовании! Как миксин")
+        self._order_by_args = None
+        self._order_by_kwargs = None
+        self._is_sort = False
+
+    def order_by(self, *args, **kwargs):
+        """ Включить сортировку для экземпляра целевого класса и запомнить аргументы """
+        self._order_by_args = args
+        self._order_by_kwargs = kwargs
         self._is_sort = True
-        self._sorted_collection = ...
+        self._is_valid_order_by_params(*args, **kwargs)
 
     @property
-    def sorted(self):
-        """ Вернуть результат сортировки """
-        return self._sorted_collection
+    def sorted_items(self) -> Union[list["ResultORMCollection"], "ResultORMCollection"]:
+        nodes = self.items
+        if type(nodes) is not ResultORMCollection:
+            raise TypeError
+        if not self._is_sort:
+            return nodes
+        return self._order_by(nodes)
 
-    def _add_to_output_collection(self, nodes):
+    @abstractmethod
+    def _order_by(self, nodes: "ResultORMCollection") -> "ResultORMCollection":
+        pass
+
+    @staticmethod
+    def _add_to_output_collection(nodes, type_=None):
         """ Упаковать выходной результат в экземпляр соответствующего класса коллекции """
-        inner = self._input_collection.container_cls()
+        inner = type_()
         [inner.append(n) for n in nodes]
         return ResultORMCollection(inner)
 
-    def __is_valid_order_by_params(self, model, by_column_name, by_primary_key, by_create_time, decr):
+    def _is_valid_order_by_params(self, model, by_column_name, by_primary_key, by_create_time, decr):
         ORMItem.is_valid_model_instance(model)
         if by_column_name is not None:
             if type(by_column_name) is not str:
@@ -1026,51 +1030,37 @@ class AbstractOrderBy(ABC):
     def __check_exists_column_name(model, col_name):
         if col_name not in model().column_names:
             raise KeyError(f"В данной таблице отсутствует столбец {col_name}")
-
-    @staticmethod
-    def __is_valid(data):
-        if data.__class__ is not ResultORMCollection:
-            raise TypeError
-
-
-class OrderByMixin(AbstractOrderBy):
-    """ Реализация функционала для сортировки экземпляров ResultORMCollection в виде примеси для класса Result* """
-    def __init__(self, input_):
-        super().__init__(input_)
-        self.__order_by_args = None
-        self.__order_by_kwargs = None
-
-    def order_by(self, *args, **kwargs):
-        self.__order_by_args = args
-        self.__order_by_kwargs = kwargs
-        super().order_by(*args, **kwargs)
         
         
 class OrderBySingleResultMixin(OrderByMixin):
     """ Реализация для 'одиночного результата',- запрос к одной таблице. См ORMHelper.get_items() """
-    def order_by(self, *a, **k):
-        super().order_by(*a, **k)
+    def _order_by(self, nodes):
+        k = self._order_by_kwargs
         by_column_name, by_primary_key, by_create_time = \
             k["by_column_name"], k["by_primary_key"], k["by_create_time"]
+        sorted_nodes = None
         if by_primary_key:
-            if self._input_collection:
-                pk_string = tuple(self._input_collection[0].get_primary_key_and_value())[0]
+            if nodes:
+                pk_string = tuple(nodes[0].get_primary_key_and_value())[0]
                 by_column_name = pk_string
         if by_column_name:
-            nodes = self._input_collection.get_all_visible_items
+            nodes = nodes.get_all_visible_items
             sorting = LettersSort(nodes, by_column_name)
             sorted_nodes = sorting.sort_by_alphabet()
-            self._sorted_collection = sorted_nodes
         if by_create_time:
-            items = map(lambda node: (node, node.created_at,), self._input_collection)
+            items = map(lambda node: (node, node.created_at,), nodes)
             getter = operator.itemgetter(1)
             sorted_nodes = sorted(items, key=getter)
-            self._sorted_collection = self._add_to_output_collection(map(lambda n: n[0], sorted_nodes))
+        return self._add_to_output_collection(map(lambda n: n[0], sorted_nodes), type_=nodes.container_cls)
 
 
 class OrderByJoinResultMixin(OrderByMixin):
     """ Реализация для запросов с join. См ORMHelper.join_select() """
-    pass
+    @staticmethod
+    def _is_valid(data):
+        if type(data) is not list:
+            raise TypeError
+        [AbstractOrderBy._is_valid(g) for g in data]
 
 
 class ResultORMCollection:
@@ -1322,7 +1312,6 @@ class SpecialOrmContainer(ORMItemQueue):
 class BaseResult(ABC):
     RESULT_CACHE_KEY: str = ...
     TEMP_HASH_PREFIX: str = ...
-    items = abstractproperty()
     _merge = abstractmethod(lambda: Iterable)  # Функция, которая делает репликацию нод из кеша поверх нод из бд
     _get_node_by_joined_primary_key_and_value = abstractmethod(lambda model_pk_val_str,
                                                                sep="...": ...)  # Вернуть ноду по
@@ -1357,6 +1346,12 @@ class BaseResult(ABC):
                 raise ValueError
             return True
         return not current_hash == new_hash
+
+    @property
+    def items(self):
+        self._merged_data = self._merge()
+        self._save_merged_collection_in_cache(self._merged_data)
+        return self._merged_data
 
     @property
     def old_data(self):
@@ -1449,12 +1444,6 @@ class Result(BaseResult, OrderBySingleResultMixin):
     """ Экземпляр данного класса возвращается функцией ORMHelper.get_items() """
     RESULT_CACHE_KEY = "simple_result"
     TEMP_HASH_PREFIX = "simple_item_hash"
-
-    @property
-    def items(self):
-        self._merged_data = self._merge()
-        self._save_merged_collection_in_cache(self._merged_data)
-        return self._merged_data
 
     def _merge(self):
         output = ORMItemQueue()
