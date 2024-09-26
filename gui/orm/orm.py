@@ -896,38 +896,106 @@ class ORMItemQueue(LinkedList, QueueSearchTools):
         del self[left_node.index]
 
 
-class LettersSort:
-    """ Сортировка нод по ключевому полю.
-     Простейшая сортировка при помощи встроенной функции sorted. """
-    def __init__(self, nodes, field_name, decr=True):
+class ResultORMCollection:
+    """ Иммутабельная коллекция с набором результата """
+    def __init__(self, collection: Optional[Union["ORMItemQueue", "SpecialOrmContainer"]] = None):
+        self.__collection = collection
+        if collection is None:
+            self.__collection = ORMItemQueue()
+        if not isinstance(self.__collection, (ORMItemQueue, SpecialOrmContainer,)):
+            raise TypeError
+        self.__collection = self.__convert_node_data(self.__collection)
+
+    @property
+    def get_all_visible_items(self):
+        new_items = self.__collection.__class__()
+        new_items.LinkedListItem = ResultORMItem
+        [new_items.append(**node.get_attributes(), _container=new_items)
+         if not node.hidden else None
+         for node in self.__collection]
+        return new_items
+
+    @property
+    def container_cls(self):
+        return type(self.__collection)
+
+    @property
+    def hash_by_pk(self):
+        return sum(map(lambda x: hash(x), self.__collection))
+
+    def get_node(self, *args, **kwargs):
+        return self.__collection.get_node(*args, **kwargs)
+
+    def search_nones(self, *args, **kwargs):
+        return self.__collection.search_nodes(*args, **kwargs)
+
+    def all_nodes(self) -> Iterator:
+        """ Для служебного пользования. Для UI использовать iter """
+        return self.__collection.__iter__()
+
+    def __iter__(self):
+        return iter(self.get_all_visible_items)
+
+    def __bool__(self):
+        return bool(self.__len__())
+
+    def __len__(self):
+        return sum(map(lambda: 1, self))
+
+    def __getitem__(self, item):
+        return self.__collection.__getitem__(item)
+
+    def __hash__(self):
+        return hash(self.__collection)
+
+    def __str__(self):
+        return str(self.get_all_visible_items)
+
+    def __repr__(self):
+        return f"{type(self.__collection).__name__}({str(self)})"
+
+    @staticmethod
+    def __convert_node_data(collection, class_=None):
+        new_collection = (class_ or collection.__class__)()
+        new_collection.LinkedListItem = ResultORMItem
+        [new_collection.append(node.model, node.get_primary_key_and_value(),
+                               **({"ui_hidden": True
+                                  if node.type == "_delete" else False}
+                                  if hasattr(node, "type") else {}),
+                               **node.value)
+         for node in collection]
+        return new_collection
+
+
+class Sort:
+    def __init__(self):
+        self._input_nodes = ...
+
+    def _create_mapping(self) -> dict[str, Type[LinkedList]]:
+        """  Заполнить словарь ключами """
+        keys = map(lambda x: (x.upper(), x,), string.ascii_lowercase)
+        return {key: type(self._input_nodes)() for key in keys}
+
+
+class LettersSortSingleNodes(Sort):
+    def __init__(self, nodes: ResultORMCollection):
+        super().__init__()
         self._input_nodes = nodes
-        self._from_top_to_down = decr
-        self._field = field_name
         if not isinstance(nodes, ResultORMCollection):
             raise TypeError
-        if type(self._from_top_to_down) is not bool:
-            raise TypeError
-        if not isinstance(self._field, str):
-            raise TypeError
-        if not self._field:
-            raise ValueError("Данная строка не может быть пустой")
         self._nodes_in_sort = None  # Ноды, которые принимают участие в сортировке
         self._other_items = None  # Ноды, которые не участвуют в сортировке (доб в конец)
+        self._field = ...
 
     def sort_by_alphabet(self):
         """ Инициализировать словарь,
         в котором ключами выступит первая буква из значения нашего ключевого слова, а значениями - очередь с нодой или нодами,
         содержащими данное поле и значение"""
-        def create_mapping():
-            """  Заполнить словарь ключами """
-            keys = map(lambda x: (x.upper(), x,), string.ascii_lowercase)
-            return {key: type(self._input_nodes)() for key in keys}
-
         def fill_mapping(data, nodes, target_column_name):
             for item in nodes:
                 p = item.value[target_column_name][0]
                 data[(p.upper(), p,)].append(**item.get_attributes())
-        data_to_fill = create_mapping()
+        data_to_fill = self._create_mapping()
         self._select_nodes_to_sort()
         self._slice_other_nodes()
         fill_mapping(data_to_fill, self._nodes_in_sort, self._field)
@@ -948,7 +1016,7 @@ class LettersSort:
 
     def _select_nodes_to_sort(self):
         """ Вернуть ноды, которые будут участвовать в сортировке """
-        self._nodes_in_sort = self._input_nodes.__class__()
+        self._nodes_in_sort = self._input_nodes.container_cls.__class__()
         for node in self._input_nodes:
             if self._field in node.value:
                 self._nodes_in_sort.append(**node.get_attributes())
@@ -957,17 +1025,54 @@ class LettersSort:
         """ Вырезать из коллекции ноды, ключевые поля у которых не заполнены.
         Не изменять исходную коллекцию. Присвоить в self._other_items.
         В дальнейшем их планируется добавить в конец сортированной коллекции """
-        self._other_items = self._input_nodes.__class__()
+        self._other_items = self._input_nodes.container_cls.__class__()
         for node in self._input_nodes:
             if self._field not in node.value:
                 self._other_items.append(**node.get_attributes())
 
     def _merge_mapping(self, data):
         """ Словарь, который отсортирован, - 'сжать' его значения воедино, сохраняя последовательность """
-        output = type(self._input_nodes)()
+        output = self._input_nodes.container_cls.__class__()
         for val in data.values():
             output += val
         return output
+
+
+class LettersSortNodesChain(Sort):
+    def __init__(self, group):
+        super().__init__()
+        self._nodes_chain = group
+        if type(group) is not list:
+            raise TypeError
+        if any(map(lambda x: type(x) is not ResultORMCollection, group)):
+            raise TypeError
+
+    def _select_nodes_to_sort(self):
+        pass
+
+    def _create_mapping(self):
+        pass
+
+
+class LettersSort(LettersSortSingleNodes, LettersSortNodesChain):
+    """ Сортировка нод по ключевому полю.
+     Простейшая сортировка при помощи встроенной функции sorted. """
+    def __init__(self, field_name, nodes: ResultORMCollection = None,
+                 nodes_group_chain: list[ResultORMCollection] = None, decr=True):
+        if nodes is not None:
+            super(LettersSortSingleNodes, self).__init__(nodes)
+        if nodes_group_chain is not None:
+            super(LettersSortNodesChain, self).__init__(nodes_group_chain)
+        self._from_top_to_down = decr
+        self._field = field_name
+        if sum((bool(nodes), bool(nodes_group_chain),)) != 1:
+            raise ValueError
+        if type(self._from_top_to_down) is not bool:
+            raise TypeError
+        if not isinstance(self._field, str):
+            raise TypeError
+        if not self._field:
+            raise ValueError("Данная строка не может быть пустой")
 
 
 class OrderByMixin(ABC):
@@ -1005,13 +1110,6 @@ class OrderByMixin(ABC):
     @abstractmethod
     def _order_by(self, nodes: "ResultORMCollection") -> "ResultORMCollection":
         pass
-
-    @staticmethod
-    def _add_to_output_collection(nodes, type_=None):
-        """ Упаковать выходной результат в экземпляр соответствующего класса коллекции """
-        inner = type_()
-        [inner.append(n) for n in nodes]
-        return ResultORMCollection(inner)
 
     def _is_valid_order_by_params(self, model, by_column_name, by_primary_key, by_create_time, decr):
         ORMItem.is_valid_model_instance(model)
@@ -1062,7 +1160,14 @@ class OrderBySingleResultMixin(OrderByMixin):
             items = map(lambda node: (node, node.created_at,), nodes)
             getter = operator.itemgetter(1)
             sorted_nodes = sorted(items, key=getter)
-        return self._add_to_output_collection(map(lambda n: n[0], sorted_nodes), type_=nodes.container_cls)
+        return self.__add_to_output_collection(map(lambda n: n[0], sorted_nodes), type_=nodes.container_cls)
+
+    @staticmethod
+    def __add_to_output_collection(nodes, type_=None):
+        """ Упаковать выходной результат в экземпляр соответствующего класса коллекции """
+        inner = type_()
+        [inner.append(n) for n in nodes]
+        return ResultORMCollection(inner)
 
 
 class OrderByJoinResultMixin(OrderByMixin, ModelTools):
@@ -1076,82 +1181,21 @@ class OrderByJoinResultMixin(OrderByMixin, ModelTools):
         return super().order_by(model, by_column_name=by_column_name,
                                 by_primary_key=by_primary_key, by_create_time=by_create_time, decr=decr)
 
-    def _order_by(self, nodes: "ResultORMCollection") -> "ResultORMCollection":
+    def _order_by(self, nodes: Iterable["ResultORMCollection"]) -> "ResultORMCollection":
         model = self._order_by_args[0]
         k = self._order_by_kwargs
         by_column_name, by_primary_key, by_create_time = \
             k["by_column_name"], k["by_primary_key"], k["by_create_time"]
+        if by_column_name:
+            pass
+        if by_primary_key:
+            pass
+        if by_create_time:
+            pass
 
+    def __create_joined_container(self):
+        ...
 
-class ResultORMCollection:
-    """ Иммутабельная коллекция с набором результата """
-    def __init__(self, collection: Optional[Union["ORMItemQueue", "SpecialOrmContainer"]] = None):
-        self.__collection = collection
-        if collection is None:
-            self.__collection = ORMItemQueue()
-        if not isinstance(self.__collection, (ORMItemQueue, SpecialOrmContainer,)):
-            raise TypeError
-        self.__collection = self.__convert_node_data(self.__collection)
-
-    @property
-    def get_all_visible_items(self):
-        new_items = self.__collection.__class__()
-        new_items.LinkedListItem = ResultORMItem
-        [new_items.append(**node.get_attributes(), _container=new_items)
-         if not node.hidden else None
-         for node in self.__collection]
-        return new_items
-    
-    @property
-    def container_cls(self):
-        return type(self.__collection)
-    
-    @property
-    def hash_by_pk(self):
-        return sum(map(lambda x: hash(x), self.__collection))
-
-    def get_node(self, *args, **kwargs):
-        return self.__collection.get_node(*args, **kwargs)
-
-    def search_nones(self, *args, **kwargs):
-        return self.__collection.search_nodes(*args, **kwargs)
-
-    def all_nodes(self) -> Iterator:
-        """ Для служебного пользования. Для UI использовать iter """
-        return self.__collection.__iter__()
-
-    def __iter__(self):
-        return iter(self.get_all_visible_items)
-
-    def __bool__(self):
-        return bool(self.__len__())
-
-    def __len__(self):
-        return sum(map(lambda: 1, self))
-
-    def __getitem__(self, item):
-        return self.__collection.__getitem__(item)
-
-    def __hash__(self):
-        return hash(self.__collection)
-
-    def __str__(self):
-        return str(self.get_all_visible_items)
-
-    def __repr__(self):
-        return f"{type(self.__collection).__name__}({str(self)})"
-
-    @staticmethod
-    def __convert_node_data(collection, class_=None):
-        new_collection = (class_ or collection.__class__)()
-        new_collection.LinkedListItem = ResultORMItem
-        [new_collection.append(node.model, node.get_primary_key_and_value(),
-                               **({"ui_hidden": True
-                                  if node.type == "_delete" else False}
-                                  if hasattr(node, "type") else {}),
-                               **node.value)
-         for node in collection]
-        return new_collection
 
 
 class SQLAlchemyQueryManager:
@@ -1481,6 +1525,115 @@ class Result(BaseResult, OrderBySingleResultMixin, ModelTools):
     def _get_node_by_joined_primary_key_and_value(self, value: Union[str, int]) -> Optional[ORMItem]:
         model, pk, val = self._parse_joined_primary_key_and_value(value)
         return self.items.get_node(model, **{pk: val})
+
+
+class JoinSelectResult(BaseResult, OrderByJoinResultMixin, ModelTools):
+    """
+    Экземпляр этого класса возвращается функцией ORMHelper.join_select()
+    1 экземпляр этого класса 1 результат вызова ORMHelper.join_select()
+    Использовать следующим образом:
+        Делаем join_select
+        Результаты можем вывести в какой-нибудь Q...Widget, этот результат (строки) можно привязать к содержимому,
+        чтобы вносить правки со стороны UI, ни о чём лишнем не думая
+        JoinSelectResultInstance.pointer = ['Некое значение из виджета1', 'Некое значение из виджета2',...]
+        Теперь нужный инстанс SpecialOrmContainer можно найти:
+        JoinSelectResultInstance.pointer['Некое значение из виджета1'] -> SpecialOrmContainer(node_model_a, node_model_b, node_model_c)
+        Если нода потеряла актуальность(удалена), то вместо неё будет заглушка - Экземпляр EmptyORMItem
+        SpecialOrmContainer имеет свойство - is_actual на которое можно опираться
+    """
+    TEMP_HASH_PREFIX = "join_select_hash"
+    RESULT_CACHE_KEY = "join_result"
+
+    def __init__(self, *args, models=None, **kwargs):
+        self._models = models
+        if not models:
+            raise TypeError
+        [self.is_valid_model_instance(m) for m in models]
+        super().__init__(*args, **kwargs)
+
+    @property
+    def items(self) -> list[ChainMap]:
+        items = tuple(self)
+        result = []
+        if self.__get_merged_column_names(items):
+            items = self.__set_prefix_to_column_name(items)
+        for group in items:
+            result.append(ChainMap(*[values for values in group]))
+        self._save_merged_collection_in_cache(result)
+        return result
+
+    def __getitem__(self, item: int) -> SpecialOrmContainer:
+        if not isinstance(item, int):
+            raise TypeError
+        if item not in self:
+            raise DoesNotExists
+        for group in self:
+            if hash(group) == item:
+                return group
+
+    def __contains__(self, item: Union[int, ORMItemQueue, ORMItem]):
+        if not isinstance(item, (ORMItemQueue, ORMItem, int,)):
+            return False
+        if type(item) is int:
+            return item in map(lambda x: hash(x), self)
+        if type(item) is ORMItemQueue:
+            return hash(item) in map(lambda x: x.__hash__(), self)
+        if type(item) is ORMItem:
+            return hash(item) in [hash(node) for group_items in self for node in group_items]
+
+    def _merge(self) -> list[ResultORMCollection]:
+        result = []
+        db_items = list(self.get_nodes_from_database()) if not self._only_queue else []
+        local_items = list(self.get_local_nodes()) if not self._only_db else []
+        for db_group_index, db_nodes_group in enumerate(db_items):
+            for local_nodes_group_index, local_nodes_group in enumerate(local_items):
+                if db_nodes_group.is_containing_the_same_nodes(local_nodes_group):
+                    db_nodes_group += local_nodes_group
+                    result.append(db_nodes_group)
+                    del db_items[db_group_index]
+                    del local_items[local_nodes_group_index]
+        if db_items:
+            while db_items:
+                result.append(db_items.pop(0))
+        if local_items:
+            while local_items:
+                result.append(local_items.pop(0))
+        return [ResultORMCollection(item) for item in result]
+
+    def _get_node_by_joined_primary_key_and_value(self, joined_pk: str):
+        model_name, primary_key, value = self._parse_joined_primary_key_and_value(joined_pk)
+        model_instance = getattr(importlib.import_module("models",
+                                                         package="database.models"), model_name)
+        for collection in self:
+            node = collection.get_node(model_instance, **{primary_key: value})
+            if node:
+                return node
+
+    @staticmethod
+    def __get_merged_column_names(result: tuple[SpecialOrmContainer]) -> set[str]:
+        """ Наименования столбцов, которые присутствуют в более чем 1 таблице результата join_select """
+        if not result:
+            return set()
+        return set.intersection(*[set(n.value) for group in result for n in group])
+
+    def __set_prefix_to_column_name(self, items: tuple[SpecialOrmContainer]) -> Iterator[list[dict]]:
+        """ Добавить префикс вида - ModelName.column_name ко всем столбцам,
+        чьи имена дублируются в нодах от нескольких моделей """
+        merged_columns = list(self.__get_merged_column_names(items))
+        while merged_columns:
+            column_name = merged_columns.pop()
+            for container in items:
+                list_ = []
+                for node in container:
+                    if column_name in node.value:
+                        values: dict = node.value
+                        pk_value = values[column_name]
+                        del values[column_name]
+                        values.update({f"{node.model.__name__}.{column_name}": pk_value})
+                        list_.append(values)
+                    else:
+                        list_.append(node.value)
+                yield list_
 
 
 class ORMHelper(ORMAttributes):
@@ -1989,111 +2142,3 @@ class Pointer:
         if not all(map(lambda x: isinstance(x, str), self.wrap_items)):
             raise WrapperError
 
-
-class JoinSelectResult(BaseResult, OrderByJoinResultMixin, ModelTools):
-    """
-    Экземпляр этого класса возвращается функцией ORMHelper.join_select()
-    1 экземпляр этого класса 1 результат вызова ORMHelper.join_select()
-    Использовать следующим образом:
-        Делаем join_select
-        Результаты можем вывести в какой-нибудь Q...Widget, этот результат (строки) можно привязать к содержимому,
-        чтобы вносить правки со стороны UI, ни о чём лишнем не думая
-        JoinSelectResultInstance.pointer = ['Некое значение из виджета1', 'Некое значение из виджета2',...]
-        Теперь нужный инстанс SpecialOrmContainer можно найти:
-        JoinSelectResultInstance.pointer['Некое значение из виджета1'] -> SpecialOrmContainer(node_model_a, node_model_b, node_model_c)
-        Если нода потеряла актуальность(удалена), то вместо неё будет заглушка - Экземпляр EmptyORMItem
-        SpecialOrmContainer имеет свойство - is_actual на которое можно опираться
-    """
-    TEMP_HASH_PREFIX = "join_select_hash"
-    RESULT_CACHE_KEY = "join_result"
-
-    def __init__(self, *args, models=None, **kwargs):
-        self._models = models
-        if not models:
-            raise TypeError
-        [self.is_valid_model_instance(m) for m in models]
-        super().__init__(*args, **kwargs)
-
-    @property
-    def items(self) -> list[ChainMap]:
-        items = tuple(self)
-        result = []
-        if self.__get_merged_column_names(items):
-            items = self.__set_prefix_to_column_name(items)
-        for group in items:
-            result.append(ChainMap(*[values for values in group]))
-        self._save_merged_collection_in_cache(result)
-        return result
-
-    def __getitem__(self, item: int) -> SpecialOrmContainer:
-        if not isinstance(item, int):
-            raise TypeError
-        if item not in self:
-            raise DoesNotExists
-        for group in self:
-            if hash(group) == item:
-                return group
-
-    def __contains__(self, item: Union[int, ORMItemQueue, ORMItem]):
-        if not isinstance(item, (ORMItemQueue, ORMItem, int,)):
-            return False
-        if type(item) is int:
-            return item in map(lambda x: hash(x), self)
-        if type(item) is ORMItemQueue:
-            return hash(item) in map(lambda x: x.__hash__(), self)
-        if type(item) is ORMItem:
-            return hash(item) in [hash(node) for group_items in self for node in group_items]
-
-    def _merge(self) -> list[ResultORMCollection]:
-        result = []
-        db_items = list(self.get_nodes_from_database()) if not self._only_queue else []
-        local_items = list(self.get_local_nodes()) if not self._only_db else []
-        for db_group_index, db_nodes_group in enumerate(db_items):
-            for local_nodes_group_index, local_nodes_group in enumerate(local_items):
-                if db_nodes_group.is_containing_the_same_nodes(local_nodes_group):
-                    db_nodes_group += local_nodes_group
-                    result.append(db_nodes_group)
-                    del db_items[db_group_index]
-                    del local_items[local_nodes_group_index]
-        if db_items:
-            while db_items:
-                result.append(db_items.pop(0))
-        if local_items:
-            while local_items:
-                result.append(local_items.pop(0))
-        return [ResultORMCollection(item) for item in result]
-
-    def _get_node_by_joined_primary_key_and_value(self, joined_pk: str):
-        model_name, primary_key, value = self._parse_joined_primary_key_and_value(joined_pk)
-        model_instance = getattr(importlib.import_module("models",
-                                                         package="database.models"), model_name)
-        for collection in self:
-            node = collection.get_node(model_instance, **{primary_key: value})
-            if node:
-                return node
-
-    @staticmethod
-    def __get_merged_column_names(result: tuple[SpecialOrmContainer]) -> set[str]:
-        """ Наименования столбцов, которые присутствуют в более чем 1 таблице результата join_select """
-        if not result:
-            return set()
-        return set.intersection(*[set(n.value) for group in result for n in group])
-
-    def __set_prefix_to_column_name(self, items: tuple[SpecialOrmContainer]) -> Iterator[list[dict]]:
-        """ Добавить префикс вида - ModelName.column_name ко всем столбцам,
-        чьи имена дублируются в нодах от нескольких моделей """
-        merged_columns = list(self.__get_merged_column_names(items))
-        while merged_columns:
-            column_name = merged_columns.pop()
-            for container in items:
-                list_ = []
-                for node in container:
-                    if column_name in node.value:
-                        values: dict = node.value
-                        pk_value = values[column_name]
-                        del values[column_name]
-                        values.update({f"{node.model.__name__}.{column_name}": pk_value})
-                        list_.append(values)
-                    else:
-                        list_.append(node.value)
-                yield list_
