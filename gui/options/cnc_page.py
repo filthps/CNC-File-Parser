@@ -19,6 +19,7 @@ class AddCNC(Constructor, Tools):
         self.ui = ui
         self.db_items: orm.ORMHelper = app.db_items_queue
         self.validator: Optional[CncPageValidator] = None
+        self.select_result: Optional[orm.Result] = None
 
         def set_db_manager_model():
             self.db_items.set_model(Cnc)
@@ -32,23 +33,25 @@ class AddCNC(Constructor, Tools):
         self.connect_main_signals()
 
     def reload(self, in_new_qthread: bool = True):
-        def insert_cnc_items(cnc_items: Iterator):
+        def insert_cnc_items(cnc_items: orm.Result):
+            self.select_result = cnc_items
             self.disconnect_text_field_signals()
             self.ui.cnc_list.clear()
-            items = tuple(cnc_items)
-            for item in items:
+            print(cnc_items.__iter__())
+            for item in cnc_items:
                 list_item = QListWidgetItem(item["name"])
                 self.ui.cnc_list.addItem(list_item)
                 if self.db_items.is_node_from_cache(name=item["name"]):
                     self.validator.set_not_complete_edit_attributes(list_item)
+            self.create_pointer()
             self.reset_fields_to_default()
-            auto_select_cnc_item(items) if items else None
+            auto_select_cnc_item(cnc_items) if cnc_items else None
             self.connect_text_field_signals()
 
         def auto_select_cnc_item(items, index=0):
             selected_item = self.ui.cnc_list.takeItem(index)
             self.validator.set_cnc(selected_item)
-            self.update_fields(line_edit_values=items[index])
+            self.update_fields(line_edit_values=items.items[index].value)
             self.ui.cnc_list.addItem(selected_item)
             self.ui.cnc_list.setItemSelected(selected_item, True)
             self.ui.cnc_list.setCurrentItem(selected_item)
@@ -99,7 +102,7 @@ class AddCNC(Constructor, Tools):
         def ok():
             @QThreadInstanceDecorator(result_callback=lambda: self.reload(in_new_qthread=False))
             def delete_cnc(cnc_name_):
-                self.db_items.set_item(_delete=True, name=cnc_name_, _ready=True)
+                self.db_items.set_item(_delete=True, name=cnc_name_)
             current_item = self.get_current_cnc_item()
             if not current_item:
                 dialog.close()
@@ -112,8 +115,11 @@ class AddCNC(Constructor, Tools):
         dialog = self.get_confirm_dialog("Удалить стойку?", ok_callback=ok)
         dialog.show()
 
+    def create_pointer(self):
+        super().create_pointer("cnc_list")
+
     def select_cnc(self, item: QListWidgetItem):
-        def update_fields(data: Optional[dict]):
+        def update_fields(data=None):
             if data is None:
                 return
             self.disconnect_text_field_signals()
@@ -125,11 +131,11 @@ class AddCNC(Constructor, Tools):
 
         @QThreadInstanceDecorator(result_callback=update_fields)
         def load_cnc(item_name):
-            data = self.db_items.get_item(name=item_name, _model=Cnc)
-            if not data:
+            has_not_changes = self.select_result.pointer.is_valid_ordering
+            if not has_not_changes:
                 self.reload(in_new_qthread=False)
                 return
-            return data
+            return self.select_result.pointer[item_name].value
         if not item:
             return
         name = item.text()

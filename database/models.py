@@ -49,7 +49,7 @@ class ModelController:
                     column_names.update({value.expression.name: {"type": value.expression.type.python_type,
                                                                  "nullable": value.expression.nullable,
                                                                  "primary_key": value.expression.primary_key,
-                                                                 "autoincrement": value.expression.autoincrement,
+                                                                 "autoincrement": True if not value.expression.autoincrement == "auto" else False,
                                                                  "unique": value.expression.unique,
                                                                  "default": value.expression.default}})  # todo: Доработать остальные аналоги default, согласно документации https://docs.sqlalchemy.org/en/20/core/defaults.html
                     if hasattr(value, "length"):
@@ -145,7 +145,6 @@ class OperationDelegation(db.Model, ModelController, GlobalFields):
     numerationid = Column(Integer, ForeignKey("num.numerationid"), nullable=True, default=None)
     isactive = Column(Boolean, default=True, nullable=False)
     operationdescription = Column(String(300), default="", nullable=False)
-    machines = relationship("Machine", secondary=TaskDelegation.__table__)
 
 
 class Condition(db.Model, ModelController, GlobalFields):

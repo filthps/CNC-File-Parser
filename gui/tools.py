@@ -12,6 +12,7 @@ from PySide2.QtWidgets import QMainWindow, QTabWidget, QStackedWidget, QPushButt
 from PySide2.QtGui import QIcon
 from gui.ui import Ui_main_window as Ui
 from database.models import CustomModel
+from orm.orm import ResultORMItem, ResultORMCollection
 
 
 class Tools:
@@ -40,7 +41,7 @@ class Tools:
             if field_name in fields:
                 return cls.models[i]
 
-    def update_fields(self, line_edit_values: Optional[dict] = None,
+    def update_fields(self, line_edit_values: Union[ResultORMItem, ResultORMCollection] = None,
                       combo_box_values: Optional[dict] = None, radio_button_values: Optional[dict] = None):
         """ Обновление содержимого полей """
         for line_edit_name, db_field_name in self.UI__TO_SQL_COLUMN_LINK__LINE_EDIT.items():
@@ -107,6 +108,16 @@ class Tools:
         for line_edit_name, default_value in self.LINE_EDIT_DEFAULT_VALUES.items():
             field: QLineEdit = getattr(self.ui, line_edit_name)
             field.setText(next(default_value) if isinstance(default_value, repeat) else default_value)
+
+    def create_pointer(self, list_widget_name: str):
+        if type(list_widget_name) is not str:
+            raise TypeError
+        if not list_widget_name:
+            raise ValueError
+        if not self.select_result:
+            return
+        widget = getattr(self.ui, list_widget_name)
+        self.select_result.pointer = [widget.item(x).text() for x in range(widget.count())]
 
     @staticmethod
     def __get_widget_index_by_tab_name(widget_instance: Union[QTabWidget, QStackedWidget], tab_name: str) -> int:
