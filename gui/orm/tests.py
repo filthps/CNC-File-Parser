@@ -454,12 +454,59 @@ class TestORMHelper(unittest.TestCase, SetUp):
     def test_someone(self):
         self.assertEqual(1, 1)
 
-
 class TestQueueOrderBy(unittest.TestCase, SetUp):
     def setUp(self) -> None:
         ORMHelper.TESTING = True
         ORMHelper.CACHE_LIFETIME_HOURS = 60
         self.orm_manager = ORMHelper
+
+    @db_reinit
+    @drop_cache
+    def test_order_by_field__alphabet(self):
+        self.set_data_into_database()
+        self.set_data_into_queue()
+        result = self.orm_manager.get_items(Machine)
+        # Передача правильных параметров
+        result.order_by(by_create_time=True)
+        result.order_by(by_column_name="machinename")
+        result.order_by(by_primary_key=True)
+        result.order_by(by_create_time=True, decr=True)
+        result.order_by(by_column_name="machinename", decr=True)
+        result.order_by(by_primary_key=True, decr=True)
+        result.order_by(by_create_time=True, decr=False)
+        result.order_by(by_column_name="machinename", decr=False)
+        result.order_by(by_primary_key=True, decr=False)
+        # Передача неправильных параметров
+        self.assertRaises(ValueError, result.order_by)
+        self.assertRaises(TypeError, result.order_by, by_create_time=4)
+        self.assertRaises(TypeError, result.order_by, by_create_time="strf")
+        self.assertRaises(ValueError, result.order_by, by_create_time=None)
+        self.assertRaises(TypeError, result.order_by, by_create_time=8.9)
+        self.assertRaises(TypeError, result.order_by, by_create_time=datetime.datetime.now())
+        self.assertRaises(TypeError, result.order_by, by_create_time=b"0x43")
+        self.assertRaises(TypeError, result.order_by, by_create_time=0)
+        self.assertRaises(TypeError, result.order_by, by_primary_key=4)
+        self.assertRaises(TypeError, result.order_by, by_primary_key="strf")
+        self.assertRaises(ValueError, result.order_by, by_primary_key=None)
+        self.assertRaises(TypeError, result.order_by, by_primary_key=8.9)
+        self.assertRaises(TypeError, result.order_by, by_primary_key=datetime.datetime.now())
+        self.assertRaises(TypeError, result.order_by, by_primary_key=b"0x43")
+        self.assertRaises(TypeError, result.order_by, by_primary_key=0)
+        self.assertRaises(TypeError, result.order_by, by_column_name=4)
+        self.assertRaises(TypeError, result.order_by, by_column_name=True)
+        self.assertRaises(TypeError, result.order_by, by_column_name=False)
+        self.assertRaises(ValueError, result.order_by, by_column_name=None)
+        self.assertRaises(TypeError, result.order_by, by_column_name=8.9)
+        self.assertRaises(TypeError, result.order_by, by_column_name=datetime.datetime.now())
+        self.assertRaises(TypeError, result.order_by, by_column_name=b"0x43")
+        self.assertRaises(TypeError, result.order_by, by_column_name="machinename", decr=4)
+        self.assertRaises(TypeError, result.order_by, by_create_time=True, decr=None)
+        self.assertRaises(TypeError, result.order_by, by_primary_key=True, decr=6.8)
+        self.assertRaises(TypeError, result.order_by, by_column_name="machinename", decr="teststr")
+        #
+        # Проверка соответствия результатов
+        #
+        ...
 
     @drop_cache
     @db_reinit
