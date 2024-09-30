@@ -968,24 +968,30 @@ class ResultORMCollection:
 
 
 class Sort:
-    def __init__(self):
-        self._input_nodes = ...
+    def __init__(self, container):
+        self.__container = container
 
     def _create_mapping(self) -> dict[str, Type[LinkedList]]:
         """  Заполнить словарь ключами """
         keys = map(lambda x: (x.upper(), x,), string.ascii_lowercase)
-        return {key: type(self._input_nodes)() for key in keys}
+        return {key: type(self.__container)() for key in keys}
+
+    @staticmethod
+    def _fill_mapping(data, nodes, target_column_name):
+        for item in nodes:
+            p = item.value[target_column_name][0]
+            data[(p.upper(), p,)].append(**item.get_attributes())
 
 
 class LettersSortSingleNodes(Sort):
     def __init__(self, nodes: ResultORMCollection):
-        super().__init__()
+        super().__init__(nodes)
         self._input_nodes = nodes
         if not isinstance(nodes, ResultORMCollection):
             raise TypeError
         self._nodes_in_sort = None  # Ноды, которые принимают участие в сортировке
         self._other_items = None  # Ноды, которые не участвуют в сортировке (доб в конец)
-        self._field = ...
+        self._field = None
 
     def sort_by_alphabet(self):
         """ Инициализировать словарь,
@@ -998,7 +1004,7 @@ class LettersSortSingleNodes(Sort):
         data_to_fill = self._create_mapping()
         self._select_nodes_to_sort()
         self._slice_other_nodes()
-        fill_mapping(data_to_fill, self._nodes_in_sort, self._field)
+        self._fill_mapping(data_to_fill, self._nodes_in_sort, self._field)
         output = self._merge_mapping(data_to_fill)
         output += self._other_items
         return output
@@ -1039,19 +1045,68 @@ class LettersSortSingleNodes(Sort):
 
 
 class LettersSortNodesChain(Sort):
-    def __init__(self, group):
-        super().__init__()
+    def __init__(self, group: list[ResultORMCollection]):
+        super().__init__(group[0] if group else None)
+        self._field = None
         self._nodes_chain = group
         if type(group) is not list:
             raise TypeError
         if any(map(lambda x: type(x) is not ResultORMCollection, group)):
             raise TypeError
 
-    def _select_nodes_to_sort(self):
-        pass
+    def sort_by_alphabet(self):
+        """ 1) Свалить все ноды в кучу
+         2) Отсортировать как ноды от простых запрсов
+         3) создать результирующий список
+         4) Разложить группы нод  """
+        def get_node_index_in_mapping(node: "ORMItem", mapping: dict) -> int:
+            key, value = node.get_primary_key_and_value(as_tuple=True)
+            key = (key.upper(), key,)
+            if key in mapping:
+                return tuple(mapping).index(key)
 
-    def _create_mapping(self):
-        pass
+        def create_result():
+            return [self._nodes_chain[0].container_cls() for _ in self._nodes_chain]
+
+        def add_all_nodes_in_one_container():
+            c = self._nodes_chain[0].container_cls
+            for index in self.__select_indexes():
+                group = self._nodes_chain[index]
+                c += group
+            return c
+
+        def get_new_positions_for_groups(mapping: dict):
+            for index in self.__select_indexes():
+                for group in self._nodes_chain[index]:
+                    yield min([get_node_index_in_mapping(node, mapping) for node in group])
+
+        def fill_result():
+
+
+        mapping = self._create_mapping()
+        joined_nodes = add_all_nodes_in_one_container()
+        self._fill_mapping(mapping, joined_nodes, self._field)
+        result = create_result()
+
+
+
+
+
+    def sort_by_string_length(self):
+        ...
+
+    def __select_indexes(self, in_sort=True):
+        """ Выбрать индексы коллекции, которые участвуют в сортировке или не участвуют """
+        for n, collection in enumerate(self._nodes_chain):
+            for node in collection:
+                if in_sort:
+                    if self._field not in node.value:
+                        continue
+                    yield n
+                    continue
+                if self._field in node.value:
+                    continue
+                yield n
 
 
 class LettersSort(LettersSortSingleNodes, LettersSortNodesChain):
