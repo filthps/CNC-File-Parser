@@ -969,6 +969,8 @@ class ResultORMCollection:
 
 class Sort:
     def __init__(self, container):
+        self._reverse = False
+        self._field = None
         self.__container = container
 
     def _create_mapping(self) -> dict[str, Type[LinkedList]]:
@@ -991,16 +993,11 @@ class LettersSortSingleNodes(Sort):
             raise TypeError
         self._nodes_in_sort = None  # Ноды, которые принимают участие в сортировке
         self._other_items = None  # Ноды, которые не участвуют в сортировке (доб в конец)
-        self._field = None
 
     def sort_by_alphabet(self):
         """ Инициализировать словарь,
         в котором ключами выступит первая буква из значения нашего ключевого слова, а значениями - очередь с нодой или нодами,
         содержащими данное поле и значение"""
-        def fill_mapping(data, nodes, target_column_name):
-            for item in nodes:
-                p = item.value[target_column_name][0]
-                data[(p.upper(), p,)].append(**item.get_attributes())
         data_to_fill = self._create_mapping()
         self._select_nodes_to_sort()
         self._slice_other_nodes()
@@ -1012,7 +1009,7 @@ class LettersSortSingleNodes(Sort):
     def sort_by_string_length(self):
         def create_mapping(nodes):
             """ Создать словарь, где ключи - длина """
-            return {len(node.value[self._field]): self._input_nodes.__class__() for node in nodes}
+            return {len(node.value[self._field]): node for node in nodes}
 
         self._slice_other_nodes()
         self._select_nodes_to_sort()
@@ -1040,14 +1037,13 @@ class LettersSortSingleNodes(Sort):
         """ Словарь, который отсортирован, - 'сжать' его значения воедино, сохраняя последовательность """
         output = self._input_nodes.container_cls.__class__()
         for val in data.values():
-            output += val
+            output.append(val)
         return output
 
 
 class LettersSortNodesChain(Sort):
     def __init__(self, group: list[ResultORMCollection]):
         super().__init__(group[0] if group else None)
-        self._field = None
         self._nodes_chain = group
         if type(group) is not list:
             raise TypeError
@@ -1056,18 +1052,9 @@ class LettersSortNodesChain(Sort):
 
     def sort_by_alphabet(self):
         """ 1) Свалить все ноды в кучу
-         2) Отсортировать как ноды от простых запрсов
-         3) создать результирующий список
-         4) Разложить группы нод  """
-        def get_node_index_in_mapping(node: "ORMItem", mapping: dict) -> int:
-            key, value = node.get_primary_key_and_value(as_tuple=True)
-            key = (key.upper(), key,)
-            if key in mapping:
-                return tuple(mapping).index(key)
-
-        def create_result():
-            return [self._nodes_chain[0].container_cls() for _ in self._nodes_chain]
-
+         2) Разложить по алфавиту в словарь
+         3) создать результирующий список с группами
+         4) Разложить группы нод парами, как было изначально, но на новые позиции"""
         def add_all_nodes_in_one_container():
             c = self._nodes_chain[0].container_cls
             for index in self.__select_indexes():
@@ -1075,25 +1062,51 @@ class LettersSortNodesChain(Sort):
                 c += group
             return c
 
-        def get_new_positions_for_groups(mapping: dict):
+        def get_new_positions_for_groups(mapping):
+            def get_node_index_in_mapping(node: "ORMItem", mapping) -> int:
+                key = node.get_primary_key_and_value(only_key=True)
+                key = (key.upper(), key,)
+                if key in mapping:
+                    return tuple(mapping).index(key)
             for index in self.__select_indexes():
                 for group in self._nodes_chain[index]:
-                    yield min([get_node_index_in_mapping(node, mapping) for node in group])
+                    pos = []
+                    for node in group:
+                        index = get_node_index_in_mapping(node, mapping)
+                        if index is not None:
+                            pos.append(index)
+                    if pos:
+                        yield min(pos)
 
-        def fill_result():
-
+        def fill_result(mapping) -> list:
+            result = []
+            for group_index in get_new_positions_for_groups(mapping):
+                nodes_group = self._nodes_chain[group_index]
+                result.append(nodes_group)
+            return result
 
         mapping = self._create_mapping()
         joined_nodes = add_all_nodes_in_one_container()
         self._fill_mapping(mapping, joined_nodes, self._field)
-        result = create_result()
-
-
-
-
+        return fill_result(mapping).extend(self.__select_indexes(in_sort=False))
 
     def sort_by_string_length(self):
-        ...
+        def create_mapping():
+            m = {}
+            for i in self.__select_indexes():
+                group = self._nodes_chain[i]
+                ln = []
+                for node in group:
+                    if self._field in node.value:
+                        ln.append(len(node.value[self._field]))
+                if not ln:
+                    continue
+                m.update({min(ln): group})
+            return m
+
+        mapping = create_mapping()
+        mapping = dict(sorted(mapping.items(), key=lambda k: k[0]))
+        return list(mapping.values()).extend(self.__select_indexes(in_sort=False))
 
     def __select_indexes(self, in_sort=True):
         """ Выбрать индексы коллекции, которые участвуют в сортировке или не участвуют """
@@ -1114,20 +1127,32 @@ class LettersSort(LettersSortSingleNodes, LettersSortNodesChain):
      Простейшая сортировка при помощи встроенной функции sorted. """
     def __init__(self, field_name, nodes: ResultORMCollection = None,
                  nodes_group_chain: list[ResultORMCollection] = None, decr=True):
+        self._nodes_chain = nodes_group_chain
+        self._input_nodes = nodes
+        self._reverse = decr
+        self._field = field_name
         if nodes is not None:
             super(LettersSortSingleNodes, self).__init__(nodes)
         if nodes_group_chain is not None:
             super(LettersSortNodesChain, self).__init__(nodes_group_chain)
-        self._from_top_to_down = decr
-        self._field = field_name
         if sum((bool(nodes), bool(nodes_group_chain),)) != 1:
             raise ValueError
-        if type(self._from_top_to_down) is not bool:
+        if type(self._reverse) is not bool:
             raise TypeError
         if not isinstance(self._field, str):
             raise TypeError
         if not self._field:
             raise ValueError("Данная строка не может быть пустой")
+
+    def sort_by_alphabet(self):
+        return super().sort_by_alphabet() \
+            if self._nodes_chain else \
+            super(LettersSortNodesChain, self).sort_by_alphabet()
+
+    def sort_by_string_length(self):
+        return super().sort_by_string_length() \
+            if self._nodes_chain else \
+            super(LettersSortNodesChain, self).sort_by_string_length()
 
 
 class OrderByMixin(ABC):
@@ -1147,7 +1172,7 @@ class OrderByMixin(ABC):
         self._order_by_args = args
         self._order_by_kwargs = kwargs
         self._is_sort = True
-        self._is_valid_order_by_params(*args, **kwargs)
+        self.__is_valid_order_by_params(*args, **kwargs)
 
     @property
     def items(self) -> Union[list["ResultORMCollection"], "ResultORMCollection"]:
@@ -1160,13 +1185,13 @@ class OrderByMixin(ABC):
         iterator = super().__iter__()
         if not self._is_sort:
             return iterator
-        return self._order_by(iterator)
+        return iter(self._order_by(iterator))
 
     @abstractmethod
     def _order_by(self, nodes: "ResultORMCollection") -> "ResultORMCollection":
         pass
 
-    def _is_valid_order_by_params(self, model, by_column_name, by_primary_key, by_create_time, decr):
+    def __is_valid_order_by_params(self, model, by_column_name, by_primary_key, by_create_time, length, alphabet, decr):
         ORMItem.is_valid_model_instance(model)
         if by_column_name is not None:
             if type(by_column_name) is not str:
@@ -1180,10 +1205,16 @@ class OrderByMixin(ABC):
         if by_create_time is not None:
             if type(by_create_time) is not bool:
                 raise TypeError
+        if not isinstance(length, bool):
+            raise TypeError
+        if not isinstance(alphabet, bool):
+            raise TypeError
         if type(decr) is not bool:
             raise TypeError
         if not sum([bool(by_column_name), bool(by_primary_key), bool(by_create_time)]) == 1:
             raise ValueError("Нужно выбрать один из вариантов")
+        if not sum((length, alphabet,)) == 1:
+            raise ValueError
 
     @staticmethod
     def __check_exists_column_name(model, col_name):
@@ -1194,9 +1225,11 @@ class OrderByMixin(ABC):
 class OrderBySingleResultMixin(OrderByMixin):
     """ Реализация для 'одиночного результата',- запрос к одной таблице. См ORMHelper.get_items() """
     def order_by(self, by_column_name: Optional[str] = None, by_primary_key: Optional[bool] = None,
-                 by_create_time: Optional[bool] = None, decr: bool = False):
+                 by_create_time: Optional[bool] = None, length: bool = False, alphabet: bool = False,
+                 decr: bool = False):
         return super().order_by(self._model, by_column_name=by_column_name,
-                                by_primary_key=by_primary_key, by_create_time=by_create_time, decr=decr)
+                                by_primary_key=by_primary_key, by_create_time=by_create_time,
+                                length=length, alphabet=alphabet, decr=decr)
 
     def _order_by(self, nodes):
         k = self._order_by_kwargs
@@ -1209,7 +1242,7 @@ class OrderBySingleResultMixin(OrderByMixin):
                 by_column_name = pk_string
         if by_column_name:
             nodes = nodes.get_all_visible_items
-            sorting = LettersSort(nodes, by_column_name)
+            sorting = LettersSort(nodes, by_column_name, decr=k["decr"])
             sorted_nodes = sorting.sort_by_alphabet()
         if by_create_time:
             items = map(lambda node: (node, node.created_at,), nodes)
@@ -1229,28 +1262,39 @@ class OrderByJoinResultMixin(OrderByMixin, ModelTools):
     """ Реализация для запросов с join. См ORMHelper.join_select() """
     def order_by(self: "JoinSelectResult", model, by_column_name: Optional[str] = None,
                  by_primary_key: Optional[bool] = None,
-                 by_create_time: Optional[bool] = None, decr: bool = False):
+                 by_create_time: Optional[bool] = None, length: bool = False, alphabet: bool = False,
+                 decr: bool = False):
         self.is_valid_model_instance(model)
         if model not in self._models:
             raise ValueError
         return super().order_by(model, by_column_name=by_column_name,
-                                by_primary_key=by_primary_key, by_create_time=by_create_time, decr=decr)
+                                by_primary_key=by_primary_key, by_create_time=by_create_time,
+                                length=length, alphabet=alphabet, decr=decr)
 
-    def _order_by(self, nodes: Iterable["ResultORMCollection"]) -> "ResultORMCollection":
+    def _order_by(self, nodes: Iterable["ResultORMCollection"]) -> list["ResultORMCollection"]:
         model = self._order_by_args[0]
         k = self._order_by_kwargs
         by_column_name, by_primary_key, by_create_time = \
             k["by_column_name"], k["by_primary_key"], k["by_create_time"]
-        if by_column_name:
-            pass
+        sort_by_length = k["length"]
+        nodes = list(self)
         if by_primary_key:
-            pass
+            if not nodes:
+                return []
+            by_column_name = nodes[0][0].get_primary_key_and_value()[0]
+        if by_column_name:
+            instance = LettersSort(by_column_name, nodes_group_chain=nodes, decr=k["decr"])
+            if sort_by_length:
+                return instance.sort_by_string_length()
+            return instance.sort_by_alphabet()
         if by_create_time:
-            pass
+            return self.__sort_nodes_by_create_time()
 
-    def __create_joined_container(self):
-        ...
-
+    def __sort_nodes_by_create_time(self):
+        def nodes_map():
+            for nodes_group in self:
+                yield min(map(lambda node: node.created_at, nodes_group)), nodes_group
+        return list(dict(sorted(nodes_map(), key=operator.itemgetter(0))).values())
 
 
 class SQLAlchemyQueryManager:
