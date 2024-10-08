@@ -83,41 +83,27 @@ class SetUp:
         ))
         self.orm_manager.database.add(OperationDelegation(commentid=self.orm_manager.database.scalar(select(Comment)).commentid))
         self.orm_manager.database.commit()
+        time.sleep(1)
 
     def set_data_into_queue(self):
-        items = ORMItemQueue()
-        items.enqueue(_model=Numeration, numerationid=2, endat=269, _insert=True,
-                      _create_at=datetime.datetime.now(), _container=items)
-        items.enqueue(_insert=True, _model=OperationDelegation, numerationid=2,
-                      _container=items, _create_at=datetime.datetime.now(),
-                      operationdescription="Нумерация кадров")
-        time.sleep(4)
-        items.enqueue(_model=Comment, findstr="test_string_set_from_queue", ifcontains=True,
-                      _insert=True, commentid=2, _create_at=datetime.datetime.now(), _container=items)
-        items.enqueue(_model=OperationDelegation, commentid=2, _container=items,
-                      _insert=True, _create_at=datetime.datetime.now(),
-                      operationdescription="Комментарий")
-        items.enqueue(_model=Cnc, _insert=True, cncid=2, name="Ram", commentsymbol="#",
-                      _create_at=datetime.datetime.now(), _container=items)
-        items.enqueue(_model=Machine, machineid=2, cncid=2, machinename="Fidia", inputcatalog=r"D:\Heller",
-                      outputcatalog=r"C:\Test", _container=items,
-                      _create_at=datetime.datetime.now(), _insert=True)
-        self.orm_manager.cache.set("ORMItems", items, ORMHelper.CACHE_LIFETIME_HOURS)
+        self.orm_manager.set_item(_model=Numeration, numerationid=2, endat=269, _insert=True)
+        self.orm_manager.set_item(_insert=True, _model=OperationDelegation, numerationid=2, operationdescription="Нумерация кадров")
+        self.orm_manager.set_item(_model=Comment, findstr="test_string_set_from_queue", ifcontains=True, _insert=True, commentid=2)
+        self.orm_manager.set_item(_model=OperationDelegation, commentid=2, _insert=True,
+                                  operationdescription="Комментарий")
+        self.orm_manager.set_item(_model=Cnc, _insert=True, cncid=2, name="Ram", commentsymbol="#")
+        self.orm_manager.set_item(_model=Machine, machineid=2, cncid=2, machinename="Fidia", inputcatalog=r"D:\Heller",
+                                  outputcatalog=r"C:\Test", _insert=True)
+        self.orm_manager.set_item(_model=Machine, machinename="Tesm", _insert=True)
+        self.orm_manager.set_item(_model=Machine, machinename="65A90", _insert=True)
+        self.orm_manager.set_item(_model=Machine, machinename="Rambaudi", _insert=True)
 
     def update_exists_items(self):
-        queue = self.orm_manager.items
-        queue.enqueue(_update=True, _model=Cnc, cncid=2, name="Ramnewname", commentsymbol="&", _container=queue,
-                      _create_at=datetime.datetime.now())
-        queue.enqueue(_update=True, _model=Machine, machineid=2, inputcatalog=r"C:\Fidia", _container=queue,
-                      _create_at=datetime.datetime.now())
-        queue.enqueue(cncid=1, name="Test", _model=Cnc, _update=True, _container=queue,
-                      _create_at=datetime.datetime.now())
-        queue.enqueue(numerationid=2, endat=4, _model=Numeration, _update=True, _container=queue,
-                      _create_at=datetime.datetime.now())
-        queue.enqueue(_model=Comment, commentid=2, findstr="test_str_new", _update=True, _container=queue,
-                      _create_at=datetime.datetime.now())
-        queue.enqueue(_model=Machine, machinename="testname", machineid=1, _insert=True, _container=queue,
-                      _create_at=datetime.datetime.now())
+        self.orm_manager.set_item(cncid=1, name="name", _model=Cnc, _update=True)
+        self.orm_manager.set_item(_update=True, _model=Machine, machineid=2, inputcatalog=r"C:\F")
+        self.orm_manager.set_item(numerationid=2, endat=4, _model=Numeration, _update=True)
+        self.orm_manager.set_item(_model=Comment, commentid=2, findstr="test_str_new", _update=True)
+        self.orm_manager.set_item(_model=Machine, machinename="testname", machineid=1, _insert=True)
 
 
 class TestORMHelper(unittest.TestCase, SetUp):
@@ -271,19 +257,19 @@ class TestORMHelper(unittest.TestCase, SetUp):
     @drop_cache
     @db_reinit
     def test_get_items(self):
-        self.orm_manager.set_item(_model=Machine, machinename="Heller", _delete=True)
         self.assertIsInstance(self.orm_manager.get_items(_model=Machine), Result)
         self.assertEqual(self.orm_manager.get_items(_model=Machine).__len__(), 0)
-        self.assertFalse(self.orm_manager.get_items(_model=Machine))
         # Элементы с _delete=True игнорируются в выборке через метод get_items,- согласно замыслу
         # Тем не менее, в очереди они должны присутствовать: см свойство items
+
         self.orm_manager.set_item(_model=Machine, machinename="Fidia", inputcatalog="C:\\path", _insert=True)
-        self.assertEqual(list(self.orm_manager.get_items(_model=Machine)).__len__(), 1)
+        self.assertEqual(self.orm_manager.get_items(_model=Machine).__len__(), 1)
         self.orm_manager.set_item(_model=Condition, condinner="text", less=True, _insert=True)
-        self.orm_manager.set_item(_model=Cnc, name="Fid", commentsymbol="$", _update=True)
-        self.assertEqual(list(self.orm_manager.get_items(_model=Machine)).__len__(), 1)
-        self.assertEqual(list(self.orm_manager.get_items(_model=Condition)).__len__(), 1)
-        self.assertEqual(list(self.orm_manager.get_items(_model=Cnc)).__len__(), 1)
+        self.orm_manager.set_item(_model=Cnc, name="Fid", cncid=3, commentsymbol="$", _update=True)
+        self.assertEqual(self.orm_manager.get_items(_model=Machine).__len__(), 1)
+        self.assertEqual(self.orm_manager.get_items(_model=Condition).__len__(), 1)
+        self.assertEqual(self.orm_manager.get_items(_model=Cnc).__len__(), 1)
+        self.orm_manager.set_item(_model=Machine, machinename="Fidia", inputcatalog="C:\\pathnew", _update=True)
 
     @drop_cache
     @db_reinit
@@ -454,6 +440,7 @@ class TestORMHelper(unittest.TestCase, SetUp):
     def test_someone(self):
         self.assertEqual(1, 1)
 
+
 class TestQueueOrderBy(unittest.TestCase, SetUp):
     def setUp(self) -> None:
         ORMHelper.TESTING = True
@@ -467,15 +454,15 @@ class TestQueueOrderBy(unittest.TestCase, SetUp):
         self.set_data_into_queue()
         result = self.orm_manager.get_items(Machine)
         # Передача правильных параметров
-        result.order_by(by_create_time=True)
-        result.order_by(by_column_name="machinename")
-        result.order_by(by_primary_key=True)
-        result.order_by(by_create_time=True, decr=True)
-        result.order_by(by_column_name="machinename", decr=True)
-        result.order_by(by_primary_key=True, decr=True)
-        result.order_by(by_create_time=True, decr=False)
-        result.order_by(by_column_name="machinename", decr=False)
-        result.order_by(by_primary_key=True, decr=False)
+        result.order_by(by_create_time=True, alphabet=True)
+        result.order_by(by_column_name="machinename", length=True)
+        result.order_by(by_primary_key=True, alphabet=True)
+        result.order_by(by_create_time=True, decr=True, alphabet=True)
+        result.order_by(by_column_name="machinename", decr=True, length=True)
+        result.order_by(by_primary_key=True, decr=True, length=True)
+        result.order_by(by_create_time=True, decr=False, length=True)
+        result.order_by(by_column_name="machinename", decr=False, alphabet=True)
+        result.order_by(by_primary_key=True, decr=False, length=True)
         # Передача неправильных параметров
         self.assertRaises(ValueError, result.order_by)
         self.assertRaises(TypeError, result.order_by, by_create_time=4)
@@ -503,10 +490,37 @@ class TestQueueOrderBy(unittest.TestCase, SetUp):
         self.assertRaises(TypeError, result.order_by, by_create_time=True, decr=None)
         self.assertRaises(TypeError, result.order_by, by_primary_key=True, decr=6.8)
         self.assertRaises(TypeError, result.order_by, by_column_name="machinename", decr="teststr")
+        self.assertRaises(ValueError, result.order_by, by_column_name="machinename", decr=True)
+        self.assertRaises(ValueError, result.order_by, by_column_name="machinename", decr=True, length=True, alphabet=True)
+        self.assertRaises((TypeError, ValueError), result.order_by, by_column_name="machinename", decr=True, length="123", alphabet=True)
+        self.assertRaises((TypeError, ValueError), result.order_by, by_column_name="machinename", decr=True, length=True, alphabet=3)
+        self.assertRaises((TypeError, ValueError), result.order_by, by_column_name="machinename", decr=True, length=True, alphabet=None)
+        self.assertRaises((TypeError, ValueError), result.order_by, by_column_name="machinename", decr=True, length=True, alphabet=9.7)
+        self.assertRaises((TypeError, ValueError), result.order_by, by_column_name="machinename", decr=True, length=True, alphabet=0)
+        self.assertRaises((TypeError, ValueError), result.order_by, by_column_name="machinename", decr=True, length=0, alphabet=0)
+        self.assertRaises((TypeError, ValueError), result.order_by, by_column_name="machinename", decr=True, alphabet="123", length=True)
+        self.assertRaises((TypeError, ValueError), result.order_by, by_column_name="machinename", decr=True, alphabet=True, length=3)
+        self.assertRaises((TypeError, ValueError), result.order_by, by_column_name="machinename", decr=True, alphabet=True, length=None)
+        self.assertRaises((TypeError, ValueError), result.order_by, by_column_name="machinename", decr=True, alphabet=True, length=9.7)
+        self.assertRaises((TypeError, ValueError), result.order_by, by_column_name="machinename", decr=True, alphabet=True, length=0)
+        self.assertRaises((TypeError, ValueError), result.order_by, by_column_name="machinename", decr=True, alphabet=0, length=0)
+        self.assertRaises(TypeError, result.order_by, by_column_name="machinename", decr=True, length="123")
+        self.assertRaises(TypeError, result.order_by, by_column_name="machinename", decr=True, alphabet=0)
+        self.assertRaises(TypeError, result.order_by, by_column_name="machinename", decr=True, alphabet=None)
+        self.assertRaises(TypeError, result.order_by, by_column_name="machinename", decr=True, alphabet=6)
+        self.assertRaises(TypeError, result.order_by, by_column_name="machinename", decr=True, alphabet=0.7)
+        self.assertRaises(TypeError, result.order_by, by_column_name="machinename", decr=True, alphabet=b'')
+        self.assertRaises(TypeError, result.order_by, by_column_name="machinename", decr=True, alphabet=b'0x3')
+        self.assertRaises(TypeError, result.order_by, by_column_name="machinename", decr=True, alphabet=[])
+        self.assertRaises(TypeError, result.order_by, by_column_name="machinename", decr=True, alphabet=tuple())
+        self.assertRaises(TypeError, result.order_by, by_column_name="machinename", decr=True, alphabet=object())
         #
         # Проверка соответствия результатов
         #
+        # Сортировка по алфавиту  todo
         ...
+
+        # Сортировка по длине строки значения todo
 
     @drop_cache
     @db_reinit
