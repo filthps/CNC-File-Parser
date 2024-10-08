@@ -1,3 +1,10 @@
+"""
+Основные положения
+Для конечного пользования применяются только методы set_item, get_item 
+### insert новой записи через set_item:
+    - pk передан явно
+    - генерится автоинкрементивный ключ, который не пойдёт в insert запись
+"""
 import sys
 import copy
 import threading
@@ -940,7 +947,7 @@ class ResultORMCollection:
         return bool(self.__len__())
 
     def __len__(self):
-        return sum(map(lambda: 1, self))
+        return sum(map(lambda _: 1, self))
 
     def __getitem__(self, item):
         return self.__collection.__getitem__(item)
@@ -1158,9 +1165,9 @@ class LettersSort(LettersSortSingleNodes, LettersSortNodesChain):
 class OrderByMixin(ABC):
     """ Реализация функционала для сортировки экземпляров ResultORMCollection в виде примеси для класса Result* """
     items = abstractproperty(lambda: ResultORMCollection())
+    __iter__ = abstractmethod(lambda x: x)
 
     def __init__(self: Union["Result", "JoinSelectResult"], *args, **kwargs):
-        super().__init__(*args, **kwargs)
         if not isinstance(self, (Result, JoinSelectResult)):
             raise TypeError("Использовать данный класс в наследовании! Как миксин")
         self._order_by_args = None
@@ -1176,20 +1183,18 @@ class OrderByMixin(ABC):
 
     @property
     def items(self) -> Union[list["ResultORMCollection"], "ResultORMCollection"]:
-        nodes = super().items
         if not self._is_sort:
-            return nodes
-        return self._order_by(nodes)
+            return self.items
+        return self._order_by(self.items)
 
     def __iter__(self):
-        iterator = super().__iter__()
         if not self._is_sort:
-            return iterator
-        return iter(self._order_by(iterator))
+            return self.__iter__()
+        return iter(self._order_by(self.items))
 
     @abstractmethod
     def _order_by(self, nodes: "ResultORMCollection") -> "ResultORMCollection":
-        pass
+        ...
 
     def __is_valid_order_by_params(self, model, by_column_name, by_primary_key, by_create_time, length, alphabet, decr):
         ORMItem.is_valid_model_instance(model)
@@ -1231,7 +1236,7 @@ class OrderBySingleResultMixin(OrderByMixin):
                                 by_primary_key=by_primary_key, by_create_time=by_create_time,
                                 length=length, alphabet=alphabet, decr=decr)
 
-    def _order_by(self, nodes):
+    def _order_by(self, nodes: ResultORMCollection):
         k = self._order_by_kwargs
         by_column_name, by_primary_key, by_create_time = \
             k["by_column_name"], k["by_primary_key"], k["by_create_time"]
@@ -1488,7 +1493,7 @@ class BaseResult(ABC):
         self._only_queue = only_local
         self._only_db = only_database
         self._pointer: Optional["Pointer"] = None
-        self._merged_data = None
+        self.__merged_data = []
         self.__is_valid()
 
     def has_changes(self, hash_=None, strict_mode=True) -> bool:
@@ -1512,14 +1517,17 @@ class BaseResult(ABC):
 
     @property
     def items(self):
-        self._merged_data = self._merge()
-        self._save_merged_collection_in_cache(self._merged_data)
-        return self._merged_data
+        try:
+            self.__merged_data = super().items
+        except AttributeError:
+            self.__merged_data = self._merge()
+        self._save_merged_collection_in_cache(self.__merged_data)
+        return self.__merged_data
 
     @property
     def old_data(self):
         """ Результат работы итератора в предыдущий раз. (без выполнения merge) Для особого случая. См Pointer... """
-        return self._merged_data
+        return self.__merged_data
 
     @property
     def previous_hash(self) -> list[int]:
@@ -1538,7 +1546,7 @@ class BaseResult(ABC):
     def __iter__(self):
         self.__merged_data = self._merge()
         self._save_merged_collection_in_cache(self.__merged_data)
-        return iter(self._merged_data)
+        return iter(self.__merged_data)
 
     def __len__(self):
         return sum((1 for _ in self))
@@ -1562,7 +1570,8 @@ class BaseResult(ABC):
                 raise KeyError
             return node
         if type(item) is int:
-            return dict(zip([node_or_node_group.__hash__() for node_or_node_group in self], self))[item]
+            items = self.items
+            return dict(zip([node_or_node_group.__hash__() for node_or_node_group in items], items))[item]
         raise TypeError
 
     @classmethod
@@ -1601,6 +1610,14 @@ class BaseResult(ABC):
         if not self._only_db:
             if not callable(self.get_nodes_from_database):
                 raise ValueError
+
+    def __iter(self):
+        """ Для 3 принципа S.O.L.I.D.
+        Поддержка класса-миксина (в наследовании) со своим итератором у конечного класса """
+        try:
+            return super().__iter__()
+        except AttributeError:
+            return iter(self)
 
 
 class Result(BaseResult, OrderBySingleResultMixin, ModelTools):
@@ -1815,16 +1832,6 @@ class ORMHelper(ORMAttributes):
         return cls.cache.get("ORMItems") or ORMItemQueue()
 
     @classmethod
-    def init_timer(cls):
-        if cls.TESTING:
-            return
-        timer = threading.Timer(cls.RELEASE_INTERVAL_SECONDS, cls.release)
-        timer.daemon = True
-        timer.setName("ORMHelper(database push queue)")
-        timer.start()
-        return timer
-
-    @classmethod
     def set_item(cls, _model=None, _insert=False, _update=False,
                  _delete=False, _ready=False, _where=None, **value):
         def detect_primary_key():
@@ -1844,7 +1851,7 @@ class ORMHelper(ORMAttributes):
                       _primary_key=detect_primary_key(), **value)
         cls.__set_cache(items)
         cls._timer = None
-        cls._timer = cls.init_timer()
+        cls._timer = cls._init_timer()
 
     @classmethod
     def get_items(cls, _model: Optional[Type[CustomModel]] = None, _db_only=False, _queue_only=False, **attrs) -> Result:  # todo: придумать пагинатор
@@ -2129,6 +2136,16 @@ class ORMHelper(ORMAttributes):
         sys.exit()
 
     @classmethod
+    def _init_timer(cls):
+        if cls.TESTING:
+            return
+        timer = threading.Timer(cls.RELEASE_INTERVAL_SECONDS, cls.release)
+        timer.daemon = True
+        timer.setName("ORMHelper(database push queue)")
+        timer.start()
+        return timer
+
+    @classmethod
     def _is_valid_config(cls):
         if type(cls.TESTING) is not bool:
             raise TypeError
@@ -2240,4 +2257,3 @@ class Pointer:
             raise WrapperError
         if not all(map(lambda x: isinstance(x, str), self.wrap_items)):
             raise WrapperError
-
