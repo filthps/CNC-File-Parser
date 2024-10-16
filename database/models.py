@@ -76,7 +76,7 @@ OPERATION_TYPES = (
 )
 
 
-#  class CustomModel(db.Model, ModelController):
+#  class CustomModel(ModelController, db.Model):
 class CustomModel(ModelController):
     """
     Абстрактный класс для аннотации типов.
@@ -92,14 +92,14 @@ class GlobalFields:
     _create_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
 
-class TaskDelegation(db.Model, ModelController, GlobalFields):
+class TaskDelegation(ModelController, db.Model, GlobalFields):
     __tablename__ = "taskdelegate"
     id = Column(String, primary_key=True, default=get_uuid)
     machineid = Column(ForeignKey("machine.machineid"), nullable=False)
     operationid = Column(ForeignKey("operationdelegation.opid"), nullable=False)
 
 
-class Machine(db.Model, ModelController, GlobalFields):
+class Machine(ModelController, db.Model, GlobalFields):
     __tablename__ = "machine"
     machineid = Column(Integer, primary_key=True, autoincrement=True)
     cncid = Column(Integer, ForeignKey("cnc", ondelete="SET NULL", onupdate="SET NULL"), nullable=True)
@@ -132,7 +132,7 @@ class Machine(db.Model, ModelController, GlobalFields):
     )
 
 
-class OperationDelegation(db.Model, ModelController, GlobalFields):
+class OperationDelegation(ModelController, db.Model, GlobalFields):
     __tablename__ = "operationdelegation"
     opid = Column(String, primary_key=True, default=get_uuid)
     conditionid = Column(String, ForeignKey("cond.cnd"), nullable=True, default=None)
@@ -147,7 +147,7 @@ class OperationDelegation(db.Model, ModelController, GlobalFields):
     operationdescription = Column(String(300), default="", nullable=False)
 
 
-class Condition(db.Model, ModelController, GlobalFields):
+class Condition(ModelController, db.Model, GlobalFields):
     __tablename__ = "cond"
     cnd = Column(String, primary_key=True, default=get_uuid)
     parent = Column(String, ForeignKey("cond.cnd", ondelete="SET NULL", onupdate="CASCADE"), nullable=True, default=None)
@@ -169,7 +169,7 @@ class Condition(db.Model, ModelController, GlobalFields):
     )
 
 
-class Cnc(db.Model, ModelController, GlobalFields):
+class Cnc(ModelController, db.Model, GlobalFields):
     __tablename__ = "cnc"
     cncid = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(20), unique=True, nullable=False)
@@ -181,7 +181,7 @@ class Cnc(db.Model, ModelController, GlobalFields):
     )
 
 
-class HeadVarible(db.Model, ModelController, GlobalFields):
+class HeadVarible(ModelController, db.Model, GlobalFields):
     __tablename__ = "headvar"
     varid = Column(String, default=get_uuid, primary_key=True)
     cncid = Column(ForeignKey("cnc.cncid", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
@@ -192,7 +192,7 @@ class HeadVarible(db.Model, ModelController, GlobalFields):
     )
 
 
-class Insert(db.Model, ModelController, GlobalFields):
+class Insert(ModelController, db.Model, GlobalFields):
     __tablename__ = "insert"
     insid = Column(Integer, primary_key=True, autoincrement=True)
     after = Column(Boolean, default=False, nullable=False)
@@ -207,7 +207,7 @@ class Insert(db.Model, ModelController, GlobalFields):
     )
 
 
-class Comment(db.Model, ModelController, GlobalFields):
+class Comment(ModelController, db.Model, GlobalFields):
     __tablename__ = "comment"
     commentid = Column(Integer, primary_key=True, autoincrement=True)
     findstr = Column(String(100), nullable=False)
@@ -215,7 +215,7 @@ class Comment(db.Model, ModelController, GlobalFields):
     ifcontains = Column(Boolean, default=False, nullable=False)
 
 
-class Uncomment(db.Model, ModelController, GlobalFields):
+class Uncomment(ModelController, db.Model, GlobalFields):
     __tablename__ = "uncomment"
     uid = Column(Integer, primary_key=True, autoincrement=True)
     findstr = Column(String(100), nullable=False)
@@ -226,7 +226,7 @@ class Uncomment(db.Model, ModelController, GlobalFields):
     )
 
 
-class Remove(db.Model, ModelController, GlobalFields):
+class Remove(ModelController, db.Model, GlobalFields):
     __tablename__ = "remove"
     removeid = Column(Integer, primary_key=True, autoincrement=True)
     iffullmatch = Column(Boolean, default=False, nullable=False)
@@ -238,7 +238,7 @@ class Remove(db.Model, ModelController, GlobalFields):
     )
 
 
-class HeadVarDelegation(db.Model, ModelController, GlobalFields):
+class HeadVarDelegation(ModelController, db.Model, GlobalFields):
     __tablename__ = "varsec"
     secid = Column(String, default=get_uuid, primary_key=True)
     varid = Column(String, ForeignKey("headvar.varid"), nullable=False)
@@ -249,7 +249,7 @@ class HeadVarDelegation(db.Model, ModelController, GlobalFields):
     )
 
 
-class Rename(db.Model, ModelController, GlobalFields):
+class Rename(ModelController, db.Model, GlobalFields):
     __tablename__ = "renam"
     renameid = Column(Integer, primary_key=True, autoincrement=True)
     uppercase = Column(Boolean, default=False, nullable=False)
@@ -262,7 +262,7 @@ class Rename(db.Model, ModelController, GlobalFields):
     #  varibles = relationship("HeadVarDelegation")
 
 
-class Numeration(db.Model, ModelController, GlobalFields):
+class Numeration(ModelController, db.Model, GlobalFields):
     __tablename__ = "num"
     numerationid = Column(Integer, autoincrement=True, primary_key=True)
     startat = Column(Integer, nullable=False, default=1)
@@ -275,7 +275,7 @@ class Numeration(db.Model, ModelController, GlobalFields):
     )
 
 
-class Replace(db.Model, ModelController, GlobalFields):
+class Replace(ModelController, db.Model, GlobalFields):
     __tablename__ = "repl"
     replaceid = Column(Integer, primary_key=True, autoincrement=True)
     findstr = Column(String(100), nullable=False)
@@ -290,7 +290,7 @@ class Replace(db.Model, ModelController, GlobalFields):
     )
 
 
-class SearchString(db.Model, ModelController, GlobalFields):
+class SearchString(ModelController, db.Model, GlobalFields):
     __tablename__ = "sstring"
     strid = Column(String, default=get_uuid, primary_key=True)
     inner_ = Column(Text, default="", nullable=False)
