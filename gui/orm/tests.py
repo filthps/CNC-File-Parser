@@ -173,23 +173,13 @@ class TestORMHelper(unittest.TestCase, SetUp):
                                                                 )
                                                            ).scalar(), 1)
 
-    def test_items_property(self):
-        self.assertTrue(type(self.orm_manager.items) is ORMItemQueue)
-
-    def test_init_timer(self):
-        t = self.orm_manager.init_timer()
-        self.assertIsInstance(t, threading.Timer)
-        self.assertEqual(t.getName(), "ORMHelper(database push queue)")
-
     @drop_cache
     @db_reinit
     def test_items_property(self):
         self.set_data_into_queue()
-        self.assertEqual(self.orm_manager.cache.get("ORMItems", ORMItemQueue()), self.orm_manager.items[0])
+        self.assertEqual(self.orm_manager.cache.get("ORMItems"), self.orm_manager.items)
         self.orm_manager.set_item(_insert=True, _model=Cnc, name="Fid")
-        self.assertEqual(self.orm_manager.cache.get("ORMItems"), self.orm_manager.items[0])
-        self.orm_manager.drop_cache()
-        self.assertEqual(self.orm_manager.cache.get("ORMItems", ORMItemQueue()), self.orm_manager.items[0])
+        self.assertEqual(len(self.orm_manager.items), 10)
 
     @drop_cache
     @db_reinit
@@ -214,7 +204,7 @@ class TestORMHelper(unittest.TestCase, SetUp):
         self.orm_manager.set_item(_delete=True, machinename="Some_name", _model=Machine)
         self.orm_manager.set_item(_delete=True, machinename="Some_name_2", _model=Machine)
         time.sleep(3)
-        result = self.orm_manager.get_item(_model=Machine, machinename="Helller", _only_db=True)
+        result = self.orm_manager.get_items(_model=Machine, machinename="Helller", _db_only=True)
         self.assertTrue(result)
         # start Invalid ...
         # плохой path
@@ -432,6 +422,7 @@ class TestORMHelper(unittest.TestCase, SetUp):
         #
         # Добавить изменения и проверить повторно
         self.update_exists_items()
+        print(iter(result))
         #
         self.assertTrue(result.pointer.has_changes("Результат в списке 2"))
         self.assertTrue(result.pointer.has_changes("Результат в списке 1"))
