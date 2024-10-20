@@ -107,7 +107,7 @@ class ModelTools(ORMAttributes):
     @classmethod
     def get_foreign_key_columns(cls, model: Type[CustomModel]) -> tuple[str]:
         cls.is_valid_model_instance(model)
-        return model.foreign_keys
+        return model().foreign_keys
 
     @classmethod
     def _select_primary_key_value_from_scalars(cls, node: "ORMItem", field_name: str) -> Optional[Union[str, int]]:
@@ -1661,8 +1661,9 @@ class JoinSelectResult(OrderByJoinResultMixin, BaseResult, ModelTools):
     TEMP_HASH_PREFIX = "join_select_hash"
     RESULT_CACHE_KEY = "join_result"
 
-    def __init__(self, *args, models=None, **kwargs):
+    def __init__(self, *args, models=None, get_all_local_nodes=None, **kwargs):
         self._models = models
+        self._get_all_local_nodes = get_all_local_nodes
         if not models:
             raise TypeError
         [self.is_valid_model_instance(m) for m in models]
@@ -1699,10 +1700,36 @@ class JoinSelectResult(OrderByJoinResultMixin, BaseResult, ModelTools):
             return hash(item) in [hash(node) for group_items in self for node in group_items]
 
     def _merge(self) -> list[ResultORMCollection]:
-        result = []
-        db_items = list(self.get_nodes_from_database()) if not self._only_queue else []
+        def get_nodes_with_null_value_in_fk():
+            """ Получить все локальные ноды, в которых в значениях внешних ключей стоит NULL"""
+            all_local_nodes: ORMItemQueue = self._get_all_local_nodes()
+            for node in all_local_nodes:
+                for data in node.model().foreign_keys:
+                    find_nodes = all_local_nodes.search_nodes(node.model, **{data.column.key: None})
+                    if find_nodes:
+                        yield find_nodes[0]
+
+        def get_filtered_database_items():
+            nullable_fk_nodes = get_nodes_with_null_value_in_fk()
+            for group in list(self.get_nodes_from_database()) if not self._only_queue else []:
+                for node in group:
+                    find_node = nullable_fk_nodes.search_nodes(node.model, **{node.get_primary_key_and_value()})
+                    if find_node:
+                        find_node = find_node[0]
+                        group.remove(find_node.model, *find_node.get_primary_key_and_value(as_tuple=True))
+                        if len(group) > 1:
+                            yield group
         local_items = list(self.get_local_nodes()) if not self._only_db else []
-        return [ResultORMCollection(item) for item in self.__merge_finnaly(db_items, local_items)]  # todo
+
+        def merge(db_items, local_items_):
+            def find_main_node(items: SpecialOrmContainer):
+                for node in items:
+                    rel_nodes = ...
+
+            for group in db_items:
+                main_node = find_main_node(group)
+                return ...  # todo
+        return [ResultORMCollection(item) for item in merge(list(get_filtered_database_items()), local_items)]
 
     def _get_node_by_joined_primary_key_and_value(self, joined_pk: str):
         model_name, primary_key, value = self._parse_joined_primary_key_and_value(joined_pk)
@@ -1735,56 +1762,6 @@ class JoinSelectResult(OrderByJoinResultMixin, BaseResult, ModelTools):
                         values.update({f"{node.model.__name__}.{n}": old_val})
                 result.append(values)
             yield result
-
-    def __merge_finnaly(self, db_data: list, local_data: list):
-        """ 1) Взять все FK от таблицы
-             Берём 1 группу нод
-            2) Находим "главную" ноду
-            3) Находим по главной ноде эту же группу в локальных нодах
-            4) Считаем ноды в группе по их FK
-            5) Если нод меньше, чем в элемах с бд, то берём ноды из бд
-            Для "отвязки" FK передавать в orm явно fk_field=None, а потом удалять в make_query
-         """
-        def get_main_node(group: ORMItemQueue) -> ORMItem:
-            """ Найти 'главную' ноду, ту,
-            которая ни на кого не ссылается в рамках 1 результата (группы нод) в коллекции,
-            а все остальные ноды ссылаются на неё"""
-            def get_fk():
-                for model in self._models:
-                    yield {model.__name__: model.foreign_keys}
-
-            def collect_references_nodes():
-                """ Получить все первичные ключи от нод, которые на кого-то ссылаются (в рамках этой группы нод - list) """
-                for i in get_fk():
-                    model_name, fields = tuple(i.items())[0]
-                    for index, node in enumerate(group):
-                        if node.model.__name__ == model_name:
-                            continue
-                        if set.intersection(set(node.value), set(fields)):
-                            yield index
-
-            ref_nodes = set(collect_references_nodes())
-            index = tuple(filter(lambda x: x not in ref_nodes, range(len(group))))
-            if not index:
-                raise RuntimeError("Так не бывает! Нарушение транзитивности.")
-            if len(index) > 1:
-                raise RuntimeError("Это очень странно. fixit. Нарушение транзитивности.")
-            return group[index]
-
-        def filter_nodes():
-            """ Пусть из базы пришла связка нод n->n1, а в локальных нодах этой связи не установлено,
-             тогда в локальных нодах нужно установить факт разрыва связи: n_табл.foreign_key_field=None,
-             если это так, то данная связка нод не попадёт в результат. В противном случае брать связку по данным из БД"""
-            db_reference_data = {get_main_node(group): group for group in db_data}
-            for main_node, local_group in {get_main_node(group): group for group in local_data}.items():
-                local_group: ORMItemQueue = ...
-                node: ORMItem = ...
-                for node in local_group.get_related_nodes(main_node, other_container=local_group):
-                    for fk_field in node.model().foreign_keys:
-                        if node.value[fk_field] is None:  # None установлен явно, а значит
-                            continue
-                ...
-
 
 
 class ORMHelper(ORMAttributes):
@@ -2087,14 +2064,15 @@ class ORMHelper(ORMAttributes):
             query: Query = eval(sql_text, {"orm_helper": cls}, ChainMap(*list(map(lambda x: {x.__name__: x}, models)), {"select": select}))
             return add_db_items_to_orm_queue()
 
-        def collect_local_data() -> Iterator[SpecialOrmContainer]:
-            def collect_all():  # n**2!
-                nonlocal heap
-                for model in models:  # O(n)
-                    heap += cls.items.search_nodes(model, **_where.get(model.__name__, {}))  # O(n * k)
+        def collect_all_local_nodes():  # n**2!
+            heap = ORMItemQueue()
+            for model in models:  # O(n)
+                heap += cls.items.search_nodes(model, **_where.get(model.__name__, {}))  # O(n * k)
+            return heap
 
+        def collect_local_data() -> Iterator[SpecialOrmContainer]:
             def collect_node_values(on_keys_or_values: Union[dict.keys, dict.values]):  # f(n) = O(n) * (O(k) * O(u) * (O(l) * O(m)) * O(y)); g(n) = O(n * k)
-                for node in heap:  # O(n)
+                for node in collect_all_local_nodes():  # O(n)
                     for table_and_column in on_keys_or_values:  # O(k)
                         table, table_column = table_and_column.split(".")  # O(u)
                         if table == node.model.__name__:  # O(l) * O(m)
@@ -2127,16 +2105,10 @@ class ORMHelper(ORMAttributes):
                                     raw.enqueue(**right_node.get_attributes(new_container=raw))  # todo fixit O(n ** 2)
                         if raw:
                             yield raw
-            heap = ORMItemQueue()
-            heap.LinkedListItem = ORMItem
-            collect_all()
             return compare_by_matched_fk()
-
-            def get_nodes_with_null_fk():
-                """ Получить все ноды, у которых значения полей - внешних ключей = NULL """
-
         return JoinSelectResult(get_nodes_from_database=collect_db_data, get_local_nodes=collect_local_data,
-                                only_database=_db_only, only_local=_queue_only, models=models)
+                                only_database=_db_only, only_local=_queue_only, get_all_local_nodes=collect_all_local_nodes,
+                                models=models)
 
     @classmethod
     def get_node_dml_type(cls, node_pk_value: Union[str, int], model=None) -> Optional[str]:
