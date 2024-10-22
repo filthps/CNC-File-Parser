@@ -1713,22 +1713,32 @@ class JoinSelectResult(OrderByJoinResultMixin, BaseResult, ModelTools):
             nullable_fk_nodes = get_nodes_with_null_value_in_fk()
             for group in list(self.get_nodes_from_database()) if not self._only_queue else []:
                 for node in group:
-                    find_node = nullable_fk_nodes.search_nodes(node.model, **{node.get_primary_key_and_value()})
+                    find_node = nullable_fk_nodes.get_node(node.model, **node.get_primary_key_and_value())
                     if find_node:
-                        find_node = find_node[0]
                         group.remove(find_node.model, *find_node.get_primary_key_and_value(as_tuple=True))
-                        if len(group) > 1:
-                            yield group
+                if len(group) > 1:
+                    yield group
         local_items = list(self.get_local_nodes()) if not self._only_db else []
 
         def merge(db_items, local_items_):
-            def find_main_node(items: SpecialOrmContainer):
-                for node in items:
-                    rel_nodes = ...
-
-            for group in db_items:
-                main_node = find_main_node(group)
-                return ...  # todo
+            """ Согласно реляционной теории, мы можем взять любую ноду из локальной группы
+            и найти её pk у группы из очереди в бд,
+             не опасаясь, что её pk продублируется где-то ещё """
+            for db_group in db_items:  # O(n)
+                rand_node = None  # O(1)
+                nodes = db_group.__iter__()  # O(n1)
+                while True:  # O(n1)
+                    rand_node = nodes.__next__()  # O(1)
+                    find_node = None  # O(1)
+                    for local_group in local_items_:  # O(k)
+                        find_node = local_group.search_nodes(rand_node.model, **rand_node.get_primary_key_and_value())  # O(k1)
+                        if find_node:  # O(k1)
+                            yield db_group + local_group  # O(n1) * O(k1)
+                    if find_node:  # O(k1)
+                        break
+            # f(n) = O(n) * (O(1) + O(n1) + O(n1) * (O(1) + O(1) + O(k) * (O(k1) + O(k1) + O(n1) * O(k1) + O(k1))))
+            # f(n) = O(n) * (O(n1) + O(n1) * (O(k) * (O(k1) + O(k1) + O(n1) * O(k1) + O(k1))))
+            # f(n) = O(n) * (O(n1) * (O(k) * (O(k1) * O(k1))))
         return [ResultORMCollection(item) for item in merge(list(get_filtered_database_items()), local_items)]
 
     def _get_node_by_joined_primary_key_and_value(self, joined_pk: str):
