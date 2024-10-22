@@ -1,6 +1,5 @@
 import weakref
 import copy
-from abc import ABC, abstractmethod
 from weakref import ref
 from typing import Optional, Iterable, Union, Any, Iterator
 
@@ -204,9 +203,12 @@ class LinkedList:
         return sum(tuple(1 for _ in self))
 
     def __bool__(self):
-        if len(self):
+        try:
+            next(self.__iter__())
+        except StopIteration:
+            return False
+        else:
             return True
-        return False
 
     def __contains__(self, item):
         if type(item) is not self.LinkedListItem:
