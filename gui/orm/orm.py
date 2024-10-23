@@ -1702,12 +1702,14 @@ class JoinSelectResult(OrderByJoinResultMixin, BaseResult, ModelTools):
     def _merge(self) -> list[ResultORMCollection]:
         def get_nodes_with_null_value_in_fk():
             """ Получить все локальные ноды, в которых в значениях внешних ключей стоит NULL"""
+            res = ORMItemQueue()
             all_local_nodes: ORMItemQueue = self._get_all_local_nodes()
             for node in all_local_nodes:
                 for data in node.model().foreign_keys:
                     find_nodes = all_local_nodes.search_nodes(node.model, **{data.column.key: None})
                     if find_nodes:
-                        yield find_nodes[0]
+                        res.append(**find_nodes[0].get_attributes())
+            return res
 
         def get_filtered_database_items():
             nullable_fk_nodes = get_nodes_with_null_value_in_fk()
@@ -1725,17 +1727,29 @@ class JoinSelectResult(OrderByJoinResultMixin, BaseResult, ModelTools):
             и найти её pk у группы из очереди в бд,
              не опасаясь, что её pk продублируется где-то ещё """
             for db_group in db_items:  # O(n)
-                rand_node = None  # O(1)
                 nodes = db_group.__iter__()  # O(n1)
                 while True:  # O(n1)
-                    rand_node = nodes.__next__()  # O(1)
+                    try:
+                        rand_node = nodes.__next__()  # O(1)
+                    except StopIteration:
+                        rand_node = None
+                    if rand_node is None:
+                        break
                     find_node = None  # O(1)
                     for local_group in local_items_:  # O(k)
                         find_node = local_group.search_nodes(rand_node.model, **rand_node.get_primary_key_and_value())  # O(k1)
                         if find_node:  # O(k1)
                             yield db_group + local_group  # O(n1) * O(k1)
+                            db_items.remove(db_group)
+                            local_items_.remove(local_group)
                     if find_node:  # O(k1)
                         break
+            if db_items:
+                for item in db_items:
+                    yield item
+            if local_items_:
+                for item in local_items_:
+                    yield item
             # f(n) = O(n) * (O(1) + O(n1) + O(n1) * (O(1) + O(1) + O(k) * (O(k1) + O(k1) + O(n1) * O(k1) + O(k1))))
             # f(n) = O(n) * (O(n1) + O(n1) * (O(k) * (O(k1) + O(k1) + O(n1) * O(k1) + O(k1))))
             # f(n) = O(n) * (O(n1) * (O(k) * (O(k1) * O(k1))))
