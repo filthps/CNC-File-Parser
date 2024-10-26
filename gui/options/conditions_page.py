@@ -6,7 +6,7 @@ from PySide2.QtWidgets import QButtonGroup, QMainWindow, QListWidget, QListWidge
     QVBoxLayout, QGroupBox, QLineEdit, QRadioButton, QDialogButtonBox, QSpacerItem, QTextBrowser, QLabel, QFormLayout
 from PySide2.QtCore import Slot, Qt
 from PySide2.QtGui import QSyntaxHighlighter
-from gui.tools import Tools, Constructor, MyAbstractDialog
+from gui.tools import JoinedModelTools, Constructor, MyAbstractDialog
 from database.models import Condition, HeadVarible, HeadVarDelegation, SearchString
 from gui.orm.orm import JoinSelectResult, ORMHelper
 from gui.ui import Ui_main_window as Ui
@@ -404,7 +404,7 @@ class AddConditionDialog(MyAbstractDialog, InputTools):
         self.ui.string_input.setText(self._get_cond_string([sep]))
 
 
-class ConditionsPage(Constructor, Tools, InputTools):
+class ConditionsPage(Constructor, JoinedModelTools, InputTools):
     UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON = {
         "radioButton_45": {"Condition.conditionbooleanvalue": True},
         "radioButton_46": {"Condition.conditionbooleanvalue": False},
@@ -488,7 +488,8 @@ class ConditionsPage(Constructor, Tools, InputTools):
     def add_or_replace_condition_item_to_list_widget(self, data, replace=False):
         """ 1) Найти выбранный QListWidgetItem (со старым именем)
             2) Сгененировать новое имя
-            3) Вставить новый QListWidgetItem (с новым именем) в индекс или в default_index """
+            3) Вставить новый QListWidgetItem (с новым именем) или заменить старый новым """
+        print(data)
         def create_condition_name() -> str:
             def string_gen():
                 for key_, string_or_anonimous_function in map_.items():
@@ -580,20 +581,20 @@ class ConditionsPage(Constructor, Tools, InputTools):
         if self.field_signals_status:
             return
         self.ui.conditions_list.currentItemChanged.connect(lambda current, prev: self.select_condition_item(current))
-        self.ui.radioButton_45.toggled.connect(lambda x: self.update_data("radioButton_45", radio_button=True) if x else None)
-        self.ui.radioButton_46.toggled.connect(lambda x: self.update_data("radioButton_46", radio_button=True) if x else None)
-        self.ui.radioButton_24.clicked.connect(lambda x: self.update_data("radioButton_24", radio_button=True) if x else None)
-        self.ui.radioButton_25.clicked.connect(lambda x: self.update_data("radioButton_25", radio_button=True) if x else None)
-        self.ui.radioButton_38.clicked.connect(lambda x: self.update_data("radioButton_38", radio_button=True) if x else None)
-        self.ui.radioButton_47.clicked.connect(lambda x: self.update_data("radioButton_47", radio_button=True) if x else None)
-        self.ui.radioButton_35.clicked.connect(lambda x: self.update_data("radioButton_35", radio_button=True) if x else None)
-        self.ui.radioButton_36.clicked.connect(lambda x: self.update_data("radioButton_36", radio_button=True) if x else None)
-        self.ui.radioButton_37.clicked.connect(lambda x: self.update_data("radioButton_37", radio_button=True) if x else None)
-        self.ui.radioButton_26.clicked.connect(lambda x: self.update_data("radioButton_26", radio_button=True) if x else None)
-        self.ui.radioButton_27.clicked.connect(lambda x: self.update_data("radioButton_27", radio_button=True) if x else None)
-        self.ui.radioButton_29.clicked.connect(lambda x: self.update_data("radioButton_29", radio_button=True) if x else None)
-        self.ui.radioButton_30.clicked.connect(lambda x: self.update_data("radioButton_30", radio_button=True) if x else None)
-        self.ui.lineEdit_28.textChanged.connect(lambda x: self.update_data("lineEdit_28", line_edit=True) if x else None)
+        self.ui.radioButton_45.toggled.connect(lambda *_: self.update_data("radioButton_45", radio_button=True))
+        self.ui.radioButton_46.toggled.connect(lambda *_: self.update_data("radioButton_46", radio_button=True))
+        self.ui.radioButton_24.clicked.connect(lambda *_: self.update_data("radioButton_24", radio_button=True))
+        self.ui.radioButton_25.clicked.connect(lambda *_: self.update_data("radioButton_25", radio_button=True))
+        self.ui.radioButton_38.clicked.connect(lambda *_: self.update_data("radioButton_38", radio_button=True))
+        self.ui.radioButton_47.clicked.connect(lambda *_: self.update_data("radioButton_47", radio_button=True))
+        self.ui.radioButton_35.clicked.connect(lambda *_: self.update_data("radioButton_35", radio_button=True))
+        self.ui.radioButton_36.clicked.connect(lambda *_: self.update_data("radioButton_36", radio_button=True))
+        self.ui.radioButton_37.clicked.connect(lambda *_: self.update_data("radioButton_37", radio_button=True))
+        self.ui.radioButton_26.clicked.connect(lambda *_: self.update_data("radioButton_26", radio_button=True))
+        self.ui.radioButton_27.clicked.connect(lambda *_: self.update_data("radioButton_27", radio_button=True))
+        self.ui.radioButton_29.clicked.connect(lambda *_: self.update_data("radioButton_29", radio_button=True))
+        self.ui.radioButton_30.clicked.connect(lambda *_: self.update_data("radioButton_30", radio_button=True))
+        self.ui.lineEdit_28.textChanged.connect(lambda *_: self.update_data("lineEdit_28", line_edit=True))
         self.field_signals_status = True
 
     def disconnect_field_signals(self):
@@ -688,12 +689,14 @@ class ConditionsPage(Constructor, Tools, InputTools):
         selected_condition_id = self.join_select_result[item]
         set_changes(id_, selected_condition_id)
 
-    def update_data(self, field_name, line_edit=False, radio_button=False):
+    def update_data(self, button_name, line_edit=False, radio_button=False):
         @QThreadInstanceDecorator(result_callback=lambda x: self.add_or_replace_condition_item_to_list_widget(x, replace=True))
-        def check_exists_and_update(item_name, data: dict, valid=False):
+        def check_exists_and_update(item_name, data: Iterable[dict], is_valid=False):
             if self.join_select_result.pointer.has_changes(item_name):
                 return self.reload(in_new_qthread=False)
-            self.db_items.set_item(_update=True, _ready=valid, _model=model, **data)
+            for model_name, data_per_model in data.items():
+                self.db_items.set_item(_update=True, _ready=is_valid, _model=model_name, **data_per_model)
+            print(self.join_select_result.pointer[item_name])
             return self.join_select_result.pointer[item_name]
 
         selected_condition = self.ui.conditions_list.currentItem()
@@ -701,13 +704,13 @@ class ConditionsPage(Constructor, Tools, InputTools):
             return
         condition_text = selected_condition.text()
         if radio_button:
-            data = list(self.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON[field_name].keys())[0]
-            check_exists_and_update(condition_text, data, valid=self.validator.refresh())
+            data = self.get_radio_button_data(button_name)
+            check_exists_and_update(condition_text, data, is_valid=self.validator.refresh())
         if line_edit:
-            sql_field_name = self.UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]
+            model, sql_field_name = self.UI__TO_SQL_COLUMN_LINK__LINE_EDIT[button_name].split(".")
             check_exists_and_update(condition_text,
-                                    {sql_field_name: getattr(self.ui, sql_field_name)},
-                                    valid=self.validator.refresh())
+                                    {model: {sql_field_name: getattr(self.ui, sql_field_name)}},
+                                    is_valid=self.validator.refresh())
 
     def reset_fields(self):
         self.join_select_result = {}

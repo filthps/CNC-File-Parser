@@ -34,6 +34,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
         self.validator = None
         self.db_items: orm.ORMHelper = main_app_instance.db_items_queue
         self.main_app = main_app_instance
+        self.pointer: Optional[orm.Pointer] = None
         self.ui = ui
         self.cnc_names = {}  # Хранить словарь названий стоек, чтобы избежать лишних запросов в БД (cncid: name)
         super().__init__(main_app_instance, ui)
@@ -53,12 +54,16 @@ class OptionsPageCreateMachine(Constructor, Tools):
         """ Очистить поля и обновить данные из базы данных """
         def callback(machines, cnc_items):
             self.ui.add_machine_list_0.clear()
+            machine_names = []
             for data in machines:
                 name = data['machinename']
+                machine_names.append(name)
                 item = QListWidgetItem(name)
                 self.ui.add_machine_list_0.addItem(item)
                 if self.db_items.is_node_from_cache(machinename=name, model=Machine):
                     self.validator.set_not_complete_edit_attributes(item)
+            machines.pointer = machine_names
+            self.pointer = machines.pointer
             self.clear_property_fields()
             self.insert_all_cnc_from_db(cnc_items)
             self.select_machine_item()
@@ -217,17 +222,17 @@ class OptionsPageCreateMachine(Constructor, Tools):
         @QThreadInstanceDecorator()
         def save_data(field_name: str, field_value: str, machine_n: str):
             def check_machine_is_exists():
-                m = self.db_items.get_items(Machine, machinename=machine_n)
+                m = self.pointer[machine_n]
                 if not m:
                     self.reload(create_thread=False)
                     return
-                return m.items[0].get_primary_key_and_value(only_val=True)
+                return m.get_primary_key_and_value(only_val=True)
             primary_key = check_machine_is_exists()
             if not primary_key:
                 return
             exists_node_type = self.db_items.get_node_dml_type(primary_key, model=Machine)
             sql_column_name = self.UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]
-            self.db_items.set_item(**{sql_column_name: self.check_output_values(field_name, value)},
+            self.db_items.set_item(**{sql_column_name: self.check_output_values(field_name, field_value)},
                                    _ready=self.validator.refresh(), machinename=machine_n,
                                    **{("_update" if exists_node_type == "_update" else "_insert"): True}, _model=Machine)
         active_machine = self.ui.add_machine_list_0.currentItem()
