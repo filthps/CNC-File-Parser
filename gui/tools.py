@@ -141,6 +141,21 @@ class Tools:
         [b.setIcon(icon) for b in gen()]
 
 
+class JoinedModelTools(Tools):
+    def get_radio_button_data(self, selected_button_name) -> dict[str, [str, dict]]:
+        """ Получить значения для столбцов по нажатой QRadioButton """
+        data = self.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON[selected_button_name]
+        result = {}
+        for model_and_column_name, value in data.items():
+            model_name, column_name = model_and_column_name.split(".")
+            cur_model_values = result.get(model_name, {})
+            if cur_model_values:
+                cur_model_values.update({column_name: value})
+            else:
+                result.update({model_name: {column_name: value}})
+        return result
+
+
 class MyAbstractDialog(QDialog):
     """
     Диалоговое окно с возможностью контроля слота нажатия клавиш клавиатуры.
