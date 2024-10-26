@@ -556,8 +556,28 @@ class ResultORMItem(LinkedListItem, ORMAttributes, NodeTools):
         super().__init__(val=self.__clean_kwargs(k))
         self.__is_valid()
 
-    def get_primary_key_and_value(self):
+    def get_primary_key_and_value(self, only_key=False, only_val=False):
+        if type(only_key) is not bool:
+            raise TypeError
+        if not isinstance(only_val, bool):
+            raise TypeError
+        if only_val and only_key:
+            raise ValueError
+        if only_key:
+            return tuple(self._primary_key.keys())[0]
+        if only_val:
+            return tuple(self._primary_key.values())[0]
         return self._primary_key.copy()
+
+    def get(self, name: str, def_val=None):
+        if not isinstance(name, str):
+            raise TypeError
+        try:
+            value = self.value[name]
+        except KeyError:
+            return def_val
+        else:
+            return value
 
     @property
     def model(self):
@@ -960,7 +980,7 @@ class ResultORMCollection:
     def __len__(self):
         return sum(map(lambda _: 1, self))
 
-    def __getitem__(self, item):
+    def __getitem__(self, item) -> ResultORMItem:
         return self.__collection.__getitem__(item)
 
     def __hash__(self):
@@ -1492,7 +1512,7 @@ class SpecialOrmContainer(ORMItemQueue):
 class BaseResult(ABC):
     RESULT_CACHE_KEY: str = ...
     TEMP_HASH_PREFIX: str = ...
-    _merge = abstractmethod(lambda: Iterable)  # Функция, которая делает репликацию нод из кеша поверх нод из бд
+    _merge = abstractmethod(lambda: ResultORMCollection())  # Функция, которая делает репликацию нод из кеша поверх нод из бд
     _get_node_by_joined_primary_key_and_value = abstractmethod(lambda model_pk_val_str,
                                                                sep="...": ...)  # Вернуть ноду по
     # входящей строке вида: 'имя_таблицы:primary_key:значение'
@@ -1561,7 +1581,11 @@ class BaseResult(ABC):
         return sum((1 for _ in self))
 
     def __bool__(self):
-        return bool(self.__len__())
+        try:
+            next(iter(self))
+        except StopIteration:
+            return False
+        return True
 
     def __contains__(self, item: Union[str, int]):
         try:
