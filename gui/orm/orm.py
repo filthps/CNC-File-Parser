@@ -87,7 +87,10 @@ class ModelTools(ORMAttributes):
         """ Получить названия столбцов с UNIQUE=TRUE (их значения присутствуют в ноде) """
         ORMAttributes.is_valid_node(node)
         model_data = node.model().column_names
-        for column_name in node.value:
+        value = node.value
+        if "ui_hidden" in value:
+            del value["ui_hidden"]
+        for column_name in value:
             if model_data[column_name]["unique"]:
                 yield column_name
 
@@ -579,6 +582,21 @@ class ResultORMItem(LinkedListItem, ORMAttributes, NodeTools):
         else:
             return value
 
+    def add_model_name_prefix(self) -> dict:
+        """ Добавить каждому столбцу префикс с названием таблицы """
+        new_values = self.value
+        for column_name, value in self.value.items():
+            if "." in column_name:
+                exists_prefix = column_name[0:column_name.index(".")]
+                if exists_prefix == self.model.__name__:
+                    continue
+                del new_values[column_name]
+                new_values.update({f"{self.model.__name__}.{column_name}": value})
+                continue
+            del new_values[column_name]
+            new_values.update({f"{self.model.__name__}.{column_name}": value})
+        return new_values
+
     @property
     def model(self):
         return self._model
@@ -936,13 +954,18 @@ class ORMItemQueue(LinkedList, QueueSearchTools):
 
 class ResultORMCollection:
     """ Иммутабельная коллекция с набором результата """
-    def __init__(self, collection: Optional[Union["ORMItemQueue", "SpecialOrmContainer"]] = None):
+    def __init__(self, collection: Optional[Union["ORMItemQueue", "SpecialOrmContainer"]] = None,
+                 add_table_name_prefix=False):
         self.__collection = collection
         if collection is None:
             self.__collection = ORMItemQueue()
         if not isinstance(self.__collection, (ORMItemQueue, SpecialOrmContainer,)):
             raise TypeError
+        if type(add_table_name_prefix) is not bool:
+            raise TypeError
         self.__collection = self.__convert_node_data(self.__collection)
+        if add_table_name_prefix:
+            self.add_model_name_prefix()
 
     @property
     def get_all_visible_items(self):
@@ -952,6 +975,13 @@ class ResultORMCollection:
          if not node.hidden else None
          for node in self.__collection]
         return new_items
+
+    def add_model_name_prefix(self):
+        new_items = self.__collection.__class__()
+        for item in self:
+            new_items.append(ResultORMItem(item.model, _primary_key=item.get_primary_key_and_value(),
+                                           _ui_hidden=item.hidden, **item.add_model_name_prefix()))
+        self.__collection = new_items
 
     @property
     def container_cls(self):
@@ -975,7 +1005,12 @@ class ResultORMCollection:
         return iter(self.get_all_visible_items)
 
     def __bool__(self):
-        return bool(self.__len__())
+        try:
+            next(self.__iter__())
+        except StopIteration:
+            return False
+        else:
+            return True
 
     def __len__(self):
         return sum(map(lambda _: 1, self))
@@ -1903,6 +1938,8 @@ class ORMHelper(ORMAttributes):
             if pk in value:
                 return {pk: value[pk]}
         model = _model or cls._model_obj
+        if isinstance(_model, str):
+            model = cls.__import_model(_model)
         cls.is_valid_model_instance(model)
         items = cls.items
         items.enqueue(_model=model, _ready=_ready,
@@ -2281,6 +2318,18 @@ class ORMHelper(ORMAttributes):
     def __set_cache(cls, nodes):
         cls.cache.set("ORMItems", nodes, cls.CACHE_LIFETIME_HOURS)
 
+    @staticmethod
+    def __import_model(name: str):
+        if type(name) is not str:
+            raise TypeError
+        if not name:
+            raise ValueError
+        model_instance = getattr(importlib.import_module(".models",
+                                 package="database"), name, None)
+        if model_instance is None:
+            raise InvalidModel(f"Класс-модель '{name}' в модуле models не найден")
+        return model_instance
+
 
 class Pointer:
     """ Экземпляр данного объекта - оболочка для содержимого, обеспечивающая доступ к данным.
@@ -2356,7 +2405,7 @@ class Pointer:
         self.wrap_items = copy.copy(items)
         self._is_valid()
 
-    def __getitem__(self, item: str):
+    def __getitem__(self, item: str) -> Optional[ResultORMItem, ResultORMCollection]:
         data = self.items
         if item not in data:
             return
