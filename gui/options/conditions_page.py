@@ -406,29 +406,29 @@ class AddConditionDialog(MyAbstractDialog, InputTools):
 
 class ConditionsPage(Constructor, Tools, InputTools):
     UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON = {
-        "radioButton_45": {"conditionbooleanvalue": True},
-        "radioButton_46": {"conditionbooleanvalue": False},
-        "radioButton_24": {"findfull": True, "isntfindfull": False, "findpart": False, "isntfindpart": False,
-                           "larger": False, "less": False, "equal": False},
-        "radioButton_25": {"isntfindfull": True, "findfull": False, "findpart": False, "isntfindpart": False,
-                           "larger": False, "less": False, "equal": False},
-        "radioButton_38": {"findpart": True, "isntfindfull": False, "findfull": False, "isntfindpart": False,
-                           "larger": False, "less": False, "equal": False},
-        "radioButton_35": {"findpart": False, "isntfindfull": False, "findfull": False, "isntfindpart": False,
-                           "larger": False, "less": True, "equal": False},
-        "radioButton_36": {"findpart": False, "isntfindfull": False, "findfull": False, "isntfindpart": False,
-                           "larger": False, "less": False, "equal": True},
-        "radioButton_37": {"findpart": False, "isntfindfull": False, "findfull": False, "isntfindpart": False,
-                           "larger": True, "less": False, "equal": False},
-        "radioButton_47": {"isntfindpart": True, "findpart": False, "isntfindfull": False, "findfull": False,
-                           "larger": False, "less": False, "equal": False},
-        "radioButton_29": {"parentconditionbooleanvalue": True},
-        "radioButton_30": {"parentconditionbooleanvalue": False},
-        "radioButton_28": {"ignorecase": True},
-        "radioButton_48": {"ignorecase": False}
+        "radioButton_45": {"Condition.conditionbooleanvalue": True},
+        "radioButton_46": {"Condition.conditionbooleanvalue": False},
+        "radioButton_24": {"Condition.findfull": True, "Condition.isntfindfull": False, "Condition.findpart": False, "Condition.isntfindpart": False,
+                           "Condition.larger": False, "Condition.less": False, "Condition.equal": False},
+        "radioButton_25": {"Condition.isntfindfull": True, "Condition.findfull": False, "Condition.findpart": False, "Condition.isntfindpart": False,
+                           "Condition.larger": False, "Condition.less": False, "Condition.equal": False},
+        "radioButton_38": {"Condition.findpart": True, "Condition.isntfindfull": False, "Condition.findfull": False, "Condition.isntfindpart": False,
+                           "Condition.larger": False, "Condition.less": False, "Condition.equal": False},
+        "radioButton_35": {"Condition.findpart": False, "Condition.isntfindfull": False, "Condition.findfull": False, "Condition.isntfindpart": False,
+                           "Condition.larger": False, "Condition.less": True, "Condition.equal": False},
+        "radioButton_36": {"Condition.findpart": False, "Condition.isntfindfull": False, "Condition.findfull": False, "Condition.isntfindpart": False,
+                           "Condition.larger": False, "Condition.less": False, "Condition.equal": True},
+        "radioButton_37": {"Condition.findpart": False, "Condition.isntfindfull": False, "Condition.findfull": False, "Condition.isntfindpart": False,
+                           "Condition.larger": True, "Condition.less": False, "Condition.equal": False},
+        "radioButton_47": {"Condition.isntfindpart": True, "Condition.findpart": False, "Condition.isntfindfull": False, "Condition.findfull": False,
+                           "Condition.larger": False, "Condition.less": False, "Condition.equal": False},
+        "radioButton_29": {"Condition.parentconditionbooleanvalue": True},
+        "radioButton_30": {"Condition.parentconditionbooleanvalue": False},
+        "radioButton_28": {"SearchString.ignorecase": True},
+        "radioButton_48": {"SearchString.ignorecase": False}
     }
-    UI__TO_SQL_COLUMN_LINK__LINE_EDIT = {"lineEdit_28": "condinner"}
-    UI__TO_SQL_COLUMN_LINK__COMBO_BOX = {"parent_condition_combobox": "parent"}
+    UI__TO_SQL_COLUMN_LINK__LINE_EDIT = {"lineEdit_28": "Condition.condinner"}
+    UI__TO_SQL_COLUMN_LINK__COMBO_BOX = {"parent_condition_combobox": "Condition.parent"}
     LINE_EDIT_DEFAULT_VALUES = {"lineEdit_28": ""}
     COMBO_BOX_DEFAULT_VALUES = {"parent_condition_combobox": "Выберите промежуточное условие"}
     RADIO_BUTTON_DEFAULT_VALUES = {"radioButton_26": True, "radioButton_45": True, "radioButton_28": True}
@@ -648,9 +648,7 @@ class ConditionsPage(Constructor, Tools, InputTools):
 
         @QThreadInstanceDecorator(result_callback=lambda res: update_fields(res))
         def check_inner(name):
-            self.join_select_result.refresh()
-            is_not_actual = self.join_select_result.pointer.has_changes(name) or self.join_select_result.has_new_items
-            print(self.join_select_result.pointer.has_changes(name))
+            is_not_actual = self.join_select_result.pointer.has_changes(name)
             if is_not_actual:
                 self.reload(in_new_qthread=False)
                 return
@@ -695,7 +693,6 @@ class ConditionsPage(Constructor, Tools, InputTools):
         def check_exists_and_update(item_name, data: dict, valid=False):
             if self.join_select_result.pointer.has_changes(item_name):
                 return self.reload(in_new_qthread=False)
-            model = self.get_model_by_field_name(field_name)
             self.db_items.set_item(_update=True, _ready=valid, _model=model, **data)
             return self.join_select_result.pointer[item_name]
 

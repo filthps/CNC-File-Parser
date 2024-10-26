@@ -37,7 +37,6 @@ class AddCNC(Constructor, Tools):
             self.select_result = cnc_items
             self.disconnect_text_field_signals()
             self.ui.cnc_list.clear()
-            print(cnc_items.__iter__())
             for item in cnc_items:
                 list_item = QListWidgetItem(item["name"])
                 self.ui.cnc_list.addItem(list_item)

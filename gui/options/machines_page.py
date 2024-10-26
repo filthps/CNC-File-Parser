@@ -54,10 +54,10 @@ class OptionsPageCreateMachine(Constructor, Tools):
         def callback(machines, cnc_items):
             self.ui.add_machine_list_0.clear()
             for data in machines:
-                name = data.pop('machinename')
+                name = data['machinename']
                 item = QListWidgetItem(name)
                 self.ui.add_machine_list_0.addItem(item)
-                if self.db_items.is_node_from_cache(machinename=name):
+                if self.db_items.is_node_from_cache(machinename=name, model=Machine):
                     self.validator.set_not_complete_edit_attributes(item)
             self.clear_property_fields()
             self.insert_all_cnc_from_db(cnc_items)
@@ -129,9 +129,10 @@ class OptionsPageCreateMachine(Constructor, Tools):
         Запрос из БД и установка возможных значений в combo box - 'стойки',
         наполнение словаря self.cnc_names
         """
-        while cnc_items:
+        cnc_items_iter = cnc_items.__iter__()
+        while True:
             try:
-                data = next(cnc_items)
+                data = next(cnc_items_iter)
             except StopIteration:
                 break
             cnc_name = data["name"]
@@ -152,23 +153,24 @@ class OptionsPageCreateMachine(Constructor, Tools):
         обновить все поля свойств станка (поля - Характеристики)"""
         def insert_machine_info_in_ui(machine_instance, cnc_items):
             self.disconnect_fields_signals()
-            if not machine_instance:
+            if machine_instance is None:
                 self.reload()
                 return
+            machine = machine_instance.items[0]
             self.clear_property_fields()
             self.insert_all_cnc_from_db(cnc_items)
             cm_box_values = {}
-            cnc_name = self.cnc_names.get(machine_instance.pop("cncid", None))
+            cnc_name = self.cnc_names.get(machine.get("cncid", None))
             cm_box_values.update({"name": cnc_name}) if cnc_name else None
-            self.update_fields(line_edit_values=machine_instance, combo_box_values=cm_box_values)
+            self.update_fields(line_edit_values=machine, combo_box_values=cm_box_values)
             self.validator.set_machine(machine_)
             self.connect_fields_signals()
 
         @QThreadInstanceDecorator(result_callback=insert_machine_info_in_ui)
         def load_selected_machine():
-            machine = self.db_items.get_item(machinename=machine_item_name)
+            machines = self.db_items.get_items(machinename=machine_item_name)
             cncs = self.db_items.get_items(_model=Cnc, _db_only=True)
-            return machine, cncs
+            return machines, cncs
         if machine_ is None:
             return
         machine_item_name = machine_.text()
@@ -184,14 +186,11 @@ class OptionsPageCreateMachine(Constructor, Tools):
                                             callback=callback)
             dialog_.show()
 
-        def add(machinename):
+        def add(machine_name):
             @QThreadInstanceDecorator(result_callback=lambda: self.reload(create_thread=False))
             def inner():
-                if self.db_items.get_item(machinename=machinename):
-                    error(machinename)
-                    return
-                self.db_items.set_item(machinename=machinename, _insert=True)
-            if not machinename:
+                self.db_items.set_item(machinename=machine_name, _insert=True, _model=Machine)
+            if not machine_name:
                 return
             inner()
         dialog = self.get_prompt_dialog("Введите название станка", ok_callback=add)
@@ -218,21 +217,24 @@ class OptionsPageCreateMachine(Constructor, Tools):
         @QThreadInstanceDecorator()
         def save_data(field_name: str, field_value: str, machine_n: str):
             def check_machine_is_exists():
-                m = self.db_items.get_item(_model=Machine, machinename=machine_n)
+                m = self.db_items.get_items(Machine, machinename=machine_n)
                 if not m:
                     self.reload(create_thread=False)
-            check_machine_is_exists()
-            exists_node_type = self.db_items.get_node_dml_type(machine_n)
+                    return
+                return m.items[0].get_primary_key_and_value(only_val=True)
+            primary_key = check_machine_is_exists()
+            if not primary_key:
+                return
+            exists_node_type = self.db_items.get_node_dml_type(primary_key, model=Machine)
             sql_column_name = self.UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]
             self.db_items.set_item(**{sql_column_name: self.check_output_values(field_name, value)},
                                    _ready=self.validator.refresh(), machinename=machine_n,
-                                   **{("_update" if exists_node_type == "_update" else "_insert"): True})
+                                   **{("_update" if exists_node_type == "_update" else "_insert"): True}, _model=Machine)
         active_machine = self.ui.add_machine_list_0.currentItem()
         if active_machine is None:
             return
         value = getattr(self.ui, field_n).text()
         machine_name = active_machine.text()
-        print(machine_name, value)
         save_data(field_n, value, machine_name)
 
     @Slot(str)
