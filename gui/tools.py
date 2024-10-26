@@ -29,23 +29,11 @@ class Tools:
     NULLABLE_FIELDS = tuple()
     models = tuple()  # Указывать только для тех страниц, где join_select
 
-    @classmethod
-    def get_model_by_field_name(cls, field_name: str) -> CustomModel:
-        """ Данный метод призван вернуть класс-модель по названию поля (orm.join_select) """
-        if not cls.models:
-            raise ValueError("Сперва установите значение - кортеж классов-моделей")
-        if not isinstance(field_name, str):
-            raise TypeError
-        items = (model.column_names for model in cls.models)
-        for i, fields in enumerate(items):
-            if field_name in fields:
-                return cls.models[i]
-
     def update_fields(self, line_edit_values: Union[ResultORMItem, ResultORMCollection] = None,
                       combo_box_values: Optional[dict] = None, radio_button_values: Optional[dict] = None):
         """ Обновление содержимого полей """
         for line_edit_name, db_field_name in self.UI__TO_SQL_COLUMN_LINK__LINE_EDIT.items():
-            val = line_edit_values.pop(db_field_name, None) if line_edit_values else None
+            val = line_edit_values.get(db_field_name, None) if line_edit_values else None
             input_: QLineEdit = getattr(self.ui, line_edit_name)
             if val:
                 input_.setText(next(val) if type(val) is repeat else str(val))
