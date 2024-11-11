@@ -156,16 +156,18 @@ class OptionsPageCreateMachine(Constructor, Tools):
     def select_machine(self, machine_: QListWidgetItem):
         """ Обновить данные при select в QListWidget -
         обновить все поля свойств станка (поля - Характеристики)"""
-        def insert_machine_info_in_ui(machine_instance, cnc_items):
-            self.disconnect_fields_signals()
-            if machine_instance is None:
+        def insert_machine_info_in_ui(machine_instance=None, cnc_items=None):
+            if not machine_instance:
                 self.reload()
                 return
-            machine = machine_instance.items[0]
+            if not cnc_items:
+                return
+            self.disconnect_fields_signals()
+            machine = machine_instance[0]
             self.clear_property_fields()
             self.insert_all_cnc_from_db(cnc_items)
             cm_box_values = {}
-            cnc_name = self.cnc_names.get(machine.get("cncid", None))
+            cnc_name = self.cnc_names.get(machine.get("cncid"))
             cm_box_values.update({"name": cnc_name}) if cnc_name else None
             self.update_fields(line_edit_values=machine, combo_box_values=cm_box_values)
             self.validator.set_machine(machine_)
@@ -175,7 +177,10 @@ class OptionsPageCreateMachine(Constructor, Tools):
         def load_selected_machine():
             machines = self.db_items.get_items(machinename=machine_item_name)
             cncs = self.db_items.get_items(_model=Cnc, _db_only=True)
-            return machines, cncs
+            if cncs.has_changes():
+                self.reload(create_thread=False)
+                return
+            return machines.items, cncs.items
         if machine_ is None:
             return
         machine_item_name = machine_.text()

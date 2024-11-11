@@ -445,13 +445,8 @@ class ConditionsPage(Constructor, JoinedModelTools, InputTools):
         self.add_condition_dialog: Optional[AddConditionDialog] = None
         self.field_signals_status = False
 
-        def set_db_manager_model():
-            self.db_items.set_model(Condition)
-
         def init_validator():
             self.validator = ConditionsPageValidator(ui)
-
-        set_db_manager_model()
         init_validator()
         self.reload()
         self.connect_main_signals()
@@ -486,10 +481,11 @@ class ConditionsPage(Constructor, JoinedModelTools, InputTools):
         load_()
 
     def add_or_replace_condition_item_to_list_widget(self, data, replace=False):
+        data.add_model_name_prefix()
+        print(data)
         """ 1) Найти выбранный QListWidgetItem (со старым именем)
             2) Сгененировать новое имя
             3) Вставить новый QListWidgetItem (с новым именем) или заменить старый новым """
-        print(data)
         def create_condition_name() -> str:
             def string_gen():
                 for key_, string_or_anonimous_function in map_.items():
@@ -643,17 +639,12 @@ class ConditionsPage(Constructor, JoinedModelTools, InputTools):
 
     @Slot(str)
     def select_condition_item(self, condition_item: Optional[QListWidgetItem]):
-        def update_fields(is_exists):
-            if not is_exists:
-                return
-
-        @QThreadInstanceDecorator(result_callback=lambda res: update_fields(res))
+        @QThreadInstanceDecorator()
         def check_inner(name):
             is_not_actual = self.join_select_result.pointer.has_changes(name)
             if is_not_actual:
                 self.reload(in_new_qthread=False)
                 return
-            return self.join_select_result.pointer[name]
         if not condition_item:
             return
         check_inner(condition_item.text())
@@ -689,27 +680,27 @@ class ConditionsPage(Constructor, JoinedModelTools, InputTools):
         selected_condition_id = self.join_select_result[item]
         set_changes(id_, selected_condition_id)
 
-    def update_data(self, button_name, line_edit=False, radio_button=False):
+    def update_data(self, button_or_line_edit_name, line_edit=False, radio_button=False):
         @QThreadInstanceDecorator(result_callback=lambda x: self.add_or_replace_condition_item_to_list_widget(x, replace=True))
         def check_exists_and_update(item_name, data: Iterable[dict], is_valid=False):
             if self.join_select_result.pointer.has_changes(item_name):
                 return self.reload(in_new_qthread=False)
+            items = self.join_select_result.pointer[item_name]
             for model_name, data_per_model in data.items():
-                self.db_items.set_item(_update=True, _ready=is_valid, _model=model_name, **data_per_model)
-            print(self.join_select_result.pointer[item_name])
-            return self.join_select_result.pointer[item_name]
-
+                self.db_items.set_item(_update=True, _ready=is_valid, _model=model_name, **data_per_model,
+                                       **items[model_name].get_primary_key_and_value())
+            return items
         selected_condition = self.ui.conditions_list.currentItem()
         if not selected_condition:
             return
         condition_text = selected_condition.text()
         if radio_button:
-            data = self.get_radio_button_data(button_name)
+            data = self.get_radio_button_data(button_or_line_edit_name)
             check_exists_and_update(condition_text, data, is_valid=self.validator.refresh())
         if line_edit:
-            model, sql_field_name = self.UI__TO_SQL_COLUMN_LINK__LINE_EDIT[button_name].split(".")
+            model, sql_field_name = self.UI__TO_SQL_COLUMN_LINK__LINE_EDIT[button_or_line_edit_name].split(".")
             check_exists_and_update(condition_text,
-                                    {model: {sql_field_name: getattr(self.ui, sql_field_name)}},
+                                    {model: {sql_field_name: getattr(self.ui, button_or_line_edit_name).text()}},
                                     is_valid=self.validator.refresh())
 
     def reset_fields(self):
