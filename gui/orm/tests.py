@@ -92,9 +92,10 @@ class SetUp:
         self.orm_manager.set_item(_model=OperationDelegation, commentid=2, _insert=True,
                                   operationdescription="Комментарий")
         self.orm_manager.set_item(_model=Cnc, _insert=True, cncid=2, name="Ram", commentsymbol="#")
+        self.orm_manager.set_item(_model=Cnc, _insert=True, cncid=1, name="Newcnc", commentsymbol="!")
         self.orm_manager.set_item(_model=Machine, machineid=2, cncid=2, machinename="Fidia", inputcatalog=r"D:\Heller",
                                   outputcatalog=r"C:\Test", _insert=True)
-        self.orm_manager.set_item(_model=Machine, machinename="Tesm", _insert=True)
+        self.orm_manager.set_item(_model=Machine, machinename="Tesm", _insert=True, machineid=1, cncid=1)
         self.orm_manager.set_item(_model=Machine, machinename="65A90", _insert=True)
         self.orm_manager.set_item(_model=Machine, machinename="Rambaudi", _insert=True)
 
@@ -114,7 +115,7 @@ class TestORMHelper(unittest.TestCase, SetUp):
 
     def test_cache_property(self):
         """ Что вернёт это свойство: Если эклемпляр Client, то OK """
-        self.assertIsInstance(self.orm_manager.cache, MockMemcacheClient,
+        self.assertIsInstance(self.orm_manager.cache, Client,
                               msg=f"Свойство должно было вернуть эклемпляр класса MockMemcacheClient, "
                                   f"а на деле {self.orm_manager.cache.__class__.__name__}")
 
@@ -422,7 +423,6 @@ class TestORMHelper(unittest.TestCase, SetUp):
         #
         # Добавить изменения и проверить повторно
         self.update_exists_items()
-        print(iter(result))
         #
         self.assertTrue(result.pointer.has_changes("Результат в списке 2"))
         self.assertTrue(result.pointer.has_changes("Результат в списке 1"))
