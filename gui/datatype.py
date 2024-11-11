@@ -68,7 +68,7 @@ class LinkedListItem:
         return self._val == other.value
 
     def __repr__(self):
-        return f"{type(self)}({self._val})"
+        return f"{type(self).__name__}({str(self)})"
 
     def __str__(self):
         return str(self._val)
