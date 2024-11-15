@@ -603,6 +603,20 @@ class ResultORMItem(LinkedListItem, ORMAttributes, NodeTools):
             new_values.update({f"{self.model.__name__}.{column_name}": value})
         self._val = new_values
 
+    def remove_model_name_prefix(self):
+        new_values = self.value
+        for column_name, value in self.value.items():
+            parts = column_name.split(".")
+            if not parts:
+                continue
+            model_name = self.model.__name__
+            if model_name not in parts:
+                continue
+            parts.remove(model_name)
+            del new_values[column_name]
+            new_values.update({".".join(parts): value})
+        self._val = new_values
+
     @property
     def model(self):
         return self._model
@@ -976,13 +990,28 @@ class ResultORMCollection:
         new_collection = SpecialOrmContainer()
         new_collection.LinkedListItem = ResultORMItem
         i = iter(self)
-        try:
-            node: ResultORMItem = next(i)
-            print(node)
-        except StopIteration:
-            return
-        node.add_model_name_prefix()
-        new_collection.append(**node.get_attributes())
+        while True:
+            try:
+                node: ResultORMItem = next(i)
+            except StopIteration:
+                break
+            else:
+                node.add_model_name_prefix()
+                new_collection.append(**node.get_attributes())
+        self.__collection = new_collection
+
+    def remove_model_prefix(self):
+        """ Изменит всю коллекцию, удалив префиксы названия таблицы к каждому значению полей у каждой ноды """
+        new_collection = SpecialOrmContainer()
+        new_collection.LinkedListItem = ResultORMItem
+        i = iter(self)
+        while True:
+            try:
+                node: ResultORMItem = next(i)
+            except StopIteration:
+                break
+            node.remove_model_name_prefix()
+            new_collection.append(**node.get_attributes())
         self.__collection = new_collection
 
     @property
@@ -1519,7 +1548,7 @@ class SpecialOrmItem(ORMItem):
 
 class SpecialOrmContainer(ORMItemQueue):
     """ Данный контейнер для использования в JoinSelectResult (результат вызова ORMHelper.join_select) """
-    LinkedListItem = SpecialOrmItem
+    LinkedListItem: Union[SpecialOrmItem, ResultORMItem] = SpecialOrmItem
 
     def is_containing_the_same_nodes(self, other_items: "SpecialOrmContainer"):
         if not isinstance(other_items, type(self)):
@@ -1529,14 +1558,20 @@ class SpecialOrmContainer(ORMItemQueue):
     def hash_by_pk(self):
         return sum(map(lambda x: x.hash_by_pk, self))
 
-    def __getitem__(self, model_name_or_index: Union[str]):
+    def __getitem__(self, model_name_or_index: Union[str, int]) -> Union[DoesNotExists, "SpecialOrmContainer", LinkedListItem]:
         if not isinstance(model_name_or_index, (str, int,)):
             raise TypeError
         if type(model_name_or_index) is int:
             return super().__getitem__(model_name_or_index)
+        nodes = self.__class__()
+        nodes.LinkedListItem = self.LinkedListItem
         for node in self:
             if node.model.__name__ == model_name_or_index:
-                return node
+                nodes.append(**node.get_attributes())
+        if len(nodes) > 1:
+            return nodes
+        if nodes:
+            return nodes[0]
         raise DoesNotExists
 
 
@@ -1725,15 +1760,14 @@ class JoinSelectResult(OrderByJoinResultMixin, BaseResult, ModelTools):
         super().__init__(*args, **kwargs)
 
     @property
-    def items(self) -> list[ChainMap]:
-        items = tuple(self)
-        result = []
-        if self.__get_merged_column_names(items):
-            items = self.__set_prefix_to_column_name(items)
-        for group in items:
-            result.append(ChainMap(*[values for values in group]))
+    def items(self) -> tuple[ResultORMCollection]:
+        """ Выполнить запрос в базу данных и/или в кеш. """
+        result = tuple(self._merge())
+        output = result
+        if self.__get_merged_column_names(result):
+            output = tuple(self.__set_prefix_to_column_name(result))
         self._save_merged_collection_in_cache(result)
-        return result
+        return output
 
     def __getitem__(self, item: int) -> SpecialOrmContainer:
         if not isinstance(item, int):
@@ -1754,11 +1788,11 @@ class JoinSelectResult(OrderByJoinResultMixin, BaseResult, ModelTools):
         if type(item) is ORMItem:
             return hash(item) in [hash(node) for group_items in self for node in group_items]
 
-    def _merge(self) -> list[ResultORMCollection]:
+    def _merge(self) -> Iterator[ResultORMCollection]:
         def get_nodes_with_null_value_in_fk():
             """ Получить все локальные ноды, в которых в значениях внешних ключей стоит NULL"""
-            res = ORMItemQueue()
-            all_local_nodes: ORMItemQueue = self._get_all_local_nodes()
+            res = SpecialOrmContainer()
+            all_local_nodes: SpecialOrmContainer = self._get_all_local_nodes()
             for node in all_local_nodes:
                 for data in node.model().foreign_keys:
                     find_nodes = all_local_nodes.search_nodes(node.model, **{data.column.key: None})
@@ -1775,7 +1809,6 @@ class JoinSelectResult(OrderByJoinResultMixin, BaseResult, ModelTools):
                         group.remove(find_node.model, *find_node.get_primary_key_and_value(as_tuple=True))
                 if len(group) > 1:
                     yield group
-        local_items = list(self.get_local_nodes()) if not self._only_db else []
 
         def merge(db_items, local_items_):
             """ Согласно реляционной теории, мы можем взять любую ноду из локальной группы
@@ -1808,7 +1841,8 @@ class JoinSelectResult(OrderByJoinResultMixin, BaseResult, ModelTools):
             # f(n) = O(n) * (O(1) + O(n1) + O(n1) * (O(1) + O(1) + O(k) * (O(k1) + O(k1) + O(n1) * O(k1) + O(k1))))
             # f(n) = O(n) * (O(n1) + O(n1) * (O(k) * (O(k1) + O(k1) + O(n1) * O(k1) + O(k1))))
             # f(n) = O(n) * (O(n1) * (O(k) * (O(k1) * O(k1))))
-        return [ResultORMCollection(item) for item in merge(list(get_filtered_database_items()), local_items)]
+        local_items = list(self.get_local_nodes()) if not self._only_db else []
+        return (ResultORMCollection(item) for item in merge(list(get_filtered_database_items()), local_items))
 
     def _get_node_by_joined_primary_key_and_value(self, joined_pk: str):
         model_name, primary_key, value = self._parse_joined_primary_key_and_value(joined_pk)
@@ -1820,18 +1854,19 @@ class JoinSelectResult(OrderByJoinResultMixin, BaseResult, ModelTools):
                 return node
 
     @staticmethod
-    def __get_merged_column_names(result: tuple[SpecialOrmContainer]) -> set[str]:
+    def __get_merged_column_names(result: Iterable[ResultORMCollection]) -> set[str]:
         """ Наименования столбцов, которые присутствуют в более чем 1 таблице результата join_select """
         if not result:
             return set()
         return set.intersection(*[set(n.value) for group in result for n in group])
 
-    def __set_prefix_to_column_name(self, items: tuple[SpecialOrmContainer]) -> Iterator[list[dict]]:
+    def __set_prefix_to_column_name(self, items: Iterable[ResultORMCollection]) -> Iterator[ResultORMCollection]:
         """ Добавить префикс вида - ModelName.column_name ко всем столбцам,
         чьи имена дублируются в нодах от нескольких моделей """
         merged_columns = list(self.__get_merged_column_names(items))
         for group_result in items:
-            result = []
+            result = SpecialOrmContainer()
+            result.LinkedListItem = ResultORMItem
             for node in group_result:
                 values = node.value
                 for n in merged_columns:
@@ -1839,7 +1874,7 @@ class JoinSelectResult(OrderByJoinResultMixin, BaseResult, ModelTools):
                         old_val = values[n]
                         del values[n]
                         values.update({f"{node.model.__name__}.{n}": old_val})
-                result.append(values)
+                result.append(node.model, node.get_primary_key_and_value(), **values)
             yield result
 
 
