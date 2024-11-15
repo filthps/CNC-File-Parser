@@ -26,8 +26,7 @@ class Task(QRunnable):
         if result is None:
             self.connection.empty_signal.emit()
             return
-        if not isinstance(result, tuple):
-            result = (result,)
+        result = (result,)
         try:
             tuple_ = dill.dumps(result, dill.HIGHEST_PROTOCOL)
         except dill.PicklingError as err:
