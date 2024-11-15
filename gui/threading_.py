@@ -26,8 +26,7 @@ class Task(QRunnable):
         if result is None:
             self.connection.empty_signal.emit()
             return
-        if not isinstance(result, tuple):
-            result = (result,)
+        result = (result,)
         try:
             tuple_ = dill.dumps(result, dill.HIGHEST_PROTOCOL)
         except dill.PicklingError as err:
@@ -59,7 +58,7 @@ class QThreadInstanceDecorator:
                 self.task = Task(call_f, *a, **k)
                 if self.end_f is not None:
                     def callback(serialized_data):
-                        deserialized = dill.loads(serialized_data)
+                        deserialized = dill.loads(serialized_data)[0]
                         if not deserialized:
                             self.end_f()
                         if isinstance(deserialized, tuple):
