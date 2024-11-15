@@ -8,7 +8,7 @@ from PySide2.QtCore import Slot, Qt
 from PySide2.QtGui import QSyntaxHighlighter
 from gui.tools import JoinedModelTools, Constructor, MyAbstractDialog
 from database.models import Condition, HeadVarible, HeadVarDelegation, SearchString
-from gui.orm.orm import JoinSelectResult, ORMHelper
+from gui.orm.orm import JoinSelectResult, ORMHelper, ResultORMCollection
 from gui.ui import Ui_main_window as Ui
 from gui.validation import Validator
 from gui.threading_ import QThreadInstanceDecorator
@@ -452,7 +452,8 @@ class ConditionsPage(Constructor, JoinedModelTools, InputTools):
         self.connect_main_signals()
 
     def reload(self, in_new_qthread: bool = True):
-        def add_(select_result: JoinSelectResult):
+        def add_(select_result: tuple[ResultORMCollection]):
+            print(self.join_select_result)
             def auto_select_condition_item(index=0) -> Optional[QListWidgetItem]:
                 m = self.ui.conditions_list.takeItem(index)
                 self.ui.conditions_list.addItem(m)
@@ -462,9 +463,9 @@ class ConditionsPage(Constructor, JoinedModelTools, InputTools):
             self.disconnect_parent_condition_combo_box()
             self.disconnect_field_signals()
             self.reset_fields()
+            print(type(select_result))
             [self.add_or_replace_condition_item_to_list_widget(group) for group in select_result]
-            select_result.pointer = [self.ui.conditions_list.item(x).text() for x in range(self.ui.conditions_list.count())]
-            self.join_select_result = select_result
+            self.join_select_result.pointer = [self.ui.conditions_list.item(x).text() for x in range(self.ui.conditions_list.count())]
             self.connect_parent_condition_combo_box()
             self.connect_field_signals()
             active_item = auto_select_condition_item()
@@ -474,15 +475,14 @@ class ConditionsPage(Constructor, JoinedModelTools, InputTools):
 
         @QThreadInstanceDecorator(in_new_qthread=in_new_qthread, result_callback=add_)
         def load_():
-            items = self.db_items.join_select(SearchString, Condition, HeadVarible,
-                                              on={"Condition.stringid": "SearchString.strid",
-                                                  "Condition.hvarid": "HeadVarible.varid"})
-            return items
+            if self.join_select_result is None:
+                self.join_select_result = self.db_items.join_select(SearchString, Condition, HeadVarible,
+                                                  on={"Condition.stringid": "SearchString.strid",
+                                                      "Condition.hvarid": "HeadVarible.varid"})
+            return self.join_select_result.items
         load_()
 
-    def add_or_replace_condition_item_to_list_widget(self, data, replace=False):
-        data.add_model_name_prefix()
-        print(data)
+    def add_or_replace_condition_item_to_list_widget(self, data: ResultORMCollection, replace=False):
         """ 1) Найти выбранный QListWidgetItem (со старым именем)
             2) Сгененировать новое имя
             3) Вставить новый QListWidgetItem (с новым именем) или заменить старый новым """
