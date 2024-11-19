@@ -26,12 +26,13 @@ class Task(QRunnable):
         if result is None:
             self.connection.empty_signal.emit()
             return
-        result = (result,)
+        result = {"data": result}
         try:
-            tuple_ = dill.dumps(result, dill.HIGHEST_PROTOCOL)
+            data = dill.dumps(result, dill.HIGHEST_PROTOCOL)
         except dill.PicklingError as err:
             print("Не удалось вернуть данные главному потоку!")
-        self.connection.data_transmission_signal.emit(tuple_)
+        else:
+            self.connection.data_transmission_signal.emit(data)
 
 
 class QThreadInstanceDecorator:
@@ -57,15 +58,12 @@ class QThreadInstanceDecorator:
             if self.create_new_task:
                 self.task = Task(call_f, *a, **k)
                 if self.end_f is not None:
-                    def callback(serialized_data):
-                        deserialized = dill.loads(serialized_data)[0]
-                        if not deserialized:
+                    def callback(data):
+                        deserialized = dill.loads(data)["data"]
+                        if deserialized is None:
                             self.end_f()
-                        if isinstance(deserialized, tuple):
-                            self.end_f(*deserialized)
-                            return
                         self.end_f(deserialized)
-                    self.task.connection.data_transmission_signal.connect(lambda stringify_data: callback(stringify_data))
+                    self.task.connection.data_transmission_signal.connect(callback)
                     self.task.connection.empty_signal.connect(self.end_f)
                 self.threadpool.start(self.task)
                 return
