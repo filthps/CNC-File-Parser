@@ -52,10 +52,11 @@ class OptionsPageCreateMachine(Constructor, Tools):
 
     def reload(self, create_thread=True):
         """ Очистить поля и обновить данные из базы данных """
-        def callback(machines, cnc_items):
+        def callback(data: tuple):
+            machines, machine_items, cnc_items = data
             self.ui.add_machine_list_0.clear()
             machine_names = []
-            for data in machines:
+            for data in machine_items:
                 name = data['machinename']
                 machine_names.append(name)
                 item = QListWidgetItem(name)
@@ -73,7 +74,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
         def load_items():
             machines = self.db_items.get_items(_model=Machine)
             cnc_items = self.db_items.get_items(_model=Cnc, _db_only=True)
-            return machines, cnc_items
+            return machines, machines.items, cnc_items.items
         load_items()
 
     def select_machine_item(self, index=0) -> Optional[QListWidgetItem]:

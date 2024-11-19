@@ -441,7 +441,6 @@ class ConditionsPage(Constructor, JoinedModelTools, InputTools):
         self.db_items: ORMHelper = app_instance.db_items_queue
         self.validator: Optional[ConditionsPageValidator] = None
         self.join_select_result: Optional[JoinSelectResult] = None
-        self.current_item_hash = None
         self.add_condition_dialog: Optional[AddConditionDialog] = None
         self.field_signals_status = False
 
@@ -453,7 +452,6 @@ class ConditionsPage(Constructor, JoinedModelTools, InputTools):
 
     def reload(self, in_new_qthread: bool = True):
         def add_(select_result: tuple[ResultORMCollection]):
-            print(self.join_select_result)
             def auto_select_condition_item(index=0) -> Optional[QListWidgetItem]:
                 m = self.ui.conditions_list.takeItem(index)
                 self.ui.conditions_list.addItem(m)
@@ -463,15 +461,14 @@ class ConditionsPage(Constructor, JoinedModelTools, InputTools):
             self.disconnect_parent_condition_combo_box()
             self.disconnect_field_signals()
             self.reset_fields()
-            print(type(select_result))
             [self.add_or_replace_condition_item_to_list_widget(group) for group in select_result]
             self.join_select_result.pointer = [self.ui.conditions_list.item(x).text() for x in range(self.ui.conditions_list.count())]
             self.connect_parent_condition_combo_box()
-            self.connect_field_signals()
             active_item = auto_select_condition_item()
             self.validator.current_condition = active_item
             if active_item is not None:
                 self.validator.refresh()
+            self.connect_field_signals()
 
         @QThreadInstanceDecorator(in_new_qthread=in_new_qthread, result_callback=add_)
         def load_():
@@ -552,8 +549,9 @@ class ConditionsPage(Constructor, JoinedModelTools, InputTools):
                     "Condition.cnd": None
                     }
             return " ".join([string for string in string_gen() if string is not None])
+        if data is None:
+            return
         name = create_condition_name()
-        self.current_item_hash = hash(data)
         self.disconnect_field_signals()
         if replace:
             list_item = self.ui.conditions_list.currentItem()
@@ -561,6 +559,7 @@ class ConditionsPage(Constructor, JoinedModelTools, InputTools):
             self.connect_field_signals()
             return
         self.ui.conditions_list.addItem(QListWidgetItem(name))
+        self.connect_field_signals()
 
     def connect_main_signals(self):
         def open_create_condition_window():
@@ -645,9 +644,11 @@ class ConditionsPage(Constructor, JoinedModelTools, InputTools):
             if is_not_actual:
                 self.reload(in_new_qthread=False)
                 return
+            return self.join_select_result.pointer[name]
         if not condition_item:
             return
-        check_inner(condition_item.text())
+        data = check_inner(condition_item.text())
+        self.update_fields()
 
     @Slot(str)
     def change_parent_condition(self, item):
@@ -686,6 +687,8 @@ class ConditionsPage(Constructor, JoinedModelTools, InputTools):
             if self.join_select_result.pointer.has_changes(item_name):
                 return self.reload(in_new_qthread=False)
             items = self.join_select_result.pointer[item_name]
+            if items is None:
+                return
             for model_name, data_per_model in data.items():
                 self.db_items.set_item(_update=True, _ready=is_valid, _model=model_name, **data_per_model,
                                        **items[model_name].get_primary_key_and_value())
@@ -704,7 +707,6 @@ class ConditionsPage(Constructor, JoinedModelTools, InputTools):
                                     is_valid=self.validator.refresh())
 
     def reset_fields(self):
-        self.join_select_result = {}
         self.ui.conditions_list.clear()
         super().reset_fields_to_default()
 

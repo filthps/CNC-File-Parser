@@ -33,8 +33,7 @@ class AddCNC(Constructor, Tools):
         self.connect_main_signals()
 
     def reload(self, in_new_qthread: bool = True):
-        def insert_cnc_items(cnc_items: orm.Result):
-            self.select_result = cnc_items
+        def insert_cnc_items(cnc_items: orm.ResultORMCollection):
             self.disconnect_text_field_signals()
             self.ui.cnc_list.clear()
             for item in cnc_items:
@@ -50,7 +49,7 @@ class AddCNC(Constructor, Tools):
         def auto_select_cnc_item(items, index=0):
             selected_item = self.ui.cnc_list.takeItem(index)
             self.validator.set_cnc(selected_item)
-            self.update_fields(line_edit_values=items.items[index].value)
+            self.update_fields(line_edit_values=items[index].value)
             self.ui.cnc_list.addItem(selected_item)
             self.ui.cnc_list.setItemSelected(selected_item, True)
             self.ui.cnc_list.setCurrentItem(selected_item)
@@ -59,7 +58,8 @@ class AddCNC(Constructor, Tools):
         @QThreadInstanceDecorator(result_callback=insert_cnc_items, in_new_qthread=in_new_qthread)
         def load_all_cnc():
             items = self.db_items.get_items(_model=Cnc)
-            return items
+            self.select_result = items
+            return items.items
         load_all_cnc()
 
     def connect_main_signals(self):
