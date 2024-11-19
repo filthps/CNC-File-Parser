@@ -53,7 +53,7 @@ class LinkedListItem:
             item.index = self._index - 1
 
     @property
-    def value(self):
+    def value(self) -> dict:
         return copy.copy(self._val)
 
     @classmethod
