@@ -1778,17 +1778,16 @@ class JoinSelectResult(OrderByJoinResultMixin, BaseResult, ModelTools):
             if hash(group) == item:
                 return group
 
-    def __contains__(self, item: Union[int, ORMItemQueue, ORMItem]):
-        if not isinstance(item, (ORMItemQueue, ORMItem, int,)):
+    def __contains__(self, item: Union[int, SpecialOrmContainer, SpecialOrmItem]):
+        if not isinstance(item, (SpecialOrmContainer, SpecialOrmItem, int,)):
             return False
         if type(item) is int:
             return item in map(lambda x: hash(x), self)
-        if type(item) is ORMItemQueue:
+        if isinstance(item, (SpecialOrmItem, SpecialOrmContainer,)):
             return hash(item) in map(lambda x: x.__hash__(), self)
-        if type(item) is ORMItem:
-            return hash(item) in [hash(node) for group_items in self for node in group_items]
+        return False
 
-    def _merge(self) -> Iterator[ResultORMCollection]:
+    def _merge(self) -> tuple[ResultORMCollection]:
         def get_nodes_with_null_value_in_fk():
             """ Получить все локальные ноды, в которых в значениях внешних ключей стоит NULL"""
             res = SpecialOrmContainer()
@@ -1842,7 +1841,7 @@ class JoinSelectResult(OrderByJoinResultMixin, BaseResult, ModelTools):
             # f(n) = O(n) * (O(n1) + O(n1) * (O(k) * (O(k1) + O(k1) + O(n1) * O(k1) + O(k1))))
             # f(n) = O(n) * (O(n1) * (O(k) * (O(k1) * O(k1))))
         local_items = list(self.get_local_nodes()) if not self._only_db else []
-        return (ResultORMCollection(item) for item in merge(list(get_filtered_database_items()), local_items))
+        return tuple(ResultORMCollection(item) for item in merge(list(get_filtered_database_items()), local_items))
 
     def _get_node_by_joined_primary_key_and_value(self, joined_pk: str):
         model_name, primary_key, value = self._parse_joined_primary_key_and_value(joined_pk)
@@ -1875,7 +1874,7 @@ class JoinSelectResult(OrderByJoinResultMixin, BaseResult, ModelTools):
                         del values[n]
                         values.update({f"{node.model.__name__}.{n}": old_val})
                 result.append(node.model, node.get_primary_key_and_value(), **values)
-            yield result
+            yield ResultORMCollection(result)
 
 
 class ORMHelper(ORMAttributes):
@@ -2439,6 +2438,8 @@ class Pointer:
         self._is_valid()
 
     def __getitem__(self, item: str) -> Optional[Union[ResultORMItem, ResultORMCollection]]:
+        if not isinstance(item, str):
+            raise TypeError
         data = self.items
         if item not in data:
             return
