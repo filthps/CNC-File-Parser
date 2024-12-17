@@ -34,9 +34,8 @@ class OptionsPageCreateMachine(Constructor, Tools):
         self.validator = None
         self.db_items: orm.ORMHelper = main_app_instance.db_items_queue
         self.main_app = main_app_instance
-        self.pointer: Optional[orm.Pointer] = None
+        self.machines_pointer: Optional[orm.Pointer] = None
         self.ui = ui
-        self.cnc_names = {}  # Хранить словарь названий стоек, чтобы избежать лишних запросов в БД (cncid: name)
         super().__init__(main_app_instance, ui)
 
         def init_validator():
@@ -52,8 +51,8 @@ class OptionsPageCreateMachine(Constructor, Tools):
 
     def reload(self, create_thread=True):
         """ Очистить поля и обновить данные из базы данных """
-        def callback(data: tuple):
-            machines, machine_items, cnc_items = data
+        def callback(data):
+            machines, cnc, machine_items, cnc_items = data
             self.ui.add_machine_list_0.clear()
             machine_names = []
             for data in machine_items:
@@ -64,7 +63,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
                 if self.db_items.is_node_from_cache(machinename=name, model=Machine):
                     self.validator.set_not_complete_edit_attributes(item)
             machines.pointer = machine_names
-            self.pointer = machines.pointer
+            self.machines_pointer = machines.pointer
             self.clear_property_fields()
             self.insert_all_cnc_from_db(cnc_items)
             self.select_machine_item()
@@ -73,8 +72,8 @@ class OptionsPageCreateMachine(Constructor, Tools):
         @QThreadInstanceDecorator(result_callback=callback, in_new_qthread=create_thread)
         def load_items():
             machines = self.db_items.get_items(_model=Machine)
-            cnc_items = self.db_items.get_items(_model=Cnc, _db_only=True)
-            return machines, machines.items, cnc_items.items
+            cnc = self.db_items.get_items(_model=Cnc, _db_only=True)
+            return machines, cnc, machines.items, cnc.items
         load_items()
 
     def select_machine_item(self, index=0) -> Optional[QListWidgetItem]:
@@ -141,9 +140,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
                 data = next(cnc_items_iter)
             except StopIteration:
                 break
-            cnc_name = data["name"]
-            self.cnc_names.update({data["cncid"]: cnc_name})
-            self.ui.choice_cnc.addItem(cnc_name)
+            self.ui.choice_cnc.addItem(data["name"])
 
     @Slot(str)
     def choice_folder(self, line_edit_widget: str):
@@ -157,35 +154,42 @@ class OptionsPageCreateMachine(Constructor, Tools):
     def select_machine(self, machine_: QListWidgetItem):
         """ Обновить данные при select в QListWidget -
         обновить все поля свойств станка (поля - Характеристики)"""
-        def insert_machine_info_in_ui(machine_instance=None, cnc_items=None):
-            if not machine_instance:
+        def insert_machine_info_in_ui(machine_item=None, cnc_items=None):
+            if not machine_item:
                 self.reload()
                 return
             if not cnc_items:
                 return
             self.disconnect_fields_signals()
-            machine = machine_instance[0]
             self.clear_property_fields()
             self.insert_all_cnc_from_db(cnc_items)
-            cm_box_values = {}
-            cnc_name = self.cnc_names.get(machine.get("cncid"))
-            cm_box_values.update({"name": cnc_name}) if cnc_name else None
-            self.update_fields(line_edit_values=machine, combo_box_values=cm_box_values)
+            cnc_name = [cnc.value for cnc in cnc_items if cnc["cncid"] == machine_item.value.get("cncid", None)]
+            cnc_name = cnc_name[0] if cnc_name else {}
+            self.update_fields({**cnc_name, **machine_item.value})
             self.validator.set_machine(machine_)
             self.connect_fields_signals()
 
         @QThreadInstanceDecorator(result_callback=insert_machine_info_in_ui)
-        def load_selected_machine():
-            machines = self.db_items.get_items(machinename=machine_item_name)
+        def load_selected_machine(machine_name):
+            if self.machines_pointer.has_changes(machine_name):
+                #self.reload(False)
+                print("ХУЕТА")
+                return
+            machine = self.machines_pointer[machine_name]
+            if machine is None:
+                #self.reload(create_thread=False)
+                print("ХУЕТА")
+                return
             cncs = self.db_items.get_items(_model=Cnc, _db_only=True)
             if cncs.has_changes():
-                self.reload(create_thread=False)
+                #self.reload(create_thread=False)
+                print("ХУЕТА")
                 return
-            return machines.items, cncs.items
+            return machine, cncs.items
         if machine_ is None:
             return
         machine_item_name = machine_.text()
-        load_selected_machine()
+        load_selected_machine(machine_item_name)
 
     @Slot()
     def add_machine(self):
@@ -228,7 +232,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
         @QThreadInstanceDecorator()
         def save_data(field_name: str, field_value: str, machine_n: str):
             def check_machine_is_exists():
-                m = self.pointer[machine_n]
+                m = self.machines_pointer[machine_n]
                 if not m:
                     self.reload(create_thread=False)
                     return
@@ -272,7 +276,6 @@ class OptionsPageCreateMachine(Constructor, Tools):
 
     def clear_property_fields(self) -> None:
         super().reset_fields_to_default()
-        self.cnc_names = {}
 
     def set_fields_state(self, disabled=False):
         for field_name in self.UI__TO_SQL_COLUMN_LINK__COMBO_BOX:
