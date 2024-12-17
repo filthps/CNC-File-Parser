@@ -36,20 +36,22 @@ class AddCNC(Constructor, Tools):
         def insert_cnc_items(cnc_items: orm.ResultORMCollection):
             self.disconnect_text_field_signals()
             self.ui.cnc_list.clear()
+            names = []
             for item in cnc_items:
                 list_item = QListWidgetItem(item["name"])
+                names.append(item["name"])
                 self.ui.cnc_list.addItem(list_item)
                 if self.db_items.is_node_from_cache(name=item["name"]):
                     self.validator.set_not_complete_edit_attributes(list_item)
-            self.create_pointer()
+            self.select_result.pointer = names
             self.reset_fields_to_default()
-            auto_select_cnc_item(cnc_items) if cnc_items else None
+            auto_select_cnc_item(cnc_items) if names else None
             self.connect_text_field_signals()
 
         def auto_select_cnc_item(items, index=0):
             selected_item = self.ui.cnc_list.takeItem(index)
             self.validator.set_cnc(selected_item)
-            self.update_fields(line_edit_values=items[index].value)
+            self.update_fields(items[index].value)
             self.ui.cnc_list.addItem(selected_item)
             self.ui.cnc_list.setItemSelected(selected_item, True)
             self.ui.cnc_list.setCurrentItem(selected_item)
@@ -113,9 +115,6 @@ class AddCNC(Constructor, Tools):
             return
         dialog = self.get_confirm_dialog("Удалить стойку?", ok_callback=ok)
         dialog.show()
-
-    def create_pointer(self):
-        super().create_pointer("cnc_list")
 
     def select_cnc(self, item: QListWidgetItem):
         def update_fields(data=None):

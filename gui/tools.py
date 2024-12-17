@@ -29,39 +29,58 @@ class Tools:
     NULLABLE_FIELDS = tuple()
     models = tuple()  # Указывать только для тех страниц, где join_select
 
-    def update_fields(self, data: ResultORMItem, set_all_radio_buttons=False):
+    def update_fields(self, data: dict, set_all_radio_buttons=False) -> None:
         """ Обновление содержимого полей согласно данным, которые пришли из орм.
         Данный метод подразумевает использование на страничках, где используются одиночные запросы.
         :arg data: входящий объект с данными
         :arg set_all_radio_buttons: True - устанавливать вcе кнопки, а не только ту, что True
         """
-        if type(data) is not ResultORMItem:
+        if type(data) is not dict:
+            raise TypeError
+        if not isinstance(set_all_radio_buttons, bool):
             raise TypeError
         reversed_line_edit_data = self.__reverse_ui_to_sql_dict(self.UI__TO_SQL_COLUMN_LINK__LINE_EDIT)
         reversed_radio_button_data = self.__reverse_ui_to_sql_dict(self.UI__TO_SQL_COLUMN_LINK__RADIO_BUTTON)
         reversed_combo_box_data = self.__reverse_ui_to_sql_dict(self.UI__TO_SQL_COLUMN_LINK__COMBO_BOX)
-        for sql_column, value in data.value.items():
+        for sql_column, value in data.items():
+            if not reversed_line_edit_data:
+                continue
             if sql_column in reversed_line_edit_data:
+                if value is None:
+                    continue
                 ui_item_name = reversed_line_edit_data[sql_column]
-                line_edit: QLineEdit = getattr(self.ui, ui_item_name, None)
-                if line_edit is None:
-                    raise ValueError("Данный QLineEdit не найден в UI")
+                line_edit: Optional[QLineEdit] = getattr(self.ui, ui_item_name)
                 line_edit.setText(str(value))
+            if not reversed_radio_button_data:
+                continue
             if sql_column in reversed_radio_button_data:
-                ui_name: Optional[QRadioButton] = None
+                ui_name = None
                 if not set_all_radio_buttons:
                     if value:
-                        ui_name = reversed_radio_button_data[(sql_column, True)]
+                        try:
+                            ui_name = reversed_radio_button_data[(sql_column, True)]
+                        except KeyError:
+                            ui_name = None
                 if set_all_radio_buttons:
-                    ui_name = reversed_radio_button_data[(sql_column, value)]
+                    try:
+                        ui_name = reversed_radio_button_data[(sql_column, value)]
+                    except KeyError:
+                        ui_name = None
                 if ui_name is not None:
-                    radio_button = getattr(self.ui, ui_name, None)
-                    if radio_button is None:
-                        raise ValueError("Данный QRadioButton не найдет в UI")
-                    ui_name.setChecked(value)
+                    radio_button: Optional[QRadioButton] = getattr(self.ui, ui_name)
+                    radio_button.setChecked(value)
+            if not reversed_combo_box_data:
+                continue
             if sql_column in reversed_combo_box_data:
                 combo_box_name = reversed_combo_box_data[sql_column]
-                q_combo_box = getattr(self.ui, combo_box_name)
+                q_combo_box: Optional[QComboBox] = getattr(self.ui, combo_box_name)
+                if value is None:
+                    if self.COMBO_BOX_DEFAULT_VALUES:
+                        q_combo_box.setCurrentText(self.COMBO_BOX_DEFAULT_VALUES[combo_box_name])
+                    else:
+                        q_combo_box.setCurrentText("")
+                    continue
+                q_combo_box.setCurrentText(str(value))
 
     def check_output_values(self, field_name, value):
         """ Форматировать типы выходных значений перед установкой в очередь отправки """
@@ -128,14 +147,14 @@ class Tools:
         [b.setIcon(icon) for b in gen()]
 
     @staticmethod
-    def __reverse_ui_to_sql_dict(d: dict) -> dict:
+    def __reverse_ui_to_sql_dict(d: dict) -> Optional[dict]:
         """ Обычно словари для связи между полями в ui и столбцами в бд имеют вид примерно такой:
          'ui_field_radio_button_name': {'sql_field': True} или 'ui_field_line_edit_name': 'sql_name'.
          Поменяем ключи и значения местами."""
         if type(d) is not dict:
             raise TypeError
         if not d:
-            raise ValueError
+            return
         if isinstance(tuple(d.values())[0], dict):
             return {(k, v): key for key, value in d.items() for k, v in value.items()}
         return dict(zip(d.values(), d.keys()))

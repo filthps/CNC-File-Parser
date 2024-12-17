@@ -648,7 +648,7 @@ class ConditionsPage(Constructor, JoinedModelTools, InputTools):
         if not condition_item:
             return
         data = check_inner(condition_item.text())
-        self.update_fields()
+        [self.update_fields(d.value) for d in data]
 
     @Slot(str)
     def change_parent_condition(self, item):
