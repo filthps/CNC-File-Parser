@@ -11,6 +11,16 @@ class ORMException(Exception):
         super().__init__(text)
 
 
+class PointerException(ORMException):
+    def __init__(self, text="Ошибка экземпляра Pointer"):
+        super().__init__(text)
+
+
+class PointerWrapperLengthError(PointerException):
+    def __init__(self, text="Длина элементов в wrap_items больше не соответствует длине результатов"):
+        super().__init__(text)
+
+
 class ORMInitializationError(ORMException):
     def __init__(self, text="Неправильная настройка модуля"):
         super().__init__(text)
@@ -84,7 +94,8 @@ class JoinedResultError(ORMException):
 
 
 class JoinedItemPointerError(JoinedResultError):
-    def __init__(self, message="Ошибка указателя Pointer"):
+    def __init__(self, message="Ошибка Pointer. "
+                               "При создании экземпляра передан недействительный тип результата: Pointer работает только с Result и JoinSelectResult"):
         super().__init__(message)
 
 
