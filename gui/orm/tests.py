@@ -17,6 +17,7 @@ from sqlalchemy import func, select, text
 from database.models import Machine, Cnc, OperationDelegation, SearchString, db as sqlalchemy_instance, Condition, \
     Numeration, Comment, drop_db, create_db
 from database.procedures import init_all_triggers
+from gui.datatype import LinkedList
 from orm import *
 
 
@@ -100,11 +101,329 @@ class SetUp:
         self.orm_manager.set_item(_model=Machine, machinename="Rambaudi", _insert=True)
 
     def update_exists_items(self):
-        self.orm_manager.set_item(cncid=1, name="name", _model=Cnc, _update=True)
-        self.orm_manager.set_item(_update=True, _model=Machine, machineid=2, inputcatalog=r"C:\F")
+        self.orm_manager.set_item(cncid=1, name="nameeg", _model=Cnc, _update=True)
+        self.orm_manager.set_item(_update=True, _model=Machine, machineid=2, inputcatalog=r"D:\other_path")
         self.orm_manager.set_item(numerationid=2, endat=4, _model=Numeration, _update=True)
         self.orm_manager.set_item(_model=Comment, commentid=2, findstr="test_str_new", _update=True)
-        self.orm_manager.set_item(_model=Machine, machinename="testname", machineid=1, _insert=True)
+        self.orm_manager.set_item(_model=Machine, machinename="testnameret", machineid=1, _update=True)
+        time.sleep(1)
+
+
+class TestLinkedList(unittest.TestCase):
+    def test_init(self) -> None:
+        LinkedList([{"node_val": 1}, {"nod2_val": 2}, {"node3_val": 3},
+                    {"node3_val": 4}, {"node4_val": 5}])
+        LinkedList()
+
+    def test_getitem(self):
+        linked_list = LinkedList([{"node_val": 1}, {"nod2_val": 2}, {"node3_val": 3},
+                                  {"node3_val": 4}, {"node4_val": 5}])
+        linked_list.__getitem__(4)
+        linked_list[1]
+        linked_list[-2]
+        linked_list.__getitem__(-4)
+        with self.assertRaises(IndexError):
+            linked_list.__getitem__(8)
+            linked_list[0]
+            linked_list[-5]
+        with self.assertRaises(TypeError):
+            linked_list[{}]
+            linked_list["w"]
+            linked_list["34"]
+            linked_list[None]
+            linked_list[False]
+            linked_list[True]
+
+    def test_setitem(self):
+        linked_list = LinkedList()
+        self.assertEqual(linked_list.__len__(), 0)
+        with self.assertRaises(IndexError):
+            linked_list[1] = {"val": "val"}
+            linked_list[1] = {"val": "val"}
+            linked_list[5] = {"val": "val"}
+            linked_list[-1] = {"val": "val"}
+        with self.assertRaises(TypeError):
+            linked_list[None] = {"val": "val"}
+            linked_list["sdf"] = {"val": "val"}
+            linked_list["0"] = {"val": "val"}
+        linked_list.__setitem__(0, {"node_val": "test_val"})
+        linked_list.__setitem__(0, {"node_val": "test_val"})
+        with self.assertRaises(IndexError):
+            linked_list[4] = "nodeval"
+
+    def test_bool(self):
+        linked_list = LinkedList()
+        self.assertFalse(linked_list)
+        self.assertFalse(linked_list)
+        linked_list.__setitem__(0, {"val": "val"})
+        self.assertTrue(linked_list)
+        del linked_list[0]
+        self.assertFalse(linked_list)
+        linked_list[0] = {"val1": 1}
+        self.assertTrue(linked_list)
+        linked_list.__setitem__(0, {"val2": 4})
+        self.assertTrue(linked_list)
+        linked_list.__setitem__(0, {"val3": 3})
+        self.assertTrue(linked_list)
+        del linked_list[0]
+        self.assertFalse(linked_list)
+
+    def test_len(self):
+        linked_list = LinkedList()
+        self.assertEqual(linked_list.__len__(), 0)
+        linked_list = LinkedList([{"node_val": 1}, {"nod2_val": 2}, {"node3_val": 3},
+                                  {"node3_val": 4}, {"node4_val": 5}])
+        self.assertEqual(len(linked_list), 5)
+        del linked_list[-1]
+        self.assertEqual(len(linked_list), 4)
+        linked_list.append(**{"val": 1})
+        self.assertEqual(len(linked_list), 5)
+
+    def test_delitem(self):
+        linked_list = LinkedList([{"node_val": 1}, {"nod2_val": 2}, {"node3_val": 3},
+                                  {"node3_val": 4}, {"node4_val": 5}])
+        linked_list.__delitem__(0)
+        linked_list.__delitem__(0)
+        linked_list.__delitem__(0)
+        linked_list.__delitem__(0)
+        self.assertEqual(len(linked_list), 1)
+        linked_list.__delitem__(-1)
+        self.assertEqual(linked_list.__len__(), 0)
+        linked_list = LinkedList([{"node_val": 1}, {"nod2_val": 2}, {"node3_val": 3},
+                                  {"node3_val": 4}, {"node4_val": 5}])
+        del linked_list[-2]
+        del linked_list[-1]
+        del linked_list[1]
+        del linked_list[0]
+        self.assertEqual(linked_list[0].value, {"node3_val": 3})
+        linked_list = LinkedList([{"node_val": 1}, {"nod2_val": 2}, {"node3_val": 3},
+                                  {"node3_val": 4}, {"node4_val": 5}])
+        linked_list.__delitem__(3)
+        linked_list.__delitem__(3)
+
+    def test_iter(self):
+        linked_list = LinkedList([{"node_val": 1}, {"nod2_val": 2}, {"node3_val": 3},
+                                  {"node3_val": 4}, {"node4_val": 5}])
+        items = [{"node_val": 1}, {"nod2_val": 2}, {"node3_val": 3},
+                                  {"node3_val": 4}, {"node4_val": 5}]
+        self.assertTrue(hasattr(linked_list, "__iter__"))
+        iterator = iter(linked_list)
+        counter = 0
+        while iterator:
+            try:
+                node = next(iterator)
+                if counter == len(items):
+                    assert False
+                self.assertEqual(node.value, items[counter])
+            except StopIteration:
+                break
+            else:
+                counter += 1
+        if not counter == len(linked_list):
+            assert False
+
+    def test_contains(self):
+        linked_list = LinkedList([{"node_val": 1}, {"nod2_val": 2}, {"node3_val": 3},
+                                  {"node3_val": 4}, {"node4_val": 5}])
+        for node in linked_list:
+            if node not in linked_list:
+                assert False
+
+        other_linked_list = LinkedList([{"other_node_val": 1}, {"other2_node_val": 2}, {"other3_node_val": 3},
+                                        {"other4_node_val": 4}, {"other5_node_val": 5}])
+        for node in other_linked_list:
+            self.assertFalse(linked_list.__contains__(node))
+        self.assertFalse(linked_list.__contains__(None))
+        self.assertFalse(linked_list.__contains__("1"))
+        self.assertFalse(linked_list.__contains__(1))
+        self.assertFalse(linked_list.__contains__(1.6))
+        self.assertFalse(linked_list.__contains__([1]))
+
+    def test_append(self):
+        linked_list = LinkedList([{"node_val": 1}, {"nod2_val": 2}, {"node3_val": 3},
+                                  {"node3_val": 4}, {"node4_val": 5}])
+        self.assertEqual(linked_list.__len__(), 5)
+        self.assertEqual(linked_list[-1].value, {"node4_val": 5})
+        self.assertEqual(linked_list[4].value, {"node4_val": 5})
+
+        linked_list.append(new_value_after_append=100)
+
+        self.assertEqual(linked_list.__len__(), 6)
+        self.assertEqual(linked_list[-1].value, {"new_value_after_append": 100})
+        self.assertEqual(linked_list[5].value, {"new_value_after_append": 100})
+
+        linked_list = LinkedList()
+        self.assertEqual(linked_list.__len__(), 0)
+        with self.assertRaises(IndexError):
+            linked_list[-1]
+            linked_list[4]
+        linked_list.append(new_value_after_append=100)
+        linked_list.append(new_value1_after_append=100)
+        self.assertEqual(linked_list.__len__(), 2)
+        self.assertEqual(linked_list[0].value, {"new_value_after_append": 100})
+        self.assertEqual(linked_list[-1].value, {"new_value1_after_append": 100})
+
+
+class TestORMItemQueue(unittest.TestCase):
+    def test_init(self):
+        ORMItemQueue()
+        queue = ORMItemQueue()
+        data = [{"_model": Machine, "_ready": False, "_insert": False, "_update": True,
+                 "_delete": False, "_create_at": datetime.datetime.now(), "_container": queue,
+                 "_primary_key_from_ui": False, "machinename": "Test"},
+                {"_model": Machine, "_ready": False, "_insert": False, "_update": True,
+                 "_delete": False, "_create_at": datetime.datetime.now(), "_container": queue,
+                 "_primary_key_from_ui": False, "machinename": "Name"},
+                {"_model": Machine, "_ready": False, "_insert": False, "_update": True,
+                 "_delete": False, "_create_at": datetime.datetime.now(), "_container": queue,
+                 "_primary_key_from_ui": False, "machinename": "NewTest"
+                 }]
+        new_queue = ORMItemQueue(data)
+
+    def test_enqueue(self):
+        queue = ORMItemQueue()
+        data__len_3 = [{"_model": Machine, "_ready": False, "_insert": False, "_update": True,
+                        "_delete": False, "_create_at": datetime.datetime.now(), "_container": queue,
+                        "_primary_key_from_ui": False, "machinename": "Test"},
+                       {"_model": Machine, "_ready": False, "_insert": False, "_update": True,
+                        "_delete": False, "_create_at": datetime.datetime.now(), "_container": queue,
+                        "_primary_key_from_ui": False, "machinename": "Test1"},
+                       {"_model": Machine, "_ready": False, "_insert": False, "_update": True,
+                        "_delete": False, "_create_at": datetime.datetime.now(), "_container": queue,
+                        "_primary_key_from_ui": False, "machinename": "NewTest"
+                        }]
+        self.assertIsNone(queue.dequeue())
+        self.assertEqual(queue.__len__(), 0)
+        with self.assertRaises(IndexError):
+            queue.__getitem__(0)
+            queue[-1]
+            queue[-4]
+            queue[2]
+            queue[1]
+            queue[10]
+        with self.assertRaises(StopIteration):
+            next(iter(queue))
+        queue.enqueue(**data__len_3[0])
+        self.assertEqual(len(queue), 1)
+        self.assertIsNotNone(queue[0])
+        self.assertIsNotNone(queue[-1])
+        queue.enqueue(**data__len_3[1])
+        self.assertEqual(len(queue), 2)
+        self.assertIsNotNone(queue[0])
+        self.assertIsNotNone(queue[1])
+        self.assertIsNotNone(queue[-1])
+        self.assertIsNotNone(queue[-2])
+        queue.append(**data__len_3[2])
+        self.assertEqual(len(queue), 3)
+        self.assertEqual(queue[-1].value["machinename"], "NewTest")
+        self.assertEqual(queue[0].value["machinename"], "Test")
+        self.assertEqual(queue[1].value["machinename"], "Test1")
+        #
+        # Столбец machinename с uniqie=True: произойдёт репликация без добавления новой ноды,
+        # вместо этого будет замена старой ноды с дополнением её содержимого
+        #
+        queue = ORMItemQueue()
+        data__len_1 = [{"_model": Machine, "_ready": False, "_insert": False, "_update": True,
+                        "_delete": False, "_create_at": datetime.datetime.now(), "_container": queue,
+                        "_primary_key_from_ui": False, "machinename": "Test", "xover": 10},
+                       {"_model": Machine, "_ready": False, "_insert": False, "_update": True,
+                        "_delete": False, "_create_at": datetime.datetime.now(), "_container": queue,
+                        "_primary_key_from_ui": False, "machinename": "Test", "yover": 10},
+                       {"_model": Machine, "_ready": False, "_insert": False, "_update": True,
+                        "_delete": False, "_create_at": datetime.datetime.now(), "_container": queue,
+                        "_primary_key_from_ui": False, "machinename": "Test", "zover": 10
+                        }]
+        [queue.enqueue(**data__len_1[i]) for i in range(len(data__len_1))]
+        self.assertEqual(queue.__len__(), 1)
+        #  Проверить, что новые данные, которые добавлялись за 3 итерации, вошли в результирующую ноду
+        self.assertEqual(len(set(queue[0].value).intersection(set({"xover": 10, "yover": 10, "zover": 10}))), 3)
+        #
+        #  Ситуация, когда первичный ключ был передан явно
+        #
+        queue = ORMItemQueue()
+        data_with_primary_key_from_ui = [{"_model": Machine, "_ready": False, "_insert": False, "_update": True,
+                                          "_delete": False, "_create_at": datetime.datetime.now(), "_container": queue,
+                                          "_primary_key_from_ui":
+                                              {"machineid": 1}, "machinename": "FirstTest", "xover": 10},
+                                         {"_model": Machine, "_ready": False, "_insert": False, "_update": True,
+                                          "_delete": False, "_create_at": datetime.datetime.now(), "_container": queue,
+                                          "_primary_key_from_ui":
+                                              {"machineid": 1}, "machinename": "Test", "yover": 10},
+                                         {"_model": Machine, "_ready": False, "_insert": False, "_update": True,
+                                          "_delete": False, "_create_at": datetime.datetime.now(), "_container": queue,
+                                          "_primary_key_from_ui":
+                                              {"machineid": 1}, "machinename": "LastName", "zover": 10, "xover": 0,
+                                          }]
+        [queue.enqueue(**data) for data in data_with_primary_key_from_ui]
+        self.assertEqual(queue.__len__(), 1)
+        for key, value in {"zover": 10, "xover": 0, "yover": 10, "machinename": "LastName"}.items():
+            if key not in queue[0].value:
+                assert False
+            if not queue[0].value[key] == value:
+                assert False
+
+    def test_dequeue(self):
+        queue = ORMItemQueue()
+        data__len_3 = [{"_model": Machine, "_ready": False, "_insert": False, "_update": True,
+                        "_delete": False, "_create_at": datetime.datetime.now(), "_container": queue,
+                        "_primary_key_from_ui": False, "machinename": "Test"},
+                       {"_model": Machine, "_ready": False, "_insert": False, "_update": True,
+                        "_delete": False, "_create_at": datetime.datetime.now(), "_container": queue,
+                        "_primary_key_from_ui": False, "machinename": "Test1"},
+                       {"_model": Machine, "_ready": False, "_insert": False, "_update": True,
+                        "_delete": False, "_create_at": datetime.datetime.now(), "_container": queue,
+                        "_primary_key_from_ui": False, "machinename": "NewTest"
+                        }]
+        with self.assertRaises(IndexError):
+            queue[0]
+            queue[-1]
+            queue[1]
+            queue[2]
+        [queue.enqueue(**data) for data in data__len_3]
+        queue[1]
+        queue[0]
+        queue[2]
+        queue[-1]
+        queue[-2]
+        self.assertEqual(len(data__len_3), len(queue))
+        self.assertEqual(queue.dequeue().value["machinename"], "Test")
+        self.assertEqual(2, queue.__len__())
+        self.assertEqual(queue.dequeue().value["machinename"], "Test1")
+        self.assertEqual(1, queue.__len__())
+        self.assertEqual(queue.dequeue().value["machinename"], "NewTest")
+        self.assertEqual(0, len(queue))
+        with self.assertRaises(IndexError):
+            queue[0]
+            queue[-1]
+            queue[1]
+            queue[2]
+
+    def test_remove_node_from_queue(self):
+        queue = ORMItemQueue()
+        data__len_3 = [{"_model": Machine, "_ready": False, "_insert": False, "_update": True,
+                        "_delete": False, "_create_at": datetime.datetime.now(), "_container": queue,
+                        "_primary_key_from_ui": False, "machinename": "Test"},
+                       {"_model": Machine, "_ready": False, "_insert": False, "_update": True,
+                        "_delete": False, "_create_at": datetime.datetime.now(), "_container": queue,
+                        "_primary_key_from_ui": False, "machinename": "Test1"},
+                       {"_model": Machine, "_ready": False, "_insert": False, "_update": True,
+                        "_delete": False, "_create_at": datetime.datetime.now(), "_container": queue,
+                        "_primary_key_from_ui": False, "machinename": "NewTest"
+                        }]
+        [queue.enqueue(**data) for data in data__len_3]
+        self.assertEqual(3, len(queue))
+        queue[0]
+        queue[1]
+        queue[2]
+        queue[-1]
+        queue[-2]
+        with self.assertRaises(IndexError):
+            queue[-3]
+            queue[3]
+        queue.remove(Machine, "machineid", 1)
+        queue.remove(Machine, "machineid", 2)
+        queue.remove(Machine, "machineid", 3)
+        self.assertEqual(0, len(queue))
 
 
 class TestORMHelper(unittest.TestCase, SetUp):
@@ -180,7 +499,7 @@ class TestORMHelper(unittest.TestCase, SetUp):
         self.set_data_into_queue()
         self.assertEqual(self.orm_manager.cache.get("ORMItems"), self.orm_manager.items)
         self.orm_manager.set_item(_insert=True, _model=Cnc, name="Fid")
-        self.assertEqual(len(self.orm_manager.items), 10)
+        self.assertEqual(len(self.orm_manager.items), 11)
 
     @drop_cache
     @db_reinit
@@ -274,57 +593,57 @@ class TestORMHelper(unittest.TestCase, SetUp):
         # Найдутся ли записи с pk равными значениям, которые мы добавили
         # Machine - Cnc
         result = self.orm_manager.join_select(Machine, Cnc, on={"Machine.cncid": "Cnc.cncid"})
-        self.assertEqual("NC210", result.items[0]["name"])
-        self.assertEqual("Heller", result.items[0]["machinename"])
-        self.assertEqual("Ram", result.items[1]["name"])
-        self.assertEqual("Fidia", result.items[1]["machinename"])
-        self.assertNotEqual(result.items[0]["Cnc.cncid"], result.items[1]["Cnc.cncid"])
-        self.assertEqual(result.items[0]["Cnc.cncid"], result.items[0]["Machine.cncid"])
+        self.assertEqual("Newcnc", result.items[0]["Cnc"]["name"])
+        self.assertEqual("Tesm", result.items[0]["Machine"]["machinename"])
+        self.assertEqual("Ram", result.items[1]["Cnc"]["name"])
+        self.assertEqual("Fidia", result.items[1]["Machine"]["machinename"])
+        self.assertNotEqual(result.items[0]["Cnc"]["cncid"], result.items[1]["Cnc"]["cncid"])
+        self.assertEqual(result.items[0]["Cnc"]["cncid"], result.items[0]["Machine"]["cncid"])
         #
         # Numeration - Operationdelegation
         #
         result = self.orm_manager.join_select(OperationDelegation, Numeration,
                                               on={"OperationDelegation.numerationid": "Numeration.numerationid"})
-        self.assertEqual("Нумерация. Добавил сразу в БД", result.items[0]["operationdescription"])
-        self.assertNotEqual("Нумерация. Добавил сразу в БД", result.items[1]["operationdescription"])
-        self.assertEqual("Нумерация кадров", result.items[1]["operationdescription"])
-        self.assertEqual(result.items[0]["Numeration.numerationid"], 3)
-        self.assertEqual(269, result.items[1]["endat"])
+        self.assertEqual("Нумерация. Добавил сразу в БД", result.items[0]["OperationDelegation"]["operationdescription"])
+        self.assertNotEqual("Нумерация. Добавил сразу в БД", result.items[1]["OperationDelegation"]["operationdescription"])
+        self.assertEqual("Нумерация кадров", result.items[1]["OperationDelegation"]["operationdescription"])
+        self.assertEqual(result.items[0]["Numeration"]["numerationid"], 3)
+        self.assertEqual(269, result.items[1]["Numeration"]["endat"])
         #
         # Comment - OperationDelegation
         #
         result = self.orm_manager.join_select(Comment, OperationDelegation, on={"Comment.commentid": "OperationDelegation.commentid"})
-        self.assertEqual("test_string_set_from_queue", result.items[1]["findstr"])
-        self.assertNotEqual("test_string_set_from_queue", result.items[0]["findstr"])
-        self.assertEqual("test_str", result.items[0]["findstr"])
-        self.assertNotEqual("test_str", result.items[1]["findstr"])
-        self.assertEqual(result.items[0]["iffullmatch"], True)
-        self.assertNotIn("iffullmatch", result.items[1])
-        self.assertEqual(True, result.items[1]["ifcontains"])
-        self.assertFalse(result.items[0]["ifcontains"])
+        self.assertEqual("test_string_set_from_queue", result.items[1]["Comment"]["findstr"])
+        self.assertNotEqual("test_string_set_from_queue", result.items[0]["Comment"]["findstr"])
+        self.assertEqual("test_str", result.items[0]["Comment"]["findstr"])
+        self.assertNotEqual("test_str", result.items[1]["Comment"]["findstr"])
+        self.assertEqual(result.items[0]["Comment"]["iffullmatch"], True)
+        self.assertNotIn("iffullmatch", result.items[1]["Comment"])
+        self.assertEqual(True, result.items[1]["Comment"]["ifcontains"])
+        self.assertFalse(result.items[0]["Comment"]["ifcontains"])
         #
         # Отбор только из локальных данных (очереди), но в базе данных их пока что быть не должно
         #
         # Machine - Cnc
         #
-        local_data = self.orm_manager.join_select(Machine, Cnc, on={"Machine.cncid": "Cnc.cncid"}, _queue_only=True)
-        database_data = self.orm_manager.join_select(Cnc, Machine, on={"Cnc.cncid": "Machine.cncid"}, _db_only=True)
-        self.assertEqual(local_data.items[0]["Machine.cncid"], local_data.items[0]["Cnc.cncid"])
-        self.assertEqual(database_data.items[0]["Cnc.cncid"], database_data.items[0]["Machine.cncid"])
-        self.assertIn("machineid", local_data.items[0])
-        self.assertIn("machineid", database_data.items[0])
-        self.assertNotEqual(local_data.items[0]["machineid"], database_data.items[0]["machineid"])
-        self.assertEqual("Fidia", local_data.items[0]["machinename"])
-        self.assertEqual("Ram", local_data.items[0]["name"])
-        self.assertNotEqual(local_data.items[0]["name"], database_data.items[0]["name"])
+        local_data = self.orm_manager.join_select(Machine, Cnc, on={"Machine.cncid": "Cnc.cncid"}, queue_only=True)
+        database_data = self.orm_manager.join_select(Cnc, Machine, on={"Cnc.cncid": "Machine.cncid"}, db_only=True)
+        self.assertEqual(local_data.items[0]["Machine"]["cncid"], local_data.items[0]["Cnc"]["cncid"])
+        self.assertEqual(database_data.items[0]["Cnc"]["cncid"], database_data.items[0]["Machine"]["cncid"])
+        self.assertIn("machineid", local_data.items[0]["Machine"])
+        self.assertIn("machineid", database_data.items[0]["Machine"])
+        self.assertNotEqual(local_data.items[0]["Machine"]["machineid"], database_data.items[0]["Machine"]["machineid"])
+        self.assertEqual("Fidia", local_data.items[0]["Machine"]["machinename"])
+        self.assertEqual("Ram", local_data.items[0]["Cnc"]["name"])
+        self.assertNotEqual(local_data.items[0]["Cnc"]["name"], database_data.items[0]["Cnc"]["name"])
         #
         # Comment - OperationDelegation
         #
-        local_data = self.orm_manager.join_select(Comment, OperationDelegation, on={"Comment.commentid": "OperationDelegation.commentid"}, _queue_only=True)
-        database_data = self.orm_manager.join_select(Comment, OperationDelegation, on={"Comment.commentid": "OperationDelegation.commentid"}, _db_only=True)
-        self.assertNotEqual(local_data.items[0]["Comment.commentid"], database_data.items[0]["Comment.commentid"])
-        self.assertEqual(local_data.items[0]["Comment.commentid"], local_data.items[0]["OperationDelegation.commentid"])
-        self.assertEqual(database_data.items[0]["Comment.commentid"], database_data.items[0]["OperationDelegation.commentid"])
+        local_data = self.orm_manager.join_select(Comment, OperationDelegation, on={"Comment.commentid": "OperationDelegation.commentid"}, queue_only=True)
+        database_data = self.orm_manager.join_select(Comment, OperationDelegation, on={"Comment.commentid": "OperationDelegation.commentid"}, db_only=True)
+        self.assertNotEqual(local_data.items[0]["Comment"]["commentid"], database_data.items[0]["Comment"]["commentid"])
+        self.assertEqual(local_data.items[0]["Comment"]["commentid"], local_data.items[0]["OperationDelegation"]["commentid"])
+        self.assertEqual(database_data.items[0]["Comment"]["commentid"], database_data.items[0]["OperationDelegation"]["commentid"])
         #
         # Плохие аргументы ...
         # invalid model
@@ -387,15 +706,38 @@ class TestORMHelper(unittest.TestCase, SetUp):
 
     @drop_cache
     @db_reinit
+    def test_single_select__has_changes(self):
+        self.set_data_into_database()
+        self.set_data_into_queue()
+        select_result = self.orm_manager.get_items(Cnc)
+        self.assertFalse(select_result.has_changes())
+        self.orm_manager.set_item(_model=Cnc, cncid=1, name="newtestname", _insert=True)
+        hash_from_cncid1 = hash(select_result.items[1])
+        hash_from_cncid2 = hash(select_result.items[0])
+        self.assertTrue(select_result.has_changes(hash_from_cncid2))
+        self.assertFalse(select_result.has_changes(hash_from_cncid2))
+        self.assertFalse(select_result.has_changes())
+
+    @drop_cache
+    @db_reinit
     def test_join_select__has_changes(self):
         """ Метод has_changes класса JoinSelectResult принимает в качестве аргумента хеш-сумму от одного контейнера
         со связанными моделями. """
         self.set_data_into_queue()
         self.set_data_into_database()
         join_select_result = self.orm_manager.join_select(Machine, Cnc, on={"Machine.machineid": "Cnc.cncid"})
-        self.assertFalse(join_select_result.has_changes())  # Для всей выборки результатов
+        #  Первый запрос has_changes всегда вернёт None
+        self.assertIsNone(join_select_result.has_changes())  # Для всей выборки результатов (не указан хеш)
         self.update_exists_items()
-        self.assertTrue(join_select_result.has_changes())  # Для всей выборки результатов
+        self.assertTrue(join_select_result.has_changes())
+        self.assertFalse(join_select_result.has_changes())
+        self.assertFalse(join_select_result.has_changes())
+        val_from_0 = join_select_result.items[0].__hash__()
+        val_from_1 = hash(join_select_result.items[1])
+        self.orm_manager.set_item(Machine, _update=True, machinename="Val", machineid=1)
+        self.orm_manager.set_item(_model=Cnc, name="super_name", _insert=True, cncid=1)
+        self.assertTrue(join_select_result.has_changes(val_from_0))
+        self.assertFalse(join_select_result.has_changes(hash_=val_from_1))
 
     @drop_cache
     @db_reinit
@@ -407,8 +749,7 @@ class TestORMHelper(unittest.TestCase, SetUp):
         self.set_data_into_database()
         self.set_data_into_queue()
         result = self.orm_manager.join_select(Machine, Cnc, on={"Machine.cncid": "Cnc.cncid"})
-        wrapper = ["Результат в списке 1", "Результат в списке 2"]
-        result.pointer = wrapper
+        result.pointer = ["Результат в списке 1", "Результат в списке 2"]
         #
         # Тест wrap_items
         #
@@ -423,13 +764,13 @@ class TestORMHelper(unittest.TestCase, SetUp):
         #
         # Добавить изменения и проверить повторно
         self.update_exists_items()
+        time.sleep(1)
         #
-        self.assertTrue(result.pointer.has_changes("Результат в списке 2"))
         self.assertTrue(result.pointer.has_changes("Результат в списке 1"))
-
-    @db_reinit
-    def test_someone(self):
-        self.assertEqual(1, 1)
+        self.assertIsNone(result.pointer.has_changes("Не установленный во wrapper элемент", given_unknown_status=True))
+        self.assertRaises(KeyError, result.pointer.has_changes, "Не установленный во wrapper элемент", given_unknown_status=False)
+        self.assertIsNone(result.pointer.has_changes("Ещё Не установленный во wrapper элемент", given_unknown_status=True))
+        self.assertTrue(result.pointer.has_changes("Результат в списке 2"))
 
 
 class TestQueueOrderBy(unittest.TestCase, SetUp):
