@@ -1781,7 +1781,13 @@ class BaseResult(ABC):
         ORMHelper.cache.set(f"{self.TEMP_HASH_PREFIX}{self._id}", hash_, ORMHelper.CACHE_LIFETIME_HOURS)
 
     @staticmethod
-    def __gen_id(self, **kwargs):
+    def _set_joined_hash_and_primary_key(keys: Iterable[tuple], values: Iterable[int]):
+        """ Сохранить первичный ключ и значение в качестве ключа, а хеш результата (Result, JoinedResult),
+        в кач-ве значения. В дальнейшем это поможет определить изменение последовательности в результатах. """
+        ORMHelper.cache.set_many(dict(zip(keys, values)), ORMHelper.CACHE_LIFETIME_HOURS)
+
+    @staticmethod
+    def __gen_id(**kwargs):
         """ Сгенерировать id, соответствующий параметрам запроса """
         str_ = "".join(map(lambda c: "".join(c), kwargs.items()))
         return int.from_bytes(hashlib.md5(str_.encode("utf-8")).digest(), "big")
