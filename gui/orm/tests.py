@@ -734,10 +734,18 @@ class TestORMHelper(unittest.TestCase, SetUp):
         self.assertFalse(join_select_result.has_changes())
         val_from_0 = join_select_result.items[0].__hash__()
         val_from_1 = hash(join_select_result.items[1])
-        self.orm_manager.set_item(Machine, _update=True, machinename="Val", machineid=1)
-        self.orm_manager.set_item(_model=Cnc, name="super_name", _insert=True, cncid=1)
+        print(join_select_result.items)
+        self.orm_manager.set_item(_model=Machine, _update=True, machinename="name", machineid=1)
+        #self.orm_manager.set_item(_model=Cnc, name="name_n", _update=True, cncid=1)
+        # (ResultORMCollection(("<class 'database.models.Machine'>, {'machineid': 1}, ui_hidden=False, machinename=testnameret, cncid=1, yover=None, xfspeed=None, zfspeed=None, inputcatalog=C:\\Windows, outputcatalog=X:\\path, xover=None, machineid=1, zover=None, yfspeed=None, spindelespeed=None", "<class 'database.models.Cnc'>, {'cncid': 1}, ui_hidden=False, cncid=1, name=nameeg, exceptsymbols=None, commentsymbol=!")), ResultORMCollection(("<class 'database.models.Machine'>, {'machineid': 2}, ui_hidden=False, machineid=2, cncid=2, machinename=Fidia, inputcatalog=D:\\other_path, outputcatalog=C:\\Test", "<class 'database.models.Cnc'>, {'cncid': 2}, ui_hidden=False, cncid=2, name=Ram, commentsymbol=#")))
+        # (ResultORMCollection(("<class 'database.models.Machine'>, {'machineid': 1}, ui_hidden=False, machinename=Val, cncid=1, yover=None, xfspeed=None, zfspeed=None, inputcatalog=C:\\Windows, outputcatalog=X:\\path, xover=None, machineid=1, zover=None, yfspeed=None, spindelespeed=None", "<class 'database.models.Cnc'>, {'cncid': 1}, ui_hidden=False, cncid=1, name=name, exceptsymbols=None, commentsymbol=!")),)
+        # Пропали элементы с ...id=2
+        print(join_select_result.items)
+        print("-------")
+        print(self.orm_manager.get_items(Machine).items)
+        print(self.orm_manager.get_items(Cnc).items)
         self.assertTrue(join_select_result.has_changes(val_from_0))
-        self.assertFalse(join_select_result.has_changes(hash_=val_from_1))
+        self.assertTrue(join_select_result.has_changes(val_from_1))
 
     @drop_cache
     @db_reinit
