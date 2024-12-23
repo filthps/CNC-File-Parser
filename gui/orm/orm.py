@@ -568,7 +568,7 @@ class ResultORMItem(LinkedListItem, ORMAttributes, NodeTools):
         self._primary_key = _primary_key
         self._model = _model
         self._hidden = _ui_hidden
-        super().__init__(val=self.__clean_kwargs(k))
+        super().__init__(**self.__clean_kwargs(k))
         self.__is_valid()
 
     @property
@@ -1343,12 +1343,14 @@ class OrderByMixin(ABC):
         self._order_by_args = None
         self._order_by_kwargs = None
         self._is_sort = False
+        self._is_change_sort_params = False
 
     def order_by(self, *args, **kwargs):
         """ Включить сортировку для экземпляра целевого класса и запомнить аргументы """
         self._order_by_args = args
         self._order_by_kwargs = kwargs
         self._is_sort = True
+        self._is_change_sort_params = True
         self.__is_valid_order_by_params(*args, **kwargs)
 
     @property
@@ -1661,6 +1663,7 @@ class BaseResult(ABC):
         self._pointer: Optional["Pointer"] = None
         self.__merged_data = []
         self._is_sort = False
+        self._is_change_sort_params = False
         self.__is_valid()
 
     def has_changes(self, hash_=None, given_unknown_status=True) -> Optional[Union[bool, ValueError]]:
@@ -1670,14 +1673,21 @@ class BaseResult(ABC):
          Например в случае,
          когда has_changes запрашивается впервые, или, когда, просто напросто, кеш не помнит данных о "прошлых" результатов.
          """
-        def replace_one_hash_item(new_hash_copy):
+        def replace_one_hash_item(current_hash, new_hash, change_ordering=False):
+            if change_ordering:
+                return current_hash
             try:
-                replace_item_index = new_hash_copy.index(hash_)
+                replace_item_index = current_hash.index(hash_)
             except ValueError:
                 replace_item_index = None
-            if replace_item_index is not None:
-                new_hash_copy[replace_item_index] = hash_
-            self._set_previous_hash(new_hash_copy)
+            if replace_item_index is None:
+                return current_hash
+            try:
+                new_value = new_hash[replace_item_index]
+            except IndexError:
+                return current_hash
+            current_hash[replace_item_index] = new_value
+            return current_hash
         if hash_ is not None:
             if type(hash_) is not int:
                 raise TypeError
@@ -1687,17 +1697,19 @@ class BaseResult(ABC):
             if given_unknown_status:
                 return
             return False
+        is_change_sort_params = self._is_change_sort_params
         new_hash = [item.__hash__() for item in self]
         if hash_:
-            replace_one_hash_item(new_hash.copy())
-            if hash_ in new_hash:
-                if hash_ in current_hash:
-                    return False
-                return True
+            new_hash_to_save = replace_one_hash_item(current_hash.copy(), new_hash.copy(),
+                                                     change_ordering=is_change_sort_params)
+            self._set_previous_hash(new_hash_to_save)
             if hash_ not in current_hash:
                 if given_unknown_status:
                     return
+                raise KeyError
+            if hash_ in new_hash:
                 return False
+            return True
         self._set_previous_hash(new_hash)
         return not current_hash == new_hash
 
@@ -1826,6 +1838,7 @@ class Result(OrderBySingleResultMixin, BaseResult, ModelTools):
         database_items = self.get_nodes_from_database()
         [output.enqueue(**node.get_attributes(new_container=output))
          for collection in (database_items, local_items,) for node in collection]
+        self._is_change_sort_params = False
         return ResultORMCollection(output)
 
     def _get_node_by_joined_primary_key_and_value(self, value: Union[str, int]) -> Optional[ORMItem]:
@@ -1968,6 +1981,7 @@ class JoinSelectResult(OrderByJoinResultMixin, BaseResult, ModelTools):
             # f(n) = O(n) * (O(n1) + O(n1) * (O(k) * (O(k1) + O(k1) + O(n1) * O(k1) + O(k1))))
             # f(n) = O(n) * (O(n1) * (O(k) * (O(k1) * O(k1))))
         local_items = list(self.get_local_nodes()) if not self._only_db else []
+        self._is_change_sort_params = False
         return tuple(ResultORMCollection(item) for item in merge(list(get_filtered_database_items()), local_items))
 
     def _get_node_by_joined_primary_key_and_value(self, joined_pk: str):
@@ -2509,7 +2523,7 @@ class Pointer:
             if given_unknown_status:
                 return
             return False
-        if len(previous_hash) != len(self.wrap_items):
+        if not len(previous_hash) == len(self.wrap_items):
             self._is_invalid = True
             if given_unknown_status:
                 return

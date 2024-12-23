@@ -91,11 +91,11 @@ class LinkedList:
     def tail(self):
         return self._tail
 
-    def append(self, **kwargs):
+    def append(self, *args, **kwargs):
         """
         Добавить ноду в нонец
         """
-        new_element = self.LinkedListItem(**kwargs)
+        new_element = self.LinkedListItem(*args, **kwargs)
         if self:
             last_elem = self._tail
             self.__set_next(last_elem, new_element)
