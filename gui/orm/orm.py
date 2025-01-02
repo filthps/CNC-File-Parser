@@ -893,7 +893,7 @@ class ORMItemQueue(LinkedList, QueueSearchTools):
         return hash(self) == hash(other)
 
     def __hash__(self):
-        return sum(map(lambda n: hash(n), self))
+        return sum(map(hash, self))
 
     def _replication(self, **new_node_complete_data: dict) -> tuple[Optional[ORMItem], ORMItem]:  # O(l * k) + O(n) + O(1) = O(n)
         """
@@ -1022,7 +1022,7 @@ class ResultORMCollection:
 
     @property
     def hash_by_pk(self):
-        return sum(map(lambda x: hash(x), self.__collection))
+        return sum(map(lambda x: x.hash_by_pk, self.__collection))
 
     def add_model_name_prefix(self):
         """ Изменит всю коллекцию, добавив префиксы названия таблицы к каждому значению полей у каждой ноды """
@@ -1343,14 +1343,12 @@ class OrderByMixin(ABC):
         self._order_by_args = None
         self._order_by_kwargs = None
         self._is_sort = False
-        self._is_change_sort_params = False
 
     def order_by(self, *args, **kwargs):
         """ Включить сортировку для экземпляра целевого класса и запомнить аргументы """
         self._order_by_args = args
         self._order_by_kwargs = kwargs
         self._is_sort = True
-        self._is_change_sort_params = True
         self.__is_valid_order_by_params(*args, **kwargs)
 
     @property
@@ -1659,70 +1657,70 @@ class BaseResult(ABC):
         self.get_local_nodes: Optional[callable] = get_local_nodes  # Функция, в которой происходит получение контейнера с нодами из кеша
         self._only_queue = only_local
         self._only_db = only_database
-        self._id = self.__gen_id({**kwargs, "only_local": only_local, "only_database": only_database})
+        self._id = self.__gen_id(**{**kwargs, "only_local": only_local, "only_database": only_database})
         self._pointer: Optional["Pointer"] = None
         self.__merged_data = []
         self._is_sort = False
-        self._is_change_sort_params = False
         self.__is_valid()
 
-    def has_changes(self, hash_=None, given_unknown_status=True) -> Optional[Union[bool, ValueError]]:
+    def has_changes(self, hash_=None, given_unknown_status=False) -> Optional[Union[bool, ValueError]]:
         """ Изменились ли значения в результатах с момента последнего запроса has_changes.
-         :arg hash_: Если передан, то будет проверятся 1 конкретный результат из всей коллекции результатов.
-         :arg given_unknown_status: True - учитывать неопределённый статус. Более поверхностный результат.
-         Например в случае,
-         когда has_changes запрашивается впервые, или, когда, просто напросто, кеш не помнит данных о "прошлых" результатов.
-         """
-        def replace_one_hash_item(current_hash, new_hash, change_ordering=False):
-            if change_ordering:
-                return current_hash
-            try:
-                replace_item_index = current_hash.index(hash_)
-            except ValueError:
-                replace_item_index = None
-            if replace_item_index is None:
-                return current_hash
-            try:
-                new_value = new_hash[replace_item_index]
-            except IndexError:
-                return current_hash
-            current_hash[replace_item_index] = new_value
-            return current_hash
+        :arg hash_: Если передан, то будет проверятся 1 конкретный результат из всей коллекции результатов.
+        :arg given_unknown_status: True - учитывать неопределённый статус. Более поверхностный результат.
+        Например в случае,
+        когда has_changes запрашивается впервые, или, когда, просто напросто, кеш не помнит данных о "прошлых" результатов.
+        """
+        def replace_one_hash_item(all_items_at_current_hash):
+            all_items_at_current_hash = set(all_items_at_current_hash)
+            all_items_at_current_hash.add(hash_)
+            all_items_at_current_hash = list(all_items_at_current_hash)
+            self._set_previous_hash(hash_values=all_items_at_current_hash)
         if hash_ is not None:
             if type(hash_) is not int:
                 raise TypeError
-        current_hash = self.previous_hash
-        if current_hash is None:  # Если "результат" ни одного раза не запрашивался, то определить has_changes невозможно,- вернём None
+        all_items_at_current_hash = self.get_previous_hash()
+        if all_items_at_current_hash is None:  # Если "результат" ни одного раза не запрашивался, то определить has_changes невозможно,- вернём None
             self._set_previous_hash()
             if given_unknown_status:
                 return
             return False
-        is_change_sort_params = self._is_change_sort_params
-        new_hash = [item.__hash__() for item in self]
-        if hash_:
-            new_hash_to_save = replace_one_hash_item(current_hash.copy(), new_hash.copy(),
-                                                     change_ordering=is_change_sort_params)
-            self._set_previous_hash(new_hash_to_save)
-            if hash_ not in current_hash:
-                if given_unknown_status:
-                    return
-                raise KeyError
+        if not hash_:
+            return not all_items_at_current_hash == [item.__hash__() for item in self]
+        fresh_inner = self._merge()  # Избегаем момента _set_previous_hash в __iter__ или items
+        new_hash = [hash(node_or_group) for node_or_group in fresh_inner]
+        checked_items = self.__get_checked_hash_items()
+        self.__add_hash_item_to_checked(hash_)
+        if hash_ in new_hash:
+            replace_one_hash_item(all_items_at_current_hash)
+            return False
+        if self.get_previous_hash(hash_value=hash_) in [node_or_group.hash_by_pk for node_or_group in fresh_inner]:  # Значит нода с таким PK всё ещё существует в результатах
+            replace_one_hash_item(all_items_at_current_hash)
             if hash_ in new_hash:
                 return False
-            return True
-        self._set_previous_hash(new_hash)
-        return not current_hash == new_hash
+            if hash_ in checked_items:
+                return False
+        return True
+
+    def get_previous_hash(self, hash_value: Optional[int] = None) -> Union[list[int], int]:
+        """
+        Запросить из кеша хеш суммы содержимого объектов результата ()
+        :param hash_value: None - Вернуть полный список хеш сумм,
+        или запросить из словаря x.__hash__(): x.hash_by_pk конкретную хеш сумму по первичному ключу
+        """
+        if hash_value is not None:
+            if type(hash_value) is not int:
+                raise TypeError
+            if not hash_value:
+                raise ValueError
+            return ORMHelper.cache.get(str(hash_value), None)
+        return ORMHelper.cache.get(f"{self.TEMP_HASH_PREFIX}{self._id}", None)
 
     @property
     def items(self):
         self.__merged_data = self._merge()
         self._save_merged_collection_in_cache(self.__merged_data)
-        self._set_previous_hash([hash(node_or_group) for node_or_group in self.__merged_data])
+        self._set_previous_hash(self.__merged_data)
         return self.__merged_data
-
-    @property
-    def previous_hash(self) -> list[int]:
-        return ORMHelper.cache.get(f"{self.TEMP_HASH_PREFIX}{self._id}", None)
 
     @property
     def pointer(self):
@@ -1737,7 +1735,7 @@ class BaseResult(ABC):
     def __iter__(self):
         self.__merged_data = self._merge()
         self._save_merged_collection_in_cache(self.__merged_data)
-        self._set_previous_hash([hash(node_or_group) for node_or_group in self.__merged_data])
+        self._set_previous_hash(self.__merged_data)
         return iter(self.__merged_data)
 
     def __len__(self):
@@ -1775,22 +1773,27 @@ class BaseResult(ABC):
         """ Сохранить выводимый в ui результат в кеш. В дальнейшем из него можно будет доставать первичные ключи """
         ORMHelper.cache.set(cls.RESULT_CACHE_KEY, items, ORMHelper.CACHE_LIFETIME_HOURS)
 
-    def _set_previous_hash(self, hash_: list[int] = None):
-        if hash_ is None:
-            hash_ = [item.__hash__() for item in self]
-        ORMHelper.cache.set(f"{self.TEMP_HASH_PREFIX}{self._id}", hash_, ORMHelper.CACHE_LIFETIME_HOURS)
-
-    @staticmethod
-    def _set_joined_hash_and_primary_key(keys: Iterable[tuple], values: Iterable[int]):
-        """ Сохранить первичный ключ и значение в качестве ключа, а хеш результата (Result, JoinedResult),
-        в кач-ве значения. В дальнейшем это поможет определить изменение последовательности в результатах. """
-        ORMHelper.cache.set_many(dict(zip(keys, values)), ORMHelper.CACHE_LIFETIME_HOURS)
-
-    @staticmethod
-    def __gen_id(**kwargs):
-        """ Сгенерировать id, соответствующий параметрам запроса """
-        str_ = "".join(map(lambda c: "".join(c), kwargs.items()))
-        return int.from_bytes(hashlib.md5(str_.encode("utf-8")).digest(), "big")
+    def _set_previous_hash(self, items: Optional[Union[SpecialOrmContainer, Iterable[SpecialOrmContainer]]] = None,
+                           hash_values: list[int] = None):
+        if hash_values is not None:
+            if type(hash_values) is not list:
+                raise TypeError
+            if any((type(v) is not int for v in hash_values)):
+                raise TypeError
+            ORMHelper.cache.set(f"{self.TEMP_HASH_PREFIX}{self._id}", hash_values, ORMHelper.CACHE_LIFETIME_HOURS)
+            return
+        if items is None:
+            ORMHelper.cache.set(f"{self.TEMP_HASH_PREFIX}{self._id}", [n.__hash__() for n in self], ORMHelper.CACHE_LIFETIME_HOURS)
+            ORMHelper.cache.set_many(dict(zip(map(lambda x: str(x.__hash__()), self), map(lambda x: x.hash_by_pk, self))), ORMHelper.CACHE_LIFETIME_HOURS)
+            return
+        if not isinstance(items, (ResultORMCollection, tuple, list, frozenset,)):
+            print(items.__class__)
+            raise TypeError
+        if isinstance(items, (tuple, list, frozenset)):
+            if not all(map(lambda y: type(y) is ResultORMCollection, items)):
+                raise TypeError
+        ORMHelper.cache.set_many(dict(zip(map(lambda i: str(hash(i)), items), map(lambda x: x.hash_by_pk, items))), ORMHelper.CACHE_LIFETIME_HOURS)
+        ORMHelper.cache.set(f"{self.TEMP_HASH_PREFIX}{self._id}", [n.__hash__() for n in items], ORMHelper.CACHE_LIFETIME_HOURS)
 
     @staticmethod
     def _parse_joined_primary_key_and_value(value, sep=":"):
@@ -1807,6 +1810,21 @@ class BaseResult(ABC):
         if model_instance is None:
             raise InvalidModel(f"Класс-модель '{model_name}' в модуле models не найден")
         return model_instance, primary_key, value
+
+    def __get_checked_hash_items(self):
+        """ Запросить хэш суммы, которые ранее проверялись через has_changes """
+        return ORMHelper.cache.get(f"{self._id}_cheched_items", [])
+
+    def __add_hash_item_to_checked(self, hash_value):
+        values = self.__get_checked_hash_items()
+        values.append(hash_value)
+        ORMHelper.cache.set(f"{self._id}_cheched_items", values)
+
+    @staticmethod
+    def __gen_id(**kwargs):
+        """ Сгенерировать id, соответствующий параметрам запроса """
+        str_ = "".join(map(lambda c: "".join(str(c)), kwargs.items()))
+        return int.from_bytes(hashlib.md5(str_.encode("utf-8")).digest(), "big")
 
     def __is_valid(self):
         if not all(map(lambda i: isinstance(i, bool), (self._only_queue, self._only_db,))):
@@ -1844,7 +1862,6 @@ class Result(OrderBySingleResultMixin, BaseResult, ModelTools):
         database_items = self.get_nodes_from_database()
         [output.enqueue(**node.get_attributes(new_container=output))
          for collection in (database_items, local_items,) for node in collection]
-        self._is_change_sort_params = False
         return ResultORMCollection(output)
 
     def _get_node_by_joined_primary_key_and_value(self, value: Union[str, int]) -> Optional[ORMItem]:
@@ -1987,7 +2004,6 @@ class JoinSelectResult(OrderByJoinResultMixin, BaseResult, ModelTools):
             # f(n) = O(n) * (O(n1) + O(n1) * (O(k) * (O(k1) + O(k1) + O(n1) * O(k1) + O(k1))))
             # f(n) = O(n) * (O(n1) * (O(k) * (O(k1) * O(k1))))
         local_items = list(self.get_local_nodes()) if not self._only_db else []
-        self._is_change_sort_params = False
         return tuple(ResultORMCollection(item) for item in merge(list(get_filtered_database_items()), local_items))
 
     def _get_node_by_joined_primary_key_and_value(self, joined_pk: str):
@@ -2289,7 +2305,7 @@ class ORMHelper(ORMAttributes):
                              if col_name in all_column_names}  # O(n) * O(j)
                         row.append(_model=join_select_result.__class__, _insert=True, _container=row,
                                    _primary_key_from_ui=cls.__detect_primary_key(join_select_result.__class__,
-                                                                         join_select_result.__dict__), **r)  # O(l)
+                                                                                 join_select_result.__dict__), **r)  # O(l)
                     yield row
             sql_text = create_request()
             query: Query = eval(sql_text, {"orm_helper": cls}, ChainMap(*list(map(lambda x: {x.__name__: x}, models)), {"select": select}))
