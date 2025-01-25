@@ -106,7 +106,6 @@ class SetUp:
         self.orm_manager.set_item(numerationid=2, endat=4, _model=Numeration, _update=True)
         self.orm_manager.set_item(_model=Comment, commentid=2, findstr="test_str_new", _update=True)
         self.orm_manager.set_item(_model=Machine, machinename="testnameret", machineid=1, _update=True)
-        time.sleep(1)
 
 
 class TestLinkedList(unittest.TestCase):
@@ -716,9 +715,9 @@ class TestORMHelper(unittest.TestCase, SetUp):
         hash_from_cncid1 = hash(select_result.items[0])
         hash_from_cncid2 = hash(select_result.items[1])
         self.orm_manager.set_item(_model=Cnc, **pk_0_index, name="newtestname", _update=True)
+        self.assertFalse(select_result.has_changes(hash_from_cncid2))
         self.assertTrue(select_result.has_changes(hash_from_cncid1))
         self.assertFalse(select_result.has_changes(hash_from_cncid1))
-        self.assertFalse(select_result.has_changes(hash_from_cncid2))
         self.orm_manager.set_item(Cnc, name="testname", _update=True, **pk_1_index)
         self.assertTrue(select_result.has_changes())
         self.assertFalse(select_result.has_changes())
@@ -733,6 +732,8 @@ class TestORMHelper(unittest.TestCase, SetUp):
         join_select_result = self.orm_manager.join_select(Machine, Cnc, on={"Machine.machineid": "Cnc.cncid"})
         #  Первый запрос has_changes всегда вернёт None
         self.assertIsNone(join_select_result.has_changes(given_unknown_status=True))  # Для всей выборки результатов (не указан хеш)
+        invalid_hash = 34535566543  # Совершенно постороннее значение, взятое с потолка
+        self.assertIsNone(join_select_result.has_changes(invalid_hash, given_unknown_status=True))  # Для всей выборки результатов (не указан хеш)
         self.update_exists_items()
         self.assertTrue(join_select_result.has_changes())
         self.assertFalse(join_select_result.has_changes())
@@ -741,15 +742,15 @@ class TestORMHelper(unittest.TestCase, SetUp):
         val_from_1 = hash(join_select_result.items[1])
         self.orm_manager.set_item(_model=Machine, _update=True, machinename="name", machineid=1)
         self.orm_manager.set_item(_model=Cnc, name="name_n", _update=True, cncid=1)
-        # (ResultORMCollection(("<class 'database.models.Machine'>, {'machineid': 1}, ui_hidden=False, machinename=testnameret, cncid=1, yover=None, xfspeed=None, zfspeed=None, inputcatalog=C:\\Windows, outputcatalog=X:\\path, xover=None, machineid=1, zover=None, yfspeed=None, spindelespeed=None", "<class 'database.models.Cnc'>, {'cncid': 1}, ui_hidden=False, cncid=1, name=nameeg, exceptsymbols=None, commentsymbol=!")), ResultORMCollection(("<class 'database.models.Machine'>, {'machineid': 2}, ui_hidden=False, machineid=2, cncid=2, machinename=Fidia, inputcatalog=D:\\other_path, outputcatalog=C:\\Test", "<class 'database.models.Cnc'>, {'cncid': 2}, ui_hidden=False, cncid=2, name=Ram, commentsymbol=#")))
-        # (ResultORMCollection(("<class 'database.models.Machine'>, {'machineid': 1}, ui_hidden=False, machinename=Val, cncid=1, yover=None, xfspeed=None, zfspeed=None, inputcatalog=C:\\Windows, outputcatalog=X:\\path, xover=None, machineid=1, zover=None, yfspeed=None, spindelespeed=None", "<class 'database.models.Cnc'>, {'cncid': 1}, ui_hidden=False, cncid=1, name=name, exceptsymbols=None, commentsymbol=!")),)
-        # Пропали элементы с ...id=2
+        self.orm_manager.set_item(_model=Cnc, name="naаке", _update=True, cncid=2)
         self.assertTrue(join_select_result.has_changes(val_from_0))
         self.assertTrue(join_select_result.has_changes(val_from_1))
+        invalid_hash_1 = 345352340678  # Совершенно постороннее значение, взятое с потолка
+        self.assertRaises(KeyError, join_select_result.has_changes, invalid_hash_1, given_unknown_status=False)  # Для всей выборки результатов (не указан хеш)
 
     @drop_cache
     @db_reinit
-    def test_pointer_instance(self):
+    def test_join_select_pointer_instance(self):
         """ Тестирование Pointer
         Pointer нужен для связывания данных на стороне UI с готовыми инструментами для повторного запроса на эти данные,
         тем самым перекладывая часть рутинной работы с UI на ORM.
@@ -766,19 +767,26 @@ class TestORMHelper(unittest.TestCase, SetUp):
         #  Тестировать refresh
         #
         self.assertFalse(result.pointer.has_changes("Результат в списке 1"))
+        self.assertFalse(result.pointer.has_changes("Результат в списке 1"))
         self.assertFalse(result.pointer.has_changes("Результат в списке 2"))
         self.assertFalse(result.pointer.has_changes("Результат в списке 2"))
         self.assertFalse(result.pointer.has_changes("Результат в списке 1"))
         #
         # Добавить изменения и проверить повторно
-        self.update_exists_items()
-        time.sleep(1)
+        self.orm_manager.set_item(cncid=1, name="nameeg", _model=Cnc, _update=True)
+        self.orm_manager.set_item(_update=True, _model=Machine, machineid=2, xover=60)
+        self.orm_manager.set_item(numerationid=2, endat=4, _model=Numeration, _update=True)
+        self.orm_manager.set_item(_model=Comment, commentid=2, findstr="test_str_new", _update=True)
+        self.orm_manager.set_item(_model=Machine, machinename="testnamesdfs", machineid=1, _update=True)
         #
-        self.assertTrue(result.pointer.has_changes("Результат в списке 1"))
+        self.assertTrue(result.pointer.has_changes("Результат в списке 2"))
         self.assertIsNone(result.pointer.has_changes("Не установленный во wrapper элемент", given_unknown_status=True))
-        self.assertRaises(KeyError, result.pointer.has_changes, "Не установленный во wrapper элемент", given_unknown_status=False)
+        self.assertRaises(KeyError, result.pointer.has_changes, "Во wrapper этого не было", given_unknown_status=False)
+        self.assertTrue(result.pointer.has_changes("Результат в списке 1"))  # todo Неважно какой именно wrapper просим, после обновления на втором будет ошибка
+        self.assertRaises(PointerException, result.pointer.has_changes, "Не установленный во wrapper элемент", given_unknown_status=False)
         self.assertIsNone(result.pointer.has_changes("Ещё Не установленный во wrapper элемент", given_unknown_status=True))
         self.assertTrue(result.pointer.has_changes("Результат в списке 2"))
+        self.assertIsNone(PointerException, result.pointer.has_changes("Другой не установленный во wrapper элемент", given_unknown_status=True))
 
 
 class TestQueueOrderBy(unittest.TestCase, SetUp):

@@ -16,9 +16,10 @@ import importlib
 import hashlib
 import operator
 import uuid
+from itertools import zip_longest
 from abc import ABC, abstractmethod, abstractproperty
 from weakref import ref, ReferenceType
-from typing import Union, Iterator, Iterable, Optional, Literal, Type, Any
+from typing import Union, Iterator, Iterable, Optional, Literal, Type, Any, Sequence, Callable
 from collections import ChainMap
 from pymemcache.client.base import Client
 from pymemcache.exceptions import MemcacheError
@@ -581,7 +582,8 @@ class ResultORMItem(LinkedListItem, ORMAttributes, NodeTools):
 
     @property
     def hash_by_pk(self):
-        str_ = "".join(map(lambda i: str(i), self.get_primary_key_and_value()))
+        pk = self.get_primary_key_and_value()
+        str_ = "".join(map(lambda x: f"{x[0]}{x[1]}", zip(pk.keys(), pk.values())))
         return int.from_bytes(hashlib.md5(str_.encode("utf-8")).digest(), "big")
 
     def get_primary_key_and_value(self, only_key=False, only_val=False):
@@ -1598,7 +1600,7 @@ class SpecialOrmItem(ORMItem):
 
     @property
     def hash_by_pk(self):
-        str_ = "".join(map(lambda i: str(i), self.get_primary_key_and_value(as_tuple=True)))
+        str_ = "".join(map(str, self.get_primary_key_and_value(as_tuple=True)))
         return int.from_bytes(hashlib.md5(str_.encode("utf-8")).digest(), "big")
 
     def _field_names_validation(self):
@@ -1623,6 +1625,7 @@ class SpecialOrmContainer(ORMItemQueue):
     """ Данный контейнер для использования в JoinSelectResult (результат вызова ORMHelper.join_select) """
     LinkedListItem: Union[SpecialOrmItem, ResultORMItem] = SpecialOrmItem
 
+    @property
     def hash_by_pk(self):
         return sum(map(lambda x: x.hash_by_pk, self))
 
@@ -1641,378 +1644,6 @@ class SpecialOrmContainer(ORMItemQueue):
         if nodes:
             return nodes[0]
         raise DoesNotExists
-
-
-class BaseResult(ABC):
-    RESULT_CACHE_KEY: str = ...
-    TEMP_HASH_PREFIX: str = ...
-    _merge = abstractmethod(lambda: ResultORMCollection())  # Функция, которая делает репликацию нод из кеша поверх нод из бд
-    _get_node_by_joined_primary_key_and_value = abstractmethod(lambda model_pk_val_str,
-                                                               sep="...": ...)  # Вернуть ноду по
-    # входящей строке вида: 'имя_таблицы:primary_key:значение'
-
-    def __init__(self, get_nodes_from_database=None, get_local_nodes=None, only_local=False, only_database=False, **kwargs):
-        super().__init__()
-        self.get_nodes_from_database: Optional[callable] = get_nodes_from_database  # Функция, в которой происходит получение контейнера с нодами из бд
-        self.get_local_nodes: Optional[callable] = get_local_nodes  # Функция, в которой происходит получение контейнера с нодами из кеша
-        self._only_queue = only_local
-        self._only_db = only_database
-        self._id = self.__gen_id(**{**kwargs, "only_local": only_local, "only_database": only_database})
-        self._pointer: Optional["Pointer"] = None
-        self.__merged_data = []
-        self._is_sort = False
-        self.__is_valid()
-
-    def has_changes(self, hash_=None, given_unknown_status=False) -> Optional[Union[bool, ValueError]]:
-        """ Изменились ли значения в результатах с момента последнего запроса has_changes.
-        :arg hash_: Если передан, то будет проверятся 1 конкретный результат из всей коллекции результатов.
-        :arg given_unknown_status: True - учитывать неопределённый статус. Более поверхностный результат.
-        Например в случае,
-        когда has_changes запрашивается впервые, или, когда, просто напросто, кеш не помнит данных о "прошлых" результатов.
-        """
-        def replace_one_hash_item(all_items_at_current_hash):
-            all_items_at_current_hash = set(all_items_at_current_hash)
-            all_items_at_current_hash.add(hash_)
-            all_items_at_current_hash = list(all_items_at_current_hash)
-            self._set_previous_hash(hash_values=all_items_at_current_hash)
-        if hash_ is not None:
-            if type(hash_) is not int:
-                raise TypeError
-        all_items_at_current_hash = self.get_previous_hash()
-        if all_items_at_current_hash is None:  # Если "результат" ни одного раза не запрашивался, то определить has_changes невозможно,- вернём None
-            self._set_previous_hash()
-            if given_unknown_status:
-                return
-            return False
-        if not hash_:
-            return not all_items_at_current_hash == [item.__hash__() for item in self]
-        fresh_inner = self._merge()  # Избегаем момента _set_previous_hash в __iter__ или items
-        new_hash = [hash(node_or_group) for node_or_group in fresh_inner]
-        checked_items = self.__get_checked_hash_items()
-        self.__add_hash_item_to_checked(hash_)
-        if hash_ in new_hash:
-            replace_one_hash_item(all_items_at_current_hash)
-            return False
-        if self.get_previous_hash(hash_value=hash_) in [node_or_group.hash_by_pk for node_or_group in fresh_inner]:  # Значит нода с таким PK всё ещё существует в результатах
-            replace_one_hash_item(all_items_at_current_hash)
-            if hash_ in new_hash:
-                return False
-            if hash_ in checked_items:
-                return False
-        return True
-
-    def get_previous_hash(self, hash_value: Optional[int] = None) -> Union[list[int], int]:
-        """
-        Запросить из кеша хеш суммы содержимого объектов результата ()
-        :param hash_value: None - Вернуть полный список хеш сумм,
-        или запросить из словаря x.__hash__(): x.hash_by_pk конкретную хеш сумму по первичному ключу
-        """
-        if hash_value is not None:
-            if type(hash_value) is not int:
-                raise TypeError
-            if not hash_value:
-                raise ValueError
-            return ORMHelper.cache.get(str(hash_value), None)
-        return ORMHelper.cache.get(f"{self.TEMP_HASH_PREFIX}{self._id}", None)
-
-    @property
-    def items(self):
-        self.__merged_data = self._merge()
-        self._save_merged_collection_in_cache(self.__merged_data)
-        self._set_previous_hash(self.__merged_data)
-        return self.__merged_data
-
-    @property
-    def pointer(self):
-        return self._pointer
-
-    @pointer.setter
-    def pointer(self: Union["Result", "JoinSelectResult"], items: list):
-        Pointer.wrap_items = items
-        _ = self.has_changes()  # вызвать сеттер previous_hash
-        self._pointer = Pointer(self)
-
-    def __iter__(self):
-        self.__merged_data = self._merge()
-        self._save_merged_collection_in_cache(self.__merged_data)
-        self._set_previous_hash(self.__merged_data)
-        return iter(self.__merged_data)
-
-    def __len__(self):
-        return sum((1 for _ in self))
-
-    def __bool__(self):
-        try:
-            next(iter(self))
-        except StopIteration:
-            return False
-        return True
-
-    def __contains__(self, item: Union[str, int]):
-        try:
-            _ = self[item]
-        except KeyError:
-            return False
-        return True
-
-    def __getitem__(self, item: Union[str, int]):
-        if not item:
-            raise KeyError
-        if type(item) is str:
-            node = self._get_node_by_joined_primary_key_and_value(item)
-            if node is None:
-                raise KeyError
-            return node
-        if type(item) is int:
-            items = self.items
-            return dict(zip([node_or_node_group.__hash__() for node_or_node_group in items], items))[item]
-        raise TypeError
-
-    @classmethod
-    def _save_merged_collection_in_cache(cls, items: Iterable):
-        """ Сохранить выводимый в ui результат в кеш. В дальнейшем из него можно будет доставать первичные ключи """
-        ORMHelper.cache.set(cls.RESULT_CACHE_KEY, items, ORMHelper.CACHE_LIFETIME_HOURS)
-
-    def _set_previous_hash(self, items: Optional[Union[SpecialOrmContainer, Iterable[SpecialOrmContainer]]] = None,
-                           hash_values: list[int] = None):
-        if hash_values is not None:
-            if type(hash_values) is not list:
-                raise TypeError
-            if any((type(v) is not int for v in hash_values)):
-                raise TypeError
-            ORMHelper.cache.set(f"{self.TEMP_HASH_PREFIX}{self._id}", hash_values, ORMHelper.CACHE_LIFETIME_HOURS)
-            return
-        if items is None:
-            ORMHelper.cache.set(f"{self.TEMP_HASH_PREFIX}{self._id}", [n.__hash__() for n in self], ORMHelper.CACHE_LIFETIME_HOURS)
-            ORMHelper.cache.set_many(dict(zip(map(lambda x: str(x.__hash__()), self), map(lambda x: x.hash_by_pk, self))), ORMHelper.CACHE_LIFETIME_HOURS)
-            return
-        if not isinstance(items, (ResultORMCollection, tuple, list, frozenset,)):
-            print(items.__class__)
-            raise TypeError
-        if isinstance(items, (tuple, list, frozenset)):
-            if not all(map(lambda y: type(y) is ResultORMCollection, items)):
-                raise TypeError
-        ORMHelper.cache.set_many(dict(zip(map(lambda i: str(hash(i)), items), map(lambda x: x.hash_by_pk, items))), ORMHelper.CACHE_LIFETIME_HOURS)
-        ORMHelper.cache.set(f"{self.TEMP_HASH_PREFIX}{self._id}", [n.__hash__() for n in items], ORMHelper.CACHE_LIFETIME_HOURS)
-
-    @staticmethod
-    def _parse_joined_primary_key_and_value(value, sep=":"):
-        if not isinstance(sep, str):
-            raise TypeError
-        if not sep:
-            raise ValueError
-        if sep not in value:
-            raise ValueError
-        model_name, primary_key, value = value.split(sep)
-        if not all((model_name, primary_key, value)):
-            raise ValueError
-        model_instance = ModelTools.import_model(model_name)
-        if model_instance is None:
-            raise InvalidModel(f"Класс-модель '{model_name}' в модуле models не найден")
-        return model_instance, primary_key, value
-
-    def __get_checked_hash_items(self):
-        """ Запросить хэш суммы, которые ранее проверялись через has_changes """
-        return ORMHelper.cache.get(f"{self._id}_cheched_items", [])
-
-    def __add_hash_item_to_checked(self, hash_value):
-        values = self.__get_checked_hash_items()
-        values.append(hash_value)
-        ORMHelper.cache.set(f"{self._id}_cheched_items", values)
-
-    @staticmethod
-    def __gen_id(**kwargs):
-        """ Сгенерировать id, соответствующий параметрам запроса """
-        str_ = "".join(map(lambda c: "".join(str(c)), kwargs.items()))
-        return int.from_bytes(hashlib.md5(str_.encode("utf-8")).digest(), "big")
-
-    def __is_valid(self):
-        if not all(map(lambda i: isinstance(i, bool), (self._only_queue, self._only_db,))):
-            raise TypeError
-        if not sum((self._only_queue, self._only_db,)) in (0, 1,):
-            raise ValueError
-        if not self._only_queue:
-            if not callable(self.get_local_nodes):
-                raise ValueError
-        if not self._only_db:
-            if not callable(self.get_nodes_from_database):
-                raise ValueError
-
-
-class Result(OrderBySingleResultMixin, BaseResult, ModelTools):
-    """ Экземпляр данного класса возвращается функцией ORMHelper.get_items() """
-    RESULT_CACHE_KEY = "simple_result"
-    TEMP_HASH_PREFIX = "simple_item_hash"
-
-    def __init__(self, *args, model=None, where=None, **kwargs):
-        def is_valid():
-            self.is_valid_model_instance(model)
-            if where is not None:
-                if not isinstance(where, dict):
-                    raise TypeError
-            if set(where) - set(model().column_names):
-                raise InvalidModel
-        is_valid()
-        self._model = model
-        super().__init__(*args, model=model, where=where, **kwargs)
-
-    def _merge(self):
-        output = SpecialOrmContainer()
-        local_items = self.get_local_nodes()
-        database_items = self.get_nodes_from_database()
-        [output.enqueue(**node.get_attributes(new_container=output))
-         for collection in (database_items, local_items,) for node in collection]
-        return ResultORMCollection(output)
-
-    def _get_node_by_joined_primary_key_and_value(self, value: Union[str, int]) -> Optional[ORMItem]:
-        model, pk, val = self._parse_joined_primary_key_and_value(value)
-        return self.items.get_node(model, **{pk: val})
-
-
-class JoinSelectResult(OrderByJoinResultMixin, BaseResult, ModelTools):
-    """
-    Экземпляр этого класса возвращается функцией ORMHelper.join_select()
-    1 экземпляр этого класса 1 результат вызова ORMHelper.join_select()
-    Использовать следующим образом:
-        Делаем join_select
-        Результаты можем вывести в какой-нибудь Q...Widget, этот результат (строки) можно привязать к содержимому,
-        чтобы вносить правки со стороны UI, ни о чём лишнем не думая
-        JoinSelectResultInstance.pointer = ['Некое значение из виджета1', 'Некое значение из виджета2',...]
-        Теперь нужный инстанс SpecialOrmContainer можно найти:
-        JoinSelectResultInstance.pointer['Некое значение из виджета1'] -> SpecialOrmContainer(node_model_a, node_model_b, node_model_c)
-        Если нода потеряла актуальность(удалена), то вместо неё будет заглушка - Экземпляр EmptyORMItem
-        SpecialOrmContainer имеет свойство - is_actual на которое можно опираться
-    """
-    TEMP_HASH_PREFIX = "join_select_hash"
-    RESULT_CACHE_KEY = "join_result"
-
-    def __init__(self, *args, models=None, where=None, on=None, **kwargs):
-        def is_valid():
-            if not models:
-                raise ValueError
-            [self.is_valid_model_instance(m) for m in models]
-            if where is not None:
-                if type(where) is not dict:
-                    raise TypeError
-                if set(where) - set(map(lambda m: m.__name__, models)):
-                    raise InvalidModel
-                for model_name, data in where.items():
-                    if type(data) is not dict:
-                        raise TypeError
-                    columns = set(self.import_model(model_name)().column_names)
-                    if [k for k in data if k not in columns]:
-                        raise ValueError
-                if not isinstance(on, dict):
-                    raise TypeError
-                if not on:
-                    raise ValueError
-                for left, right in on.items():
-                    l_table, l_column = left.split(".")
-                    r_table, r_column = right.split(".")
-                    l_columns = self.import_model(l_table)().column_names
-                    r_columns = self.import_model(r_table)().column_names
-                    if l_column not in l_columns:
-                        raise ValueError
-                    if r_column not in r_columns:
-                        raise ValueError
-                    if l_table == r_table and l_column == r_column:
-                        raise ValueError
-        is_valid()
-        self._models = models
-        super().__init__(*args, on=on, where=where, models=models, **kwargs)
-
-    @property
-    def items(self) -> tuple[ResultORMCollection]:
-        """ Выполнить запрос в базу данных и/или в кеш. """
-        if self._is_sort:
-            result = tuple(super().items)
-        else:
-            result = tuple(self._merge())
-            self._save_merged_collection_in_cache(result)
-        return result
-
-    def __getitem__(self, item: int) -> SpecialOrmContainer:
-        if not isinstance(item, int):
-            raise TypeError
-        if item not in self:
-            raise DoesNotExists
-        for group in self:
-            if hash(group) == item:
-                return group
-
-    def __contains__(self, item: Union[int, SpecialOrmContainer, SpecialOrmItem]):
-        if not isinstance(item, (SpecialOrmContainer, SpecialOrmItem, int,)):
-            return False
-        if type(item) is int:
-            return item in map(lambda x: hash(x), self)
-        if isinstance(item, (SpecialOrmItem, SpecialOrmContainer,)):
-            return hash(item) in map(lambda x: x.__hash__(), self)
-        return False
-
-    def _merge(self) -> tuple[ResultORMCollection]:
-        def get_local_nodes_with_null_value_in_fk():
-            """ Получить все локальные ноды, в которых в значениях внешних ключей стоит NULL"""
-            res = SpecialOrmContainer()
-            for group in local_items:
-                for node in group:
-                    for data in node.model().foreign_keys:
-                        find_nodes = group.search_nodes(node.model, **{data.column.key: None})
-                        if find_nodes:
-                            res.append(**find_nodes[0].get_attributes())
-            return res
-
-        def get_filtered_database_items():
-            """ Оборвать связи между нодами из БД, если эта связь оборвана в локальных нодах """
-            nullable_fk_nodes = get_local_nodes_with_null_value_in_fk()
-            for group in list(self.get_nodes_from_database()) if not self._only_queue else []:
-                for node in group:
-                    find_node = nullable_fk_nodes.get_node(node.model, **node.get_primary_key_and_value())
-                    if find_node:
-                        group.remove(find_node.model, *find_node.get_primary_key_and_value(as_tuple=True))
-                if len(group) > 1:
-                    yield group
-
-        def merge(db_items, local_items_):
-            """ Согласно реляционной теории, мы можем взять любую ноду из локальной группы
-            и найти её pk у группы из очереди в бд,
-             не опасаясь, что её pk продублируется где-то ещё """
-            for db_group in db_items:  # O(n)
-                nodes = db_group.__iter__()  # O(n1)
-                while True:  # O(n1)
-                    try:
-                        rand_node = nodes.__next__()  # O(1)
-                    except StopIteration:
-                        rand_node = None
-                    if rand_node is None:
-                        break
-                    find_node = None  # O(1)
-                    for local_group in local_items_:  # O(k)
-                        find_node = local_group.search_nodes(rand_node.model, **rand_node.get_primary_key_and_value())  # O(k1)
-                        if find_node:  # O(k1)
-                            yield db_group + local_group  # O(n1) * O(k1)
-                            db_items.remove(db_group)
-                            local_items_.remove(local_group)
-                    if find_node:  # O(k1)
-                        break
-            if db_items:
-                for item in db_items:
-                    yield item
-            if local_items_:
-                for item in local_items_:
-                    yield item
-            # f(n) = O(n) * (O(1) + O(n1) + O(n1) * (O(1) + O(1) + O(k) * (O(k1) + O(k1) + O(n1) * O(k1) + O(k1))))
-            # f(n) = O(n) * (O(n1) + O(n1) * (O(k) * (O(k1) + O(k1) + O(n1) * O(k1) + O(k1))))
-            # f(n) = O(n) * (O(n1) * (O(k) * (O(k1) * O(k1))))
-        local_items = list(self.get_local_nodes()) if not self._only_db else []
-        return tuple(ResultORMCollection(item) for item in merge(list(get_filtered_database_items()), local_items))
-
-    def _get_node_by_joined_primary_key_and_value(self, joined_pk: str):
-        model_name, primary_key, value = self._parse_joined_primary_key_and_value(joined_pk)
-        model_instance = ModelTools.import_model(model_name)
-        for collection in self:
-            node = collection.get_node(model_instance, **{primary_key: value})
-            if node:
-                return node
 
 
 class ORMHelper(ORMAttributes):
@@ -2111,7 +1742,7 @@ class ORMHelper(ORMAttributes):
         cls._timer = cls._init_timer()
 
     @classmethod
-    def get_items(cls, _model: Optional[Type[CustomModel]] = None, _db_only=False, _queue_only=False, **attrs) -> Result:  # todo: придумать пагинатор
+    def get_items(cls, _model: Optional[Type[CustomModel]] = None, _db_only=False, _queue_only=False, **attrs) -> "Result":  # todo: придумать пагинатор
         """
         1) Получаем запись из таблицы в виде словаря (CustomModel.query.all())
         2) Получаем данные из кеша, все элементы, у которых данная модель
@@ -2491,37 +2122,451 @@ class ORMHelper(ORMAttributes):
             return {pk: value[pk]}
 
 
-class Pointer:
-    """ Экземпляр данного объекта - оболочка для содержимого, обеспечивающая доступ к данным.
-    Объект этого класса создан для 'слежки' за изменениями с UI."""
-    wrap_items: Optional[Union[list[str], tuple[str]]] = None
+class ResultCacheTools(ORMHelper):
+    TEMP_HASH_PREFIX: str = ...
+    RESULT_CACHE_KEY: str = ...
+    __iter__ = abstractmethod(lambda self: ...)
 
-    def __init__(self, result_item: Union[Result, "JoinSelectResult"] = None):
+    def __init__(self, id_: int, *args, **kw):
+        if type(id_) is not int:
+            raise TypeError
+        self._id = str(id_)
+        if not self._id:
+            raise ValueError
+        self.__key = f"{self.TEMP_HASH_PREFIX}{self._id[-5:]}"
+
+    def _get_hash_sum(self) -> Optional[list[int]]:
+        """ Получить хеш сумму всех элементов в результате, в рамках текущего экземпляра """
+        return self.cache.get(self.__key, None)
+
+    def _get_primary_key_hash(self, hash_sum_values: Iterable[int]):
+        if not isinstance(hash_sum_values, (tuple, list)):
+            raise TypeError
+        if tuple(filter(lambda x: type(x) is not int, hash_sum_values)):
+            raise TypeError
+        return self.cache.get_many(list(map(str, hash_sum_values)))
+
+    def _set_hash(self, data: Optional[Union[SpecialOrmContainer, Iterable[SpecialOrmContainer]]] = None,
+                  hash_values: list[int] = None):
+        if hash_values is not None:
+            if type(hash_values) is not list:
+                raise TypeError
+            if any((type(v) is not int for v in hash_values)):
+                raise TypeError
+            self.cache.set(self.__key, hash_values, self.CACHE_LIFETIME_HOURS)
+            return
+        if data is None:
+            self.cache.set(self.__key, [n.__hash__() for n in self], self.CACHE_LIFETIME_HOURS)
+            self.cache.set_many(dict(zip(map(lambda x: str(x.__hash__()), self), map(lambda x: x.hash_by_pk, self))), self.CACHE_LIFETIME_HOURS)
+            return
+        if not isinstance(data, (ResultORMCollection, tuple, list, frozenset,)):
+            raise TypeError
+        if isinstance(data, (tuple, list, frozenset)):
+            if not all(map(lambda y: type(y) is ResultORMCollection, data)):
+                raise TypeError
+        self.cache.set_many(dict(zip(map(lambda i: str(hash(i)), data), map(lambda x: x.hash_by_pk, data))), self.CACHE_LIFETIME_HOURS)
+        self.cache.set(self.__key, [n.__hash__() for n in data], self.CACHE_LIFETIME_HOURS)
+
+    @classmethod
+    def _save_merged_collection(cls, items: Iterable):
+        """ Сохранить выводимый в ui результат в кеш.
+        В дальнейшем из него можно будет доставать первичные ключи """
+        cls.cache.set(cls.RESULT_CACHE_KEY, items, cls.CACHE_LIFETIME_HOURS)
+
+
+class BaseResult(ABC, ResultCacheTools):
+    RESULT_CACHE_KEY: str = ...
+    TEMP_HASH_PREFIX: str = ...
+    _merge = abstractmethod(lambda: ResultORMCollection())  # Функция, которая делает репликацию нод из кеша поверх нод из бд
+    _get_node_by_joined_primary_key_and_value = abstractmethod(lambda model_pk_val_str,
+                                                               sep="...": ...)  # Вернуть ноду по
+    # входящей строке вида: 'имя_таблицы:primary_key:значение'
+
+    def __init__(self, get_nodes_from_database=None, get_local_nodes=None, only_local=False, only_database=False, **kwargs):
+        self.get_nodes_from_database: Optional[callable] = get_nodes_from_database  # Функция, в которой происходит получение контейнера с нодами из бд
+        self.get_local_nodes: Optional[callable] = get_local_nodes  # Функция, в которой происходит получение контейнера с нодами из кеша
+        self._id = self.__gen_id(**{**kwargs, "only_local": only_local, "only_database": only_database})
+        self._only_queue = only_local
+        self._only_db = only_database
+        self._pointer: Optional["Pointer"] = None
+        self.__merged_data = []
+        self._is_sort = False
+        self.__is_valid()
+        super().__init__(self._id)
+
+    def has_changes(self, hash_=None, given_unknown_status=False) -> Optional[Union[bool, ValueError]]:
+        """ Изменились ли значения в результатах с момента последнего запроса has_changes.
+        :arg hash_: Если передан, то будет проверятся 1 конкретный результат из всей коллекции результатов.
+        :arg given_unknown_status: True - учитывать неопределённый статус. Более поверхностный результат.
+        Например в случае,
+        когда has_changes запрашивается впервые, или, когда, просто напросто, кеш не помнит данных о "прошлых" результатов.
+        """
+        def replace_one_hash_item(hash_items):
+            current_hash = set(hash_items)
+            current_hash.add(hash_)
+            current_hash = list(current_hash)
+            self._set_hash(hash_values=current_hash)
+        if hash_ is not None:
+            if type(hash_) is not int:
+                raise TypeError
+        current_hash = self._get_hash_sum()
+        if current_hash is None:  # Если "результат" ни одного раза не запрашивался, то определить has_changes невозможно,- вернём None
+            self._set_hash()
+            if given_unknown_status:
+                return
+            return False
+        if not hash_:
+            return not current_hash == [item.__hash__() for item in self]
+        if hash_ not in current_hash:
+            if not self._get_primary_key_hash(hash_,):  # Со стороны UI была попытка передать посторонний хеш, который никогда не фигурировал в результатах
+                if given_unknown_status:
+                    return
+                raise KeyError
+        checked_items = self.__get_checked_hash_items()
+        self.__add_hash_item_to_checked(hash_)
+        fresh_inner = self._merge()  # Избегаем момента _set_hash в __iter__ или items
+        if hash_ in (hash(node_or_group) for node_or_group in fresh_inner):
+            replace_one_hash_item(current_hash)
+            return False
+        if self._get_primary_key_hash(hash_,) in [node_or_group.hash_by_pk for node_or_group in fresh_inner]:  # Значит нода с таким PK всё ещё существует в результатах
+            replace_one_hash_item(current_hash)
+            if hash_ in checked_items:
+                return False
+        return True
+
+    @property
+    def items(self):
+        self.__merged_data = self._merge()
+        self._save_merged_collection(self.__merged_data)
+        self._set_hash(data=self.__merged_data)
+        return self.__merged_data
+
+    @property
+    def pointer(self):
+        return self._pointer
+
+    @pointer.setter
+    def pointer(self: Union["Result", "JoinSelectResult"], items: list):
+        _ = self.items  # Сохраниться в set_previous_hash
+        self._pointer = Pointer(self,
+                                self._merge,
+                                self._get_hash_sum,
+                                wrap_items=items)
+
+    def __iter__(self):
+        self.__merged_data = self._merge()
+        self._save_merged_collection(self.__merged_data)
+        self._set_hash(data=self.__merged_data)
+        return iter(self.__merged_data)
+
+    def __len__(self):
+        return sum((1 for _ in self))
+
+    def __bool__(self):
+        try:
+            next(iter(self))
+        except StopIteration:
+            return False
+        return True
+
+    def __contains__(self, item: Union[str, int]):
+        try:
+            _ = self[item]
+        except KeyError:
+            return False
+        return True
+
+    def __getitem__(self, item: Union[str, int]):
+        if not item:
+            raise KeyError
+        if type(item) is str:
+            node = self._get_node_by_joined_primary_key_and_value(item)
+            if node is None:
+                raise KeyError
+            return node
+        if type(item) is int:
+            items = self.items
+            return dict(zip([node_or_node_group.__hash__() for node_or_node_group in items], items))[item]
+        raise TypeError
+
+    @staticmethod
+    def _parse_joined_primary_key_and_value(value, sep=":"):
+        if not isinstance(sep, str):
+            raise TypeError
+        if not sep:
+            raise ValueError
+        if sep not in value:
+            raise ValueError
+        model_name, primary_key, value = value.split(sep)
+        if not all((model_name, primary_key, value)):
+            raise ValueError
+        model_instance = ModelTools.import_model(model_name)
+        if model_instance is None:
+            raise InvalidModel(f"Класс-модель '{model_name}' в модуле models не найден")
+        return model_instance, primary_key, value
+
+    def __get_checked_hash_items(self):
+        """ Запросить хэш суммы, которые ранее проверялись через has_changes """
+        return ORMHelper.cache.get(f"{self._id}_cheched_items", set())
+
+    def __add_hash_item_to_checked(self, hash_value):
+        values = self.__get_checked_hash_items()
+        values.add(hash_value)
+        ORMHelper.cache.set(f"{self._id}_cheched_items", values)
+
+    @staticmethod
+    def __gen_id(**kwargs):
+        """ Сгенерировать id, соответствующий параметрам запроса """
+        str_ = "".join(map(lambda c: "".join(str(c)), kwargs.items()))
+        return int.from_bytes(hashlib.md5(str_.encode("utf-8")).digest(), "big")
+
+    def __is_valid(self):
+        if not all(map(lambda i: isinstance(i, bool), (self._only_queue, self._only_db,))):
+            raise TypeError
+        if not sum((self._only_queue, self._only_db,)) in (0, 1,):
+            raise ValueError
+        if not self._only_queue:
+            if not callable(self.get_local_nodes):
+                raise ValueError
+        if not self._only_db:
+            if not callable(self.get_nodes_from_database):
+                raise ValueError
+
+
+class Result(OrderBySingleResultMixin, BaseResult, ModelTools):
+    """ Экземпляр данного класса возвращается функцией ORMHelper.get_items() """
+    RESULT_CACHE_KEY = "simple_result"
+    TEMP_HASH_PREFIX = "simple_item_hash"
+
+    def __init__(self, *args, model=None, where=None, **kwargs):
+        def is_valid():
+            self.is_valid_model_instance(model)
+            if where is not None:
+                if not isinstance(where, dict):
+                    raise TypeError
+            if set(where) - set(model().column_names):
+                raise InvalidModel
+        is_valid()
+        self._model = model
+        super().__init__(*args, model=model, where=where, **kwargs)
+
+    def _merge(self):
+        output = SpecialOrmContainer()
+        local_items = self.get_local_nodes()
+        database_items = self.get_nodes_from_database()
+        [output.enqueue(**node.get_attributes(new_container=output))
+         for collection in (database_items, local_items,) for node in collection]
+        return ResultORMCollection(output)
+
+    def _get_node_by_joined_primary_key_and_value(self, value: Union[str, int]) -> Optional[ORMItem]:
+        model, pk, val = self._parse_joined_primary_key_and_value(value)
+        return self.items.get_node(model, **{pk: val})
+
+
+class JoinSelectResult(OrderByJoinResultMixin, BaseResult, ModelTools):
+    """
+    Экземпляр этого класса возвращается функцией ORMHelper.join_select()
+    1 экземпляр этого класса 1 результат вызова ORMHelper.join_select()
+    Использовать следующим образом:
+        Делаем join_select
+        Результаты можем вывести в какой-нибудь Q...Widget, этот результат (строки) можно привязать к содержимому,
+        чтобы вносить правки со стороны UI, ни о чём лишнем не думая
+        JoinSelectResultInstance.pointer = ['Некое значение из виджета1', 'Некое значение из виджета2',...]
+        Теперь нужный инстанс SpecialOrmContainer можно найти:
+        JoinSelectResultInstance.pointer['Некое значение из виджета1'] -> SpecialOrmContainer(node_model_a, node_model_b, node_model_c)
+        Если нода потеряла актуальность(удалена), то вместо неё будет заглушка - Экземпляр EmptyORMItem
+        SpecialOrmContainer имеет свойство - is_actual на которое можно опираться
+    """
+    TEMP_HASH_PREFIX = "join_select_hash"
+    RESULT_CACHE_KEY = "join_result"
+
+    def __init__(self, *args, models=None, where=None, on=None, **kwargs):
+        def is_valid():
+            if not models:
+                raise ValueError
+            [self.is_valid_model_instance(m) for m in models]
+            if where is not None:
+                if type(where) is not dict:
+                    raise TypeError
+                if set(where) - set(map(lambda m: m.__name__, models)):
+                    raise InvalidModel
+                for model_name, data in where.items():
+                    if type(data) is not dict:
+                        raise TypeError
+                    columns = set(self.import_model(model_name)().column_names)
+                    if [k for k in data if k not in columns]:
+                        raise ValueError
+                if not isinstance(on, dict):
+                    raise TypeError
+                if not on:
+                    raise ValueError
+                for left, right in on.items():
+                    l_table, l_column = left.split(".")
+                    r_table, r_column = right.split(".")
+                    l_columns = self.import_model(l_table)().column_names
+                    r_columns = self.import_model(r_table)().column_names
+                    if l_column not in l_columns:
+                        raise ValueError
+                    if r_column not in r_columns:
+                        raise ValueError
+                    if l_table == r_table and l_column == r_column:
+                        raise ValueError
+        is_valid()
+        self._models = models
+        super().__init__(*args, on=on, where=where, models=models, **kwargs)
+
+    @property
+    def items(self) -> tuple[ResultORMCollection]:
+        """ Выполнить запрос в базу данных и/или в кеш. """
+        if self._is_sort:
+            result = tuple(super().items)
+        else:
+            result = tuple(self._merge())
+            self._save_merged_collection(result)
+        return result
+
+    def __getitem__(self, item: int) -> SpecialOrmContainer:
+        if not isinstance(item, int):
+            raise TypeError
+        if item not in self:
+            raise DoesNotExists
+        for group in self:
+            if hash(group) == item:
+                return group
+
+    def __contains__(self, item: Union[int, SpecialOrmContainer, SpecialOrmItem]):
+        if not isinstance(item, (SpecialOrmContainer, SpecialOrmItem, int,)):
+            return False
+        if type(item) is int:
+            return item in map(lambda x: hash(x), self)
+        if isinstance(item, (SpecialOrmItem, SpecialOrmContainer,)):
+            return hash(item) in map(lambda x: x.__hash__(), self)
+        return False
+
+    def _merge(self) -> tuple[ResultORMCollection]:
+        def get_local_nodes_with_null_value_in_fk():
+            """ Получить все локальные ноды, в которых в значениях внешних ключей стоит NULL"""
+            res = SpecialOrmContainer()
+            for group in local_items:
+                for node in group:
+                    for data in node.model().foreign_keys:
+                        find_nodes = group.search_nodes(node.model, **{data.column.key: None})
+                        if find_nodes:
+                            res.append(**find_nodes[0].get_attributes())
+            return res
+
+        def get_filtered_database_items():
+            """ Оборвать связи между нодами из БД, если эта связь оборвана в локальных нодах """
+            nullable_fk_nodes = get_local_nodes_with_null_value_in_fk()
+            for group in list(self.get_nodes_from_database()) if not self._only_queue else []:
+                for node in group:
+                    find_node = nullable_fk_nodes.get_node(node.model, **node.get_primary_key_and_value())
+                    if find_node:
+                        group.remove(find_node.model, *find_node.get_primary_key_and_value(as_tuple=True))
+                if len(group) > 1:
+                    yield group
+
+        def merge(db_items, local_items_):
+            """ Согласно реляционной теории, мы можем взять любую ноду из локальной группы
+            и найти её pk у группы из очереди в бд,
+             не опасаясь, что её pk продублируется где-то ещё """
+            for db_group in db_items:  # O(n)
+                nodes = db_group.__iter__()  # O(n1)
+                while True:  # O(n1)
+                    try:
+                        rand_node = nodes.__next__()  # O(1)
+                    except StopIteration:
+                        rand_node = None
+                    if rand_node is None:
+                        break
+                    find_node = None  # O(1)
+                    for local_group in local_items_:  # O(k)
+                        find_node = local_group.search_nodes(rand_node.model, **rand_node.get_primary_key_and_value())  # O(k1)
+                        if find_node:  # O(k1)
+                            yield db_group + local_group  # O(n1) * O(k1)
+                            db_items.remove(db_group)
+                            local_items_.remove(local_group)
+                    if find_node:  # O(k1)
+                        break
+            if db_items:
+                for item in db_items:
+                    yield item
+            if local_items_:
+                for item in local_items_:
+                    yield item
+            # f(n) = O(n) * (O(1) + O(n1) + O(n1) * (O(1) + O(1) + O(k) * (O(k1) + O(k1) + O(n1) * O(k1) + O(k1))))
+            # f(n) = O(n) * (O(n1) + O(n1) * (O(k) * (O(k1) + O(k1) + O(n1) * O(k1) + O(k1))))
+            # f(n) = O(n) * (O(n1) * (O(k) * (O(k1) * O(k1))))
+        local_items = list(self.get_local_nodes()) if not self._only_db else []
+        return tuple(ResultORMCollection(item) for item in merge(list(get_filtered_database_items()), local_items))
+
+    def _get_node_by_joined_primary_key_and_value(self, joined_pk: str):
+        model_name, primary_key, value = self._parse_joined_primary_key_and_value(joined_pk)
+        model_instance = ModelTools.import_model(model_name)
+        for collection in self:
+            node = collection.get_node(model_instance, **{primary_key: value})
+            if node:
+                return node
+
+
+class PointerCacheTools(ORMHelper):
+    POINTER_PK_HASH_PREFIX = "p_id"
+
+    def __init__(self, id_: str, get_result_items: Callable):
+        self._id = id_  # uuid4
+        self._get_result_items = get_result_items
+        self._is_valid_config()
+        self.__cache_key = f"{self.POINTER_PK_HASH_PREFIX}_{self._id[-5:]}"
+
+    def get_primary_key_hash(self) -> list[int]:
+        return self.cache.get(self.__cache_key, None)
+
+    def set_primary_key_hash(self):
+        self.cache.set(self.__cache_key, [item.hash_by_pk for item in self._get_result_items()])
+
+    @abstractmethod
+    def _is_valid_config(self):
+        if type(self._id) is not str:
+            raise TypeError
+        if not self._id:
+            raise ValueError
+        if not callable(self._get_result_items):
+            raise TypeError
+        if not hasattr(BaseResult, self._get_result_items.__name__):
+            raise ValueError("Данный метод не имеет отношения к производным классам от "
+                             "BaseResult (Result, JoinSelectResult)")
+
+
+class Pointer(PointerCacheTools):
+    """ Экземпляр данного объекта - оболочка для содержимого, обеспечивающая доступ к данным.
+    Объект этого класса создан для 'слежки' за содержимым из результатов запроса.
+    Если количество данных в результате начнёт разниться,
+    по сравнению с предыдущим взаимодействием [с данным экземпляром], то он становится бесполезен
+    и требуется создание нового объекта, с новым списком wrap_items.
+    """
+    def __init__(self, result_item: Union[Result, JoinSelectResult],
+                 get_result_items: Callable,
+                 hash_sum_getter: Callable,
+                 wrap_items: Optional[Union[list[str], tuple[str]]]):
+        self._id = str(uuid.uuid4())
         self._result_item = result_item
-        self._is_valid()
-        self._is_invalid = False
+        self._get_result_hash_sum = hash_sum_getter
+        self._get_result_items = get_result_items
+        self._wrap_items = wrap_items
+        self.__is_invalid = False
+        self._is_valid_config()
+        super().__init__(self._id, self._get_result_items)
+        self.set_primary_key_hash()
+
+    @property
+    def wrap_items(self):
+        return copy.copy(self._wrap_items)
 
     @property
     def items(self) -> dict[str, Union[ResultORMItem, ResultORMCollection]]:
-        return dict(zip(self.wrap_items, self._result_item))
+        return dict(zip(self._wrap_items, self._result_item))
 
-    @property
-    def is_valid(self):
-        self._is_valid()
-        _ = self.is_valid_ordering
-        return not self._is_invalid
-
-    @property
-    def is_valid_ordering(self):
-        old_order = [hash_ for hash_ in self._result_item.previous_hash]
-        iter(self._result_item)
-        new_order = [hash_ for hash_ in self._result_item.previous_hash]
-        status = new_order == old_order
-        if not status:
-            self._is_invalid = True
-        return status
-
-    def has_changes(self, name: str, given_unknown_status: bool = False) -> Optional[Union[bool, Type[Exception]]]:
+    def has_changes(self, name: str, given_unknown_status: bool = True) -> Optional[Union[bool, Type[Exception]]]:
         """ Получить статус состояния результатов, на которые ранее был задан экземпляр Pointer.
          :arg name: имя одного конкретного результата, одно из многих, которые хранятся в wrap_items
          :arg given_unknown_status: True - учитывать неопределённый статус. Более поверхностный результат.
@@ -2532,56 +2577,38 @@ class Pointer:
             raise TypeError
         if not name:
             raise ValueError
-        if name not in self.wrap_items:
-            if given_unknown_status:
-                return
-            raise KeyError
-        if self._is_invalid:
+        if self.__is_invalid:
             if given_unknown_status:
                 return
             raise PointerException
-        previous_hash = self._result_item.previous_hash
+        if name not in self._wrap_items:
+            if given_unknown_status:
+                return
+            raise KeyError
+        if not self.is_valid():  # Если изменилось кол-во нод или есть другие (с другим pk) ноды
+            return True
+        previous_hash = self._get_result_hash_sum()
         if previous_hash is None:
             if given_unknown_status:
                 return
             return False
-        if not len(previous_hash) == len(self.wrap_items):
-            self._is_invalid = True
-            if given_unknown_status:
-                return
-            raise PointerWrapperLengthError
-        hash_names_map = {name: previous_hash[index] for index, name in enumerate(self.wrap_items)}
-        hash_ = hash_names_map[name]
-        return self._result_item.has_changes(hash_=hash_, given_unknown_status=given_unknown_status)
+        hash_names_map = {name: previous_hash[index] for index, name in enumerate(self._wrap_items)}
+        return self._result_item.has_changes(hash_=hash_names_map[name], given_unknown_status=given_unknown_status)
 
-    def replace_wrap_item(self, new_name, index=None, old_name=None):
-        """ Заменить один из элементов 'обёртке' на новый.
-        Найти старый элемент можно как по индексу,
-        так и по старому имени.
-        :param new_name: новый текст
-        :param index: число - индекс в обёртках
-        :param old_name: старое имя"""
-        if not new_name or type(new_name) is not str:
-            raise TypeError
-        if index:
-            if not isinstance(index, int):
-                raise TypeError
-            if index < 0:
-                index = len(self.wrap_items) - index
-            if len(self.wrap_items) - 1 >= index:
-                self.wrap_items[index] = new_name
-        if old_name:
-            try:
-                index = self.wrap_items.index(old_name)
-            except ValueError:
-                return
-            else:
-                self.wrap_items[index] = new_name
-        self._is_valid()
-
-    def set_items(self, items: list):
-        self.wrap_items = copy.copy(items)
-        self._is_valid()
+    def is_valid(self):
+        """ Актуален ли текущий экземпляр к данному моменту.
+         Под актуальностью понимается сохранение количества элементов в результатах и отсутствие новых,
+         а также упорядоченность.
+         Если экземпляр стал неактуален, то он становится таким навсегда.
+         """
+        if self.__is_invalid:
+            return False
+        left_val = [item.hash_by_pk for item in self._get_result_items()]
+        right_val = self.get_primary_key_hash()
+        if not left_val == right_val:
+            self.__is_invalid = True
+            return False
+        return True
 
     def __getitem__(self, item: str) -> Optional[Union[ResultORMItem, ResultORMCollection]]:
         if not isinstance(item, str):
@@ -2592,15 +2619,25 @@ class Pointer:
         return data[item]
 
     def __str__(self):
-        self._is_valid()
-        return "".join(map(lambda x: f"{x[0]}:{x[1]} /n", zip(self.wrap_items, list(self._result_item))))
+        status = self.is_valid()
+        str_ = r", \r".join(map(lambda x: f"{x[0]}:{x[1]}",
+                                zip_longest(self._wrap_items, list(self._result_item), fillvalue="[X]")))
+        str_ = f"{str_}, valid: {status}"
+        return str_
 
-    def _is_valid(self):
+    def _is_valid_config(self):
+        if type(self._wrap_items) is not list and type(self._wrap_items) is not tuple:
+            raise WrapperError
+        if not all(map(lambda x: isinstance(x, str), self._wrap_items)):
+            raise WrapperError
         if not isinstance(self._result_item, (Result, JoinSelectResult,)):
             raise JoinedItemPointerError(
                 "Экземпляр класса JoinSelectResult или Result не установлен в атрибут класса result_item"
             )
-        if type(self.wrap_items) is not list and type(self.wrap_items) is not tuple:
-            raise WrapperError
-        if not all(map(lambda x: isinstance(x, str), self.wrap_items)):
-            raise WrapperError
+        if not hasattr(self._result_item, self._get_result_items.__name__):
+            raise ValueError
+        if not callable(self._get_result_hash_sum):
+            raise TypeError
+        if not hasattr(self._result_item, self._get_result_hash_sum.__name__):
+            raise ValueError
+        super()._is_valid_config()
