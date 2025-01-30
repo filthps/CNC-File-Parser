@@ -2592,6 +2592,8 @@ class Pointer(PointerCacheTools):
             if given_unknown_status:
                 return
             return False
+        if not len(self._wrap_items) == previous_hash:
+            raise RuntimeError  # Данная ситуация является нештатной, тк в момент предыдущего запроса происходила проверка. см .is_valid()
         hash_names_map = {name: previous_hash[index] for index, name in enumerate(self._wrap_items)}
         return self._result_item.has_changes(hash_=hash_names_map[name], given_unknown_status=given_unknown_status)
 
@@ -2630,6 +2632,8 @@ class Pointer(PointerCacheTools):
             raise WrapperError
         if not all(map(lambda x: isinstance(x, str), self._wrap_items)):
             raise WrapperError
+        if not self._wrap_items:
+            raise ValueError("Контейнер с обёрткой содержимого не может быть пустым")
         if not isinstance(self._result_item, (Result, JoinSelectResult,)):
             raise JoinedItemPointerError(
                 "Экземпляр класса JoinSelectResult или Result не установлен в атрибут класса result_item"

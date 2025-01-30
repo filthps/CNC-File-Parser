@@ -778,11 +778,12 @@ class TestORMHelper(unittest.TestCase, SetUp):
         self.orm_manager.set_item(numerationid=2, endat=4, _model=Numeration, _update=True)
         self.orm_manager.set_item(_model=Comment, commentid=2, findstr="test_str_new", _update=True)
         self.orm_manager.set_item(_model=Machine, machinename="testnamesdfs", machineid=1, _update=True)
+        time.sleep(1)
         #
         self.assertTrue(result.pointer.has_changes("Результат в списке 2"))
         self.assertIsNone(result.pointer.has_changes("Не установленный во wrapper элемент", given_unknown_status=True))
         self.assertRaises(KeyError, result.pointer.has_changes, "Во wrapper этого не было", given_unknown_status=False)
-        self.assertTrue(result.pointer.has_changes("Результат в списке 1"))  # todo Неважно какой именно wrapper просим, после обновления на втором будет ошибка
+        self.assertTrue(result.pointer.has_changes("Результат в списке 1"))
         self.assertRaises(PointerException, result.pointer.has_changes, "Не установленный во wrapper элемент", given_unknown_status=False)
         self.assertIsNone(result.pointer.has_changes("Ещё Не установленный во wrapper элемент", given_unknown_status=True))
         self.assertTrue(result.pointer.has_changes("Результат в списке 2"))
