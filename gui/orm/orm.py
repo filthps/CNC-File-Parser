@@ -190,7 +190,7 @@ class ModelTools(ORMAttributes):
         if not select_result:
             return
         pk = cls.get_primary_key_column_name(node.model)
-        return {pk: select_result[0][pk]}
+        return {pk: select_result[0].__dict__[pk]}
 
 
 class NodeTools:
@@ -1002,8 +1002,7 @@ class ResultORMCollection:
         if self._prefix_mode == "no-prefix":
             self.remove_model_prefix()
         if self._prefix_mode == "auto":
-            nodes_with_other_prefix = self.__get_node_indexes__merged_column_names()
-            self.__change_model_prefix_only_received_nodes(nodes_with_other_prefix)
+            self.__add_model_prefix_only_received_nodes_and_columns()
 
     @property
     def prefix(self):
@@ -1057,6 +1056,10 @@ class ResultORMCollection:
             new_collection.append(**node.get_attributes())
         self.__collection = new_collection
 
+    def auto_model_prefix(self):
+        self._prefix_mode = "auto"
+        self.__add_model_prefix_only_received_nodes_and_columns()
+
     def get_node(self, *args, **kwargs):
         return self.__collection.get_node(*args, **kwargs)
 
@@ -1107,40 +1110,26 @@ class ResultORMCollection:
          for node in collection]
         return new_collection
 
-    def __get_node_indexes__merged_column_names(self):
-        """ Наименования столбцов, которые присутствуют в более чем 1 таблице результата join_select """
-        all_intersect_columns = frozenset.intersection(*[frozenset(n.value) for n in self.__collection])
-        for index, node in enumerate(self.__collection):
-            intersect_columns = frozenset.intersection(frozenset(node.value), all_intersect_columns)
-            if intersect_columns:
-                yield index, intersect_columns
-
-    def __change_model_prefix_only_received_nodes(self, index_items: Union[Iterable[tuple[int, frozenset[str]]],
-                                                                           Iterator[tuple[int, frozenset[str]]]],
-                                                  mode: Literal["add", "remove"] = None):
-        """ Установить или удалить префикс с названием таблицы, только для нод, индекс которых передан. """
+    def __add_model_prefix_only_received_nodes_and_columns(self):
+        """ Установить или удалить префикс с названием таблицы, только для нод и столбцов,
+        чьи столбцы повторяются также в других нодах. """
+        def get_node_indexes__merged_column_names():
+            all_intersect_columns = frozenset.intersection(*[frozenset(n.value) for n in self.__collection])
+            for index, node in enumerate(self.__collection):
+                intersect_columns = frozenset.intersection(frozenset(node.value), all_intersect_columns)
+                if intersect_columns:
+                    yield index, intersect_columns
+        self.remove_model_prefix()
+        index_items = get_node_indexes__merged_column_names()
         new_items = self.__collection.__class__()
         new_items.LinkedListItem = ResultORMItem
-        for node in self.__collection:
-            if not isinstance(node, ResultORMItem):
-                raise TypeError
-            values = {}
-            for column_name, value in node.value.items():
-                prefix_items: list = column_name.split(".")
-                if not prefix_items:
-                    if mode == "add":
-                        values.update({f"{node.model.__name__}.{column_name}": value})
-                    continue
-                if prefix_items[0] == node.model.__name__:
-                    if mode == "remove":
-                        del prefix_items[0]
-                        values.update({".".join(prefix_items): value})
-                    continue
-                if mode == "add":
-                    prefix_items.insert(0, node.model.__name__)
-                    values.update({".".join(prefix_items): value})
-            new_items.append(node.model, _primary_key_from_ui=node.get_primary_key_and_value(),
-                             _ui_hidden=node.hidden, **values)
+        for i, node in enumerate(self.__collection):
+            if i not in index_items:
+                new_items.append(node.model, _primary_key_from_ui=node.get_primary_key_and_value(),
+                                 _ui_hidden=node.hidden, **node.value)
+                continue
+            value = node.value
+            add_prefix_columns = ...
         self.__collection = new_items
 
 
@@ -2128,6 +2117,8 @@ class ResultCacheTools(ORMHelper):
     __iter__ = abstractmethod(lambda self: ...)
 
     def __init__(self, id_: int, *args, **kw):
+        if not issubclass(type(self), BaseResult):
+            raise TypeError
         if type(id_) is not int:
             raise TypeError
         self._id = str(id_)
@@ -2139,12 +2130,12 @@ class ResultCacheTools(ORMHelper):
         """ Получить хеш сумму всех элементов в результате, в рамках текущего экземпляра """
         return self.cache.get(self.__key, None)
 
-    def _get_primary_key_hash(self, hash_sum_values: Iterable[int]):
+    def _get_primary_key_hash(self, hash_sum_values: Iterable[int]) -> tuple:
         if not isinstance(hash_sum_values, (tuple, list)):
             raise TypeError
         if tuple(filter(lambda x: type(x) is not int, hash_sum_values)):
             raise TypeError
-        return self.cache.get_many(list(map(str, hash_sum_values)))
+        return tuple(self.cache.get_many(list(map(str, hash_sum_values))).values())
 
     def _set_hash(self, data: Optional[Union[SpecialOrmContainer, Iterable[SpecialOrmContainer]]] = None,
                   hash_values: list[int] = None):
@@ -2155,17 +2146,17 @@ class ResultCacheTools(ORMHelper):
                 raise TypeError
             self.cache.set(self.__key, hash_values, self.CACHE_LIFETIME_HOURS)
             return
-        if data is None:
-            self.cache.set(self.__key, [n.__hash__() for n in self], self.CACHE_LIFETIME_HOURS)
-            self.cache.set_many(dict(zip(map(lambda x: str(x.__hash__()), self), map(lambda x: x.hash_by_pk, self))), self.CACHE_LIFETIME_HOURS)
-            return
-        if not isinstance(data, (ResultORMCollection, tuple, list, frozenset,)):
-            raise TypeError
-        if isinstance(data, (tuple, list, frozenset)):
-            if not all(map(lambda y: type(y) is ResultORMCollection, data)):
+        if data is not None:
+            if not isinstance(data, (ResultORMCollection, tuple, list, frozenset,)):
                 raise TypeError
-        self.cache.set_many(dict(zip(map(lambda i: str(hash(i)), data), map(lambda x: x.hash_by_pk, data))), self.CACHE_LIFETIME_HOURS)
-        self.cache.set(self.__key, [n.__hash__() for n in data], self.CACHE_LIFETIME_HOURS)
+            if isinstance(data, (tuple, list, frozenset)):
+                if not all(map(lambda y: type(y) is ResultORMCollection, data)):
+                    raise TypeError
+            self.cache.set_many(dict(zip(map(lambda i: str(hash(i)), data), map(lambda x: x.hash_by_pk, data))), self.CACHE_LIFETIME_HOURS)
+            self.cache.set(self.__key, [n.__hash__() for n in data], self.CACHE_LIFETIME_HOURS)
+            return
+        self.cache.set(self.__key, [n.__hash__() for n in self], self.CACHE_LIFETIME_HOURS)
+        self.cache.set_many(dict(zip(map(lambda x: str(x.__hash__()), self), map(lambda x: x.hash_by_pk, self))), self.CACHE_LIFETIME_HOURS)
 
     @classmethod
     def _save_merged_collection(cls, items: Iterable):
@@ -2218,7 +2209,7 @@ class BaseResult(ABC, ResultCacheTools):
         if not hash_:
             return not current_hash == [item.__hash__() for item in self]
         if hash_ not in current_hash:
-            if not self._get_primary_key_hash(hash_,):  # Со стороны UI была попытка передать посторонний хеш, который никогда не фигурировал в результатах
+            if not self._get_primary_key_hash((hash_,)):  # Со стороны UI была попытка передать посторонний хеш, который никогда не фигурировал в результатах
                 if given_unknown_status:
                     return
                 raise KeyError
@@ -2228,7 +2219,9 @@ class BaseResult(ABC, ResultCacheTools):
         if hash_ in (hash(node_or_group) for node_or_group in fresh_inner):
             replace_one_hash_item(current_hash)
             return False
-        if self._get_primary_key_hash(hash_,) in [node_or_group.hash_by_pk for node_or_group in fresh_inner]:  # Значит нода с таким PK всё ещё существует в результатах
+        h_val = self._get_primary_key_hash((hash_,))
+        h_val = h_val[0] if h_val else 0
+        if h_val in [node_or_group.hash_by_pk for node_or_group in fresh_inner]:  # Значит нода с таким PK всё ещё существует в результатах
             replace_one_hash_item(current_hash)
             if hash_ in checked_items:
                 return False
@@ -2247,7 +2240,6 @@ class BaseResult(ABC, ResultCacheTools):
 
     @pointer.setter
     def pointer(self: Union["Result", "JoinSelectResult"], items: list):
-        _ = self.items  # Сохраниться в set_previous_hash
         self._pointer = Pointer(self,
                                 self._merge,
                                 self._get_hash_sum,
@@ -2518,10 +2510,10 @@ class PointerCacheTools(ORMHelper):
         self._is_valid_config()
         self.__cache_key = f"{self.POINTER_PK_HASH_PREFIX}_{self._id[-5:]}"
 
-    def get_primary_key_hash(self) -> list[int]:
+    def _get_primary_key_hash(self) -> list[int]:
         return self.cache.get(self.__cache_key, None)
 
-    def set_primary_key_hash(self):
+    def _set_primary_key_hash(self):
         self.cache.set(self.__cache_key, [item.hash_by_pk for item in self._get_result_items()])
 
     @abstractmethod
@@ -2556,14 +2548,16 @@ class Pointer(PointerCacheTools):
         self.__is_invalid = False
         self._is_valid_config()
         super().__init__(self._id, self._get_result_items)
-        self.set_primary_key_hash()
+        self._set_primary_key_hash()
 
     @property
     def wrap_items(self):
         return copy.copy(self._wrap_items)
 
     @property
-    def items(self) -> dict[str, Union[ResultORMItem, ResultORMCollection]]:
+    def items(self) -> Optional[dict[str, Union[ResultORMItem, ResultORMCollection]]]:
+        if not self.is_valid():
+            return
         return dict(zip(self._wrap_items, self._result_item))
 
     def has_changes(self, name: str, given_unknown_status: bool = True) -> Optional[Union[bool, Type[Exception]]]:
@@ -2585,14 +2579,15 @@ class Pointer(PointerCacheTools):
             if given_unknown_status:
                 return
             raise KeyError
-        if not self.is_valid():  # Если изменилось кол-во нод или есть другие (с другим pk) ноды
+        if not self.is_valid():  # Если изменилось кол-во нод или есть другие (с другим pk) ноды, включая соблюдение последовательности
             return True
         previous_hash = self._get_result_hash_sum()
         if previous_hash is None:
+            self._result_item.__iter__()
             if given_unknown_status:
                 return
             return False
-        if not len(self._wrap_items) == previous_hash:
+        if not len(self._wrap_items) == len(previous_hash):
             raise RuntimeError  # Данная ситуация является нештатной, тк в момент предыдущего запроса происходила проверка. см .is_valid()
         hash_names_map = {name: previous_hash[index] for index, name in enumerate(self._wrap_items)}
         return self._result_item.has_changes(hash_=hash_names_map[name], given_unknown_status=given_unknown_status)
@@ -2606,7 +2601,7 @@ class Pointer(PointerCacheTools):
         if self.__is_invalid:
             return False
         left_val = [item.hash_by_pk for item in self._get_result_items()]
-        right_val = self.get_primary_key_hash()
+        right_val = self._get_primary_key_hash()
         if not left_val == right_val:
             self.__is_invalid = True
             return False
@@ -2616,6 +2611,8 @@ class Pointer(PointerCacheTools):
         if not isinstance(item, str):
             raise TypeError
         data = self.items
+        if data is None:
+            return
         if item not in data:
             return
         return data[item]
@@ -2623,7 +2620,7 @@ class Pointer(PointerCacheTools):
     def __str__(self):
         status = self.is_valid()
         str_ = r", \r".join(map(lambda x: f"{x[0]}:{x[1]}",
-                                zip_longest(self._wrap_items, list(self._result_item), fillvalue="[X]")))
+                                zip_longest(self._wrap_items, list(self._get_result_items()), fillvalue="[X]")))
         str_ = f"{str_}, valid: {status}"
         return str_
 

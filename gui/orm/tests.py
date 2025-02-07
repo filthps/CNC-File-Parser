@@ -425,6 +425,82 @@ class TestORMItemQueue(unittest.TestCase):
         self.assertEqual(0, len(queue))
 
 
+class TestResultORMCollection(unittest.TestCase):
+    def setUp(self) -> None:
+        queue = ORMItemQueue()
+        data__len_3 = [{"_model": Machine, "_ready": False, "_insert": False, "_update": True,
+                        "_delete": False, "_create_at": datetime.datetime.now(), "_container": queue,
+                        "_primary_key_from_ui": False, "machinename": "Test"},
+                       {"_model": Machine, "_ready": False, "_insert": False, "_update": True,
+                        "_delete": False, "_create_at": datetime.datetime.now(), "_container": queue,
+                        "_primary_key_from_ui": False, "machinename": "Test1"},
+                       {"_model": Machine, "_ready": False, "_insert": False, "_update": True,
+                        "_delete": False, "_create_at": datetime.datetime.now(), "_container": queue,
+                        "_primary_key_from_ui": False, "machinename": "NewTest"
+                        }]
+        [queue.enqueue(**item) for item in data__len_3]
+        self.result_collection = ResultORMCollection(queue)
+
+    def test_result_orm_collection(self):
+        self.assertEqual(self.result_collection.__len__(), 3)
+        self.assertTrue(self.result_collection)
+        hash_val = hash(self.result_collection)
+        queue = SpecialOrmContainer()
+        changed_data__len_3 = [{"_model": Machine, "_ready": False, "_insert": False, "_update": True,
+                        "_delete": False, "_create_at": datetime.datetime.now(), "_container": queue,
+                        "_primary_key_from_ui": False, "machinename": "Tdfgdfgerest"},
+                       {"_model": Machine, "_ready": False, "_insert": False, "_update": True,
+                        "_delete": False, "_create_at": datetime.datetime.now(), "_container": queue,
+                        "_primary_key_from_ui": False, "machinename": "Test1"},
+                       {"_model": Machine, "_ready": False, "_insert": False, "_update": True,
+                        "_delete": False, "_create_at": datetime.datetime.now(), "_container": queue,
+                        "_primary_key_from_ui": False, "machinename": "NewTgest"
+                        }]
+        [queue.enqueue(**item) for item in changed_data__len_3]
+        result_queue = ResultORMCollection(queue)
+        self.assertEqual(result_queue.__len__(), 3)
+        self.assertTrue(result_queue)
+        self.assertEqual(3, len(result_queue))
+        self.assertNotEqual(hash_val, result_queue.__hash__())
+
+    def test_add_model_prefix(self):
+        self.result_collection.add_model_name_prefix()
+        self.assertEqual(self.result_collection.prefix, "add")
+        self.assertEqual([node for node in self.result_collection
+                          for value in node.value if not value.startswith("Machine.")], [])
+        self.assertTrue(all([[len(frozenset(filter(lambda x: 1 if x == "." else 0, val)))]
+                            for node in self.result_collection
+                            for val in node.value]))
+        self.result_collection.remove_model_prefix()
+        self.assertEqual(self.result_collection.prefix, "no-prefix")
+        self.assertEqual([node for node in self.result_collection
+                          for column in node.value if column.startswith("Machine.")], [])
+
+    def test_remove_model_prefix(self):
+        self.result_collection.add_model_name_prefix()
+        self.result_collection.remove_model_prefix()
+        self.assertFalse(all([val.startswith("Machine.") if True else False
+                              for node in self.result_collection
+                              for val in node.value]))
+
+    def test_auto_mode_prefix(self):
+        queue = SpecialOrmContainer()
+        data__len_3 = [{"_model": Machine, "_ready": False, "_insert": False, "_update": True,
+                        "_delete": False, "_create_at": datetime.datetime.now(), "_container": queue,
+                        "_primary_key_from_ui": False, "machinename": "Test", "cncid": 1},
+                       {"_model": Cnc, "_ready": False, "_insert": False, "_update": True,
+                        "_delete": False, "_create_at": datetime.datetime.now(), "_container": queue,
+                        "_primary_key_from_ui": False, "name": "Testcnc", "cncid": 1}
+                       ]
+        [queue.enqueue(**n) for n in data__len_3]
+        self.result_collection = ResultORMCollection(queue)
+        self.assertEqual("auto", self.result_collection.prefix)
+        # Столбец cncid встречается в обеих нодах, должно произойти добавление префикса с названием таблицы
+        # к одноимённым столбцам обеих нод
+        self.assertIn("Machine.cncid", self.result_collection[0].value)
+
+
+
 class TestORMHelper(unittest.TestCase, SetUp):
     def setUp(self) -> None:
         ORMHelper.TESTING = True
@@ -778,7 +854,6 @@ class TestORMHelper(unittest.TestCase, SetUp):
         self.orm_manager.set_item(numerationid=2, endat=4, _model=Numeration, _update=True)
         self.orm_manager.set_item(_model=Comment, commentid=2, findstr="test_str_new", _update=True)
         self.orm_manager.set_item(_model=Machine, machinename="testnamesdfs", machineid=1, _update=True)
-        time.sleep(1)
         #
         self.assertTrue(result.pointer.has_changes("Результат в списке 2"))
         self.assertIsNone(result.pointer.has_changes("Не установленный во wrapper элемент", given_unknown_status=True))
