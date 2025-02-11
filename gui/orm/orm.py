@@ -609,10 +609,14 @@ class ResultORMItem(LinkedListItem, ORMAttributes, NodeTools):
         else:
             return value
 
-    def add_model_name_prefix(self):
+    def add_model_name_prefix(self, column_names: Optional[tuple] = None):
         """ Добавить каждому столбцу префикс с названием таблицы """
+        self.__is_valid_column_names_arg(column_names)
         new_values = self.value
         for column_name, value in self.value.items():
+            if column_name is not None:
+                if column_name not in column_names:
+                    continue
             if "." in column_name:
                 exists_prefix = column_name[0:column_name.index(".")]
                 if exists_prefix == self.model.__name__:
@@ -624,12 +628,16 @@ class ResultORMItem(LinkedListItem, ORMAttributes, NodeTools):
             new_values.update({f"{self.model.__name__}.{column_name}": value})
         self._val = new_values
 
-    def remove_model_name_prefix(self):
+    def remove_model_name_prefix(self, column_names: Optional[tuple] = None):
+        self.__is_valid_column_names_arg(column_names)
         new_values = self.value
         for column_name, value in self.value.items():
             parts = column_name.split(".")
             if not parts:
                 continue
+            if column_names is not None:
+                if parts[1] not in column_names:
+                    continue
             model_name = self.model.__name__
             if model_name not in parts:
                 continue
@@ -693,6 +701,19 @@ class ResultORMItem(LinkedListItem, ORMAttributes, NodeTools):
         if not self.value:
             raise ValueError
         self.is_valid_primary_key(self._primary_key, self._model)
+
+    @staticmethod
+    def __is_valid_column_names_arg(names: tuple):
+        if names is None:
+            return
+        if type(names) is not tuple:
+            raise TypeError
+        if not names:
+            raise ValueError
+        if any(map(lambda x: not isinstance(x, str), names)):
+            raise TypeError
+        if any(filter(lambda x: not any(x), names)):
+            raise ValueError
 
 
 class ORMItemQueue(LinkedList, QueueSearchTools):
@@ -1002,7 +1023,7 @@ class ResultORMCollection:
         if self._prefix_mode == "no-prefix":
             self.remove_model_prefix()
         if self._prefix_mode == "auto":
-            self.__add_model_prefix_only_received_nodes_and_columns()
+            self.__add_model_prefix_only_repeated_names()
 
     @property
     def prefix(self):
@@ -1058,7 +1079,7 @@ class ResultORMCollection:
 
     def auto_model_prefix(self):
         self._prefix_mode = "auto"
-        self.__add_model_prefix_only_received_nodes_and_columns()
+        self.__add_model_prefix_only_repeated_names()
 
     def get_node(self, *args, **kwargs):
         return self.__collection.get_node(*args, **kwargs)
@@ -1110,26 +1131,25 @@ class ResultORMCollection:
          for node in collection]
         return new_collection
 
-    def __add_model_prefix_only_received_nodes_and_columns(self):
-        """ Установить или удалить префикс с названием таблицы, только для нод и столбцов,
-        чьи столбцы повторяются также в других нодах. """
-        def get_node_indexes__merged_column_names():
+    def __add_model_prefix_only_repeated_names(self):
+        """ Установить префикс с названием таблицы, только для столбцов нод,
+        чьи наименования повторяются также в нодах от других таблиц, в остальных случаях - удалить префиксы """
+        def get_node_indexes__merged_column_names(intersection=True):
             all_intersect_columns = frozenset.intersection(*[frozenset(n.value) for n in self.__collection])
             for index, node in enumerate(self.__collection):
                 intersect_columns = frozenset.intersection(frozenset(node.value), all_intersect_columns)
+                if intersection:
                 if intersect_columns:
                     yield index, intersect_columns
         self.remove_model_prefix()
-        index_items = get_node_indexes__merged_column_names()
         new_items = self.__collection.__class__()
         new_items.LinkedListItem = ResultORMItem
-        for i, node in enumerate(self.__collection):
-            if i not in index_items:
+        for i, column_names in enumerate(self.__collection):
+            if i not in repeated_names_node_index:
                 new_items.append(node.model, _primary_key_from_ui=node.get_primary_key_and_value(),
                                  _ui_hidden=node.hidden, **node.value)
                 continue
-            value = node.value
-            add_prefix_columns = ...
+
         self.__collection = new_items
 
 

@@ -500,7 +500,6 @@ class TestResultORMCollection(unittest.TestCase):
         self.assertIn("Machine.cncid", self.result_collection[0].value)
 
 
-
 class TestORMHelper(unittest.TestCase, SetUp):
     def setUp(self) -> None:
         ORMHelper.TESTING = True
