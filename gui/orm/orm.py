@@ -614,7 +614,7 @@ class ResultORMItem(LinkedListItem, ORMAttributes, NodeTools):
         self.__is_valid_column_names_arg(column_names)
         new_values = self.value
         for column_name, value in self.value.items():
-            if column_name is not None:
+            if column_names is not None:
                 if column_name not in column_names:
                     continue
             if "." in column_name:
@@ -963,7 +963,7 @@ class ORMItemQueue(LinkedList, QueueSearchTools):
                 return new_node
             if old_node.is_relative_primary_key:
                 return new_node
-            return new_node.__class__(**{new_node.get_attributes()},
+            return new_node.__class__(**new_node.get_attributes(),
                                       _primary_key_from_ui=old_node.get_primary_key_and_value())
         exists_item = self.get_node(potential_new_item.model, **potential_new_item.get_primary_key_and_value())  # O(n)
         if exists_item is not None and exists_item.is_relative_primary_key:
@@ -1000,9 +1000,9 @@ class ORMItemQueue(LinkedList, QueueSearchTools):
 
 
 class ResultORMCollection:
+    """ Иммутабельная коллекция с набором результата, закрытая на добавление новых элементов """
     ADD_TABLE_NAME_PREFIX: Literal["auto", "add", "no-prefix"] = "auto"
 
-    """ Иммутабельная коллекция с набором результата, закрытая на добавление новых элементов """
     def __init__(self, collection: Type[LinkedList] = None, prefix_mode=None):
         def is_valid():
             if not issubclass(type(self.__collection), LinkedList):
@@ -1023,7 +1023,7 @@ class ResultORMCollection:
         if self._prefix_mode == "no-prefix":
             self.remove_model_prefix()
         if self._prefix_mode == "auto":
-            self.__add_model_prefix_only_repeated_names()
+            self.auto_model_prefix()
 
     @property
     def prefix(self):
@@ -1058,6 +1058,7 @@ class ResultORMCollection:
             except StopIteration:
                 break
             else:
+
                 node.add_model_name_prefix()
                 new_collection.append(**node.get_attributes())
         self.__collection = new_collection
@@ -1078,8 +1079,24 @@ class ResultORMCollection:
         self.__collection = new_collection
 
     def auto_model_prefix(self):
+        """ Установить префикс с названием таблицы, только для столбцов нод,
+        чьи наименования повторяются также в нодах от других таблиц, в остальных случаях - удалить префиксы """
+        def get_node_indexes__merged_column_names():
+            def get_unique
+            all_intersect_columns = frozenset.union(*[frozenset(n.value) for n in self.__collection])
+            for node in self.__collection:
+                intersect_columns = frozenset.intersection(frozenset(node.value), all_intersect_columns)
+                if intersect_columns:
+                    yield node, intersect_columns
+                else:
+                    yield node, None
+        self.remove_model_prefix()
         self._prefix_mode = "auto"
-        self.__add_model_prefix_only_repeated_names()
+        if not all(dict(get_node_indexes__merged_column_names()).values()):  # Каждый is None
+            return  # self.__collection остаётся self.__collection
+        [node.add_model_name_prefix(tuple(column_names_to_set_prefix))
+         if column_names_to_set_prefix else None
+         for node, column_names_to_set_prefix in get_node_indexes__merged_column_names()]
 
     def get_node(self, *args, **kwargs):
         return self.__collection.get_node(*args, **kwargs)
@@ -1130,27 +1147,6 @@ class ResultORMCollection:
                                **node.value)
          for node in collection]
         return new_collection
-
-    def __add_model_prefix_only_repeated_names(self):
-        """ Установить префикс с названием таблицы, только для столбцов нод,
-        чьи наименования повторяются также в нодах от других таблиц, в остальных случаях - удалить префиксы """
-        def get_node_indexes__merged_column_names(intersection=True):
-            all_intersect_columns = frozenset.intersection(*[frozenset(n.value) for n in self.__collection])
-            for index, node in enumerate(self.__collection):
-                intersect_columns = frozenset.intersection(frozenset(node.value), all_intersect_columns)
-                if intersection:
-                if intersect_columns:
-                    yield index, intersect_columns
-        self.remove_model_prefix()
-        new_items = self.__collection.__class__()
-        new_items.LinkedListItem = ResultORMItem
-        for i, column_names in enumerate(self.__collection):
-            if i not in repeated_names_node_index:
-                new_items.append(node.model, _primary_key_from_ui=node.get_primary_key_and_value(),
-                                 _ui_hidden=node.hidden, **node.value)
-                continue
-
-        self.__collection = new_items
 
 
 class Sort:

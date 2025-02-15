@@ -14,8 +14,7 @@ import unittest
 import datetime
 import time
 from sqlalchemy import func, select, text
-from database.models import Machine, Cnc, OperationDelegation, SearchString, db as sqlalchemy_instance, Condition, \
-    Numeration, Comment, drop_db, create_db
+from database.models import *
 from database.procedures import init_all_triggers
 from gui.datatype import LinkedList
 from orm import *
@@ -485,19 +484,27 @@ class TestResultORMCollection(unittest.TestCase):
 
     def test_auto_mode_prefix(self):
         queue = SpecialOrmContainer()
-        data__len_3 = [{"_model": Machine, "_ready": False, "_insert": False, "_update": True,
+        data = [{"_model": Machine, "_ready": False, "_insert": False, "_update": True,
                         "_delete": False, "_create_at": datetime.datetime.now(), "_container": queue,
                         "_primary_key_from_ui": False, "machinename": "Test", "cncid": 1},
-                       {"_model": Cnc, "_ready": False, "_insert": False, "_update": True,
+                {"_model": Cnc, "_ready": False, "_insert": False, "_update": True,
                         "_delete": False, "_create_at": datetime.datetime.now(), "_container": queue,
-                        "_primary_key_from_ui": False, "name": "Testcnc", "cncid": 1}
-                       ]
-        [queue.enqueue(**n) for n in data__len_3]
+                        "_primary_key_from_ui": False, "name": "Testcnc", "cncid": 1},
+                {"_model": OperationDelegation, "replaceid": 1, "_primary_key_from_ui": False,
+                 "_create_at": datetime.datetime.now(), "_container": queue, "_insert": True},
+                {"_model": Replace, "replaceid": 1, "_primary_key_from_ui": {"replaceid": 1}, "findstr": "trststr",
+                 "_create_at": datetime.datetime.now(), "_container": queue, "_insert": True}
+                ]
+        [queue.enqueue(**n) for n in data]
         self.result_collection = ResultORMCollection(queue)
+        self.result_collection.auto_model_prefix()
         self.assertEqual("auto", self.result_collection.prefix)
         # Столбец cncid встречается в обеих нодах, должно произойти добавление префикса с названием таблицы
         # к одноимённым столбцам обеих нод
-        self.assertIn("Machine.cncid", self.result_collection[0].value)
+        self.assertIn("Machine.cncid", self.result_collection[1].value)
+        self.assertIn("Cnc.cncid", self.result_collection[0].value)
+        self.assertNotIn("OperationDelegation.replaceid", self.result_collection[1].value)
+        self.assertNotIn("Replace.replaceid", self.result_collection[1].value)
 
 
 class TestORMHelper(unittest.TestCase, SetUp):
