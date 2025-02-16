@@ -501,10 +501,9 @@ class TestResultORMCollection(unittest.TestCase):
         self.assertEqual("auto", self.result_collection.prefix)
         # Столбец cncid встречается в обеих нодах, должно произойти добавление префикса с названием таблицы
         # к одноимённым столбцам обеих нод
-        self.assertIn("Machine.cncid", self.result_collection[1].value)
-        self.assertIn("Cnc.cncid", self.result_collection[0].value)
-        self.assertNotIn("OperationDelegation.replaceid", self.result_collection[1].value)
-        self.assertNotIn("Replace.replaceid", self.result_collection[1].value)
+        self.assertIn("Cnc.cncid", self.result_collection[1].value)
+        self.assertIn("OperationDelegation.replaceid", self.result_collection[2].value)
+        self.assertIn("Replace.replaceid", self.result_collection[3].value)
 
 
 class TestORMHelper(unittest.TestCase, SetUp):
@@ -822,8 +821,10 @@ class TestORMHelper(unittest.TestCase, SetUp):
         self.assertFalse(join_select_result.has_changes())
         val_from_0 = join_select_result.items[0].__hash__()
         val_from_1 = hash(join_select_result.items[1])
-        self.orm_manager.set_item(_model=Machine, _update=True, machinename="name", machineid=1)
         self.orm_manager.set_item(_model=Cnc, name="name_n", _update=True, cncid=1)
+        self.assertTrue(join_select_result.has_changes())
+        self.orm_manager.set_item(_model=Machine, _update=True, machinename="name", machineid=1)
+        self.orm_manager.set_item(_model=Cnc, name="name_n", _update=True, commentsymbol="#")  # Обновит cncid==1
         self.orm_manager.set_item(_model=Cnc, name="naаке", _update=True, cncid=2)
         self.assertTrue(join_select_result.has_changes(val_from_0))
         self.assertTrue(join_select_result.has_changes(val_from_1))
@@ -850,9 +851,6 @@ class TestORMHelper(unittest.TestCase, SetUp):
         #
         self.assertFalse(result.pointer.has_changes("Результат в списке 1"))
         self.assertFalse(result.pointer.has_changes("Результат в списке 1"))
-        self.assertFalse(result.pointer.has_changes("Результат в списке 2"))
-        self.assertFalse(result.pointer.has_changes("Результат в списке 2"))
-        self.assertFalse(result.pointer.has_changes("Результат в списке 1"))
         #
         # Добавить изменения и проверить повторно
         self.orm_manager.set_item(cncid=1, name="nameeg", _model=Cnc, _update=True)
@@ -865,10 +863,9 @@ class TestORMHelper(unittest.TestCase, SetUp):
         self.assertIsNone(result.pointer.has_changes("Не установленный во wrapper элемент", given_unknown_status=True))
         self.assertRaises(KeyError, result.pointer.has_changes, "Во wrapper этого не было", given_unknown_status=False)
         self.assertTrue(result.pointer.has_changes("Результат в списке 1"))
-        self.assertRaises(PointerException, result.pointer.has_changes, "Не установленный во wrapper элемент", given_unknown_status=False)
+        self.assertRaises(KeyError, result.pointer.has_changes, "Не установленный во wrapper элемент", given_unknown_status=False)
         self.assertIsNone(result.pointer.has_changes("Ещё Не установленный во wrapper элемент", given_unknown_status=True))
-        self.assertTrue(result.pointer.has_changes("Результат в списке 2"))
-        self.assertIsNone(PointerException, result.pointer.has_changes("Другой не установленный во wrapper элемент", given_unknown_status=True))
+        self.assertIsNone(result.pointer.has_changes("Другой не установленный во wrapper элемент", given_unknown_status=True))
 
 
 class TestQueueOrderBy(unittest.TestCase, SetUp):

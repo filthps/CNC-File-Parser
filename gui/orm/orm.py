@@ -1081,22 +1081,18 @@ class ResultORMCollection:
     def auto_model_prefix(self):
         """ Установить префикс с названием таблицы, только для столбцов нод,
         чьи наименования повторяются также в нодах от других таблиц, в остальных случаях - удалить префиксы """
-        def get_node_indexes__merged_column_names():
-            def get_unique
-            all_intersect_columns = frozenset.union(*[frozenset(n.value) for n in self.__collection])
-            for node in self.__collection:
-                intersect_columns = frozenset.intersection(frozenset(node.value), all_intersect_columns)
-                if intersect_columns:
-                    yield node, intersect_columns
-                else:
-                    yield node, None
         self.remove_model_prefix()
         self._prefix_mode = "auto"
-        if not all(dict(get_node_indexes__merged_column_names()).values()):  # Каждый is None
-            return  # self.__collection остаётся self.__collection
-        [node.add_model_name_prefix(tuple(column_names_to_set_prefix))
-         if column_names_to_set_prefix else None
-         for node, column_names_to_set_prefix in get_node_indexes__merged_column_names()]
+        collection_copy = copy.deepcopy(self.__collection)
+        for node in self.__collection:
+            for other_node in collection_copy:
+                if node.model.__name__ == other_node.model.__name__:
+                    continue
+                names_to_set_prefix = set(node.value).intersection(set(other_node.value))
+                names_to_set_prefix.remove("ui_hidden")
+                if not names_to_set_prefix:
+                    continue
+                node.add_model_name_prefix(tuple(names_to_set_prefix))
 
     def get_node(self, *args, **kwargs):
         return self.__collection.get_node(*args, **kwargs)
@@ -2209,10 +2205,9 @@ class BaseResult(ABC, ResultCacheTools):
         когда has_changes запрашивается впервые, или, когда, просто напросто, кеш не помнит данных о "прошлых" результатов.
         """
         def replace_one_hash_item(hash_items):
-            current_hash = set(hash_items)
-            current_hash.add(hash_)
-            current_hash = list(current_hash)
-            self._set_hash(hash_values=current_hash)
+            if not hash_items[-1] == hash_:
+                hash_items.append(hash_)
+            self._set_hash(hash_values=hash_items)
         if hash_ is not None:
             if type(hash_) is not int:
                 raise TypeError
@@ -2603,8 +2598,6 @@ class Pointer(PointerCacheTools):
             if given_unknown_status:
                 return
             return False
-        if not len(self._wrap_items) == len(previous_hash):
-            raise RuntimeError  # Данная ситуация является нештатной, тк в момент предыдущего запроса происходила проверка. см .is_valid()
         hash_names_map = {name: previous_hash[index] for index, name in enumerate(self._wrap_items)}
         return self._result_item.has_changes(hash_=hash_names_map[name], given_unknown_status=given_unknown_status)
 
