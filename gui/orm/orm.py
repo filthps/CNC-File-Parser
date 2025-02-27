@@ -2138,18 +2138,30 @@ class ResultCacheTools(ORMHelper):
             raise ValueError
         self.__key = f"{self.TEMP_HASH_PREFIX}{self._id[-5:]}"
 
-    def _get_hash_sum(self) -> Optional[list[int]]:
-        """ Получить хеш сумму всех элементов в результате, в рамках текущего экземпляра """
-        return self.cache.get(self.__key, None)
+    @classmethod
+    def _set_all_hash_from_results(cls, items):
+        if not isinstance(items, (tuple, ResultORMCollection)):
+            raise TypeError
+        cls.cache.set_many(dict(zip(map(str, map(hash, items)),
+                                    map(str, [n.hash_by_pk for n in items]))), cls.CACHE_LIFETIME_HOURS)
 
-    def _get_primary_key_hash(self, primary_key_hash: str) -> int:
+    @classmethod
+    def _get_primary_key_hash(cls, primary_key_hash: str) -> int:
         if type(primary_key_hash) is not str:
             raise TypeError
-        return self.cache.get(primary_key_hash, None)
+        return cls.cache.get(primary_key_hash, None)
 
-    def _set_hash(self):
-        self.cache.set(self.__key, [n.__hash__() for n in self], self.CACHE_LIFETIME_HOURS)
-        self.cache.set_many(dict(zip(map(lambda x: str(x.__hash__()), self), map(lambda x: x.hash_by_pk, self))), self.CACHE_LIFETIME_HOURS)
+    @classmethod
+    def _set_hash(cls, pk_hash, hash_):
+        if type(pk_hash) is not str or type(hash_) is not str:
+            raise TypeError
+        cls.cache.set(pk_hash, hash_, cls.CACHE_LIFETIME_HOURS)
+
+    @classmethod
+    def _remove_primary_key_hash(cls, pk):
+        if type(pk) is not str:
+            raise TypeError
+        cls.cache.delete(pk)
 
     @classmethod
     def _save_result_collection(cls, items: Iterable):
@@ -2186,32 +2198,49 @@ class BaseResult(ABC, ResultCacheTools):
         Например в случае,
         когда has_changes запрашивается впервые, или, когда, просто напросто, кеш не помнит данных о "прошлых" результатов.
         """
-        def update_hash_item():
-            pass
+        def get_hash_in_new_collection(collection, pk_hash) -> Optional[int]:
+            for node_or_group in collection:
+                if str(node_or_group.hash_by_pk) == pk_hash:
+                    return hash(node_or_group)
         if hash_ is not None:
             if type(hash_) is not int:
                 raise TypeError
         if _nodes is None:
             _nodes = self.items
         if _nodes is not None:
-            if not issubclass(type(_nodes), BaseResult):
-                raise TypeError
+            if type(self) is Result:
+                if not isinstance(_nodes, ResultORMCollection):
+                    raise TypeError
+            if type(self) is JoinSelectResult:
+                if not isinstance(_nodes, tuple):
+                    raise TypeError
+                if any((1 for v in _nodes if type(v) is not ResultORMCollection)):
+                    raise TypeError
         else:
             _nodes = self.items
         pk = self._get_primary_key_hash(str(hash_))
-        is_checked = hash_ in self.__get_checked_hash_items()
-        self.__add_hash_item_to_checked(hash_)
-        update_item()
         if not pk:
             if given_unknown_status:
                 return
             raise KeyError
-
+        checked_items = self.__get_checked_hash_items()
+        self.__add_hash_item_to_checked(hash_)
+        actual_hash = get_hash_in_new_collection(_nodes, pk)
+        if actual_hash is None:
+            if hash_ in checked_items:
+                return False
+            self._remove_primary_key_hash(pk)
+            return True
+        self._set_hash(pk, str(actual_hash))
+        if not actual_hash == hash_:
+            return True
+        return False
 
     @property
     def items(self):
         self.__merged_data = self._merge()
         self._save_result_collection(self.__merged_data)
+        self._set_all_hash_from_results(self.__merged_data)
         return self.__merged_data
 
     @property
@@ -2220,11 +2249,14 @@ class BaseResult(ABC, ResultCacheTools):
 
     @pointer.setter
     def pointer(self: Union["Result", "JoinSelectResult"], items: list):
+        self._set_all_hash_from_results(self.items)
+        self._save_result_collection(self.__merged_data)
         self._pointer = Pointer(self, wrap_items=items)
 
     def __iter__(self):
         self.__merged_data = self._merge()
         self._save_result_collection(self.__merged_data)
+        self._set_all_hash_from_results(self.__merged_data)
         return iter(self.__merged_data)
 
     def __len__(self):
@@ -2280,6 +2312,13 @@ class BaseResult(ABC, ResultCacheTools):
     def __add_hash_item_to_checked(self, hash_value):
         values = self.__get_checked_hash_items()
         values.add(hash_value)
+        ORMHelper.cache.set(f"{self._id}_checked_items", values)
+
+    def __remove_item_from_checked(self, value):
+        values = self.__get_checked_hash_items()
+        if value not in values:
+            return
+        values.remove(value)
         ORMHelper.cache.set(f"{self._id}_checked_items", values)
 
     @staticmethod
@@ -2481,9 +2520,8 @@ class PointerCacheTools(ORMHelper):
     POINTER_CACHE_PREFIX = "p_id"
     WRAP_ITEM_MAX_LENGTH = 30
 
-    def __init__(self, id_: str, get_result_items: Callable):
+    def __init__(self, id_: str):
         self._id = id_  # uuid4
-        self._get_result_items = get_result_items
         self._is_valid_config()
         self.__cache_key = f"{self.POINTER_CACHE_PREFIX}_{self._id[-5:]}"
 
@@ -2492,6 +2530,8 @@ class PointerCacheTools(ORMHelper):
         def is_valid():
             if not isinstance(items, (list, tuple, set, frozenset)):
                 raise TypeError
+            if not items:
+                raise ValueError
             for n in items:
                 if type(n) is not str:
                     raise TypeError
@@ -2527,11 +2567,6 @@ class PointerCacheTools(ORMHelper):
             raise TypeError
         if not self._id:
             raise ValueError
-        if not callable(self._get_result_items):
-            raise TypeError
-        if not hasattr(BaseResult, self._get_result_items.__name__):
-            raise ValueError("Данный метод не имеет отношения к производным классам от "
-                             "BaseResult (Result, JoinSelectResult)")
 
 
 class Pointer(PointerCacheTools):
@@ -2547,16 +2582,15 @@ class Pointer(PointerCacheTools):
         self._wrap_items = wrap_items
         self.__is_invalid = False
         self._is_valid_config()
-        super().__init__(self._id, self._get_result_items)
-        self._set_pointer_configuration(self._create_cache_data())
+        super().__init__(self._id)
+        self._set_pointer_configuration(self._create_cache_data(initial=True))
 
     @property
     def wrap_items(self):
         return copy.copy(self._wrap_items)
 
     @property
-    def items(self) -> Optional[dict[str, Union[ResultORMCollection[ResultORMItem],
-                                                list[ResultORMCollection[ResultORMItem]]]]]:
+    def items(self) -> Optional[dict[str, Union[ResultORMCollection, list[ResultORMCollection]]]]:
         if not self._is_valid():
             return
         return dict(zip(self._wrap_items, self._result_item))
@@ -2581,14 +2615,11 @@ class Pointer(PointerCacheTools):
                 return
             raise KeyError
         result = self._result_item.items
-        primary_key_hash = [node_or_group.hash_by_pk for node_or_group in result]
-        hash_sum = tuple(map(hash, result))
-        old_primary_key_hash = self._get_primary_keys()
-        if not self._is_valid(old_primary_key_hash=old_primary_key_hash,
-                              actual_primary_key_hash=primary_key_hash):  # Если изменилось кол-во нод или есть другие (с другим pk) ноды, включая соблюдение последовательности
+        if not self._is_valid(actual_primary_key_hash=[str(n.hash_by_pk) for n in result]):  # Если изменилось кол-во нод или есть другие (с другим pk) ноды, включая соблюдение последовательности
             return True
+        hash_sum = tuple(map(hash, result))
         hash_names_map = {name:  hash_sum[index] for index, name in enumerate(self._get_wrappers())}
-        self._set_pointer_configuration(self._create_cache_data())
+        self._set_pointer_configuration(self._create_cache_data(items=result))
         return self._result_item.has_changes(hash_=hash_names_map[name], given_unknown_status=given_unknown_status,
                                              _nodes=result)
 
@@ -2605,32 +2636,55 @@ class Pointer(PointerCacheTools):
     def __str__(self):
         status = self._is_valid()
         str_ = r", \r".join(map(lambda x: f"{x[0]}:{x[1]}",
-                                zip_longest(self._wrap_items, list(self._get_result_items()), fillvalue="[X]")))
+                                zip_longest(self._wrap_items, list(self._result_item), fillvalue="[X]")))
         str_ = f"{str_}, valid: {status}"
         return str_
 
-    def _is_valid(self, old_primary_key_hash=None, actual_primary_key_hash=None):
+    def _is_valid(self, old_primary_key_hash: Optional[list[str]] = None,
+                  actual_primary_key_hash: Optional[list[str]] = None):
         """ Актуален ли текущий экземпляр к данному моменту.
          Под актуальностью понимается сохранение количества элементов в результатах и отсутствие новых,
          а также упорядоченность.
          Если экземпляр стал неактуален, то он становится таким навсегда.
          """
+        def validate_params():
+            nonlocal actual_primary_key_hash
+            nonlocal old_primary_key_hash
+            if actual_primary_key_hash is None:
+                actual_primary_key_hash = [str(node_or_group.hash_by_pk) for node_or_group in self._result_item]
+            if old_primary_key_hash is None:
+                old_primary_key_hash = list(self._get_primary_keys())
+            if type(actual_primary_key_hash) is not list:
+                raise TypeError
+            if type(old_primary_key_hash) is not list:
+                raise TypeError
+            if not all([True if type(val) is str else False for val in old_primary_key_hash]):
+                raise TypeError
+            if any(map(lambda i: not isinstance(i, str), actual_primary_key_hash)):
+                raise TypeError
+        validate_params()
         if self.__is_invalid:
             return False
-        if actual_primary_key_hash is None:
-            actual_primary_key_hash = [node_or_group.hash_by_pk for node_or_group in self._result_item]
-        if old_primary_key_hash is None:
-            old_primary_key_hash = self._get_primary_keys()
         if not actual_primary_key_hash == old_primary_key_hash:
             self.__is_invalid = True
             return False
         return True
 
-    def _create_cache_data(self):
-        data = self._result_item.items
-        pk = (n.hash_by_pk for n in data)
+    def _create_cache_data(self, items=None, initial=False):
+        def get_sorted_hash(primary_keys, nodes):
+            for primary_key in primary_keys:
+                for item in nodes:
+                    if str(item.hash_by_pk) == primary_key:
+                        yield item.__hash__()
+        data = self._result_item.items if items is None else items
+        hash_ = tuple(map(hash, data))
+        if initial:
+            pk = (n.hash_by_pk for n in data)
+        else:
+            pk = tuple(self._get_primary_keys())  # Делаем так, потому что порядок мог измениться
+            hash_ = get_sorted_hash(pk, data)
         wrap_items = copy.copy(self._wrap_items)
-        return tuple(map(lambda x: f"{wrap_items.pop(0)}:{x[1]}:{x[2]}", zip(pk, map(hash, data))))
+        return tuple(map(lambda x: f"{wrap_items.pop(0)}:{x[0]}:{x[1]}", zip(pk, hash_)))
 
     def _is_valid_config(self):
         if type(self._wrap_items) is not list:
