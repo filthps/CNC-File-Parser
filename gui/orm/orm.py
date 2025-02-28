@@ -2151,6 +2151,33 @@ class ResultCacheTools(ORMHelper):
             raise TypeError
         return cls.cache.get(primary_key_hash, None)
 
+    def _set_hash_from_current_result_instance(self, items: Union[tuple[ResultORMCollection], ResultORMCollection]):
+        if isinstance(items, tuple):
+            if any((type(n) is not ResultORMCollection for n in items)):
+                raise TypeError
+        else:
+            if type(items) is not ResultORMCollection:
+                raise TypeError
+        self.cache.set(f"{self.__key}-current", frozenset(map(str, map(hash, items))))
+
+    def _get_hash_from_current_result_instance(self) -> frozenset:
+        return self.cache.get(f"{self.__key}-current", frozenset())
+    
+    def _set_all_hash_items(self, items):
+        if isinstance(items, tuple):
+            if any((type(n) is not ResultORMCollection for n in items)):
+                raise TypeError
+        else:
+            if type(items) is not ResultORMCollection:
+                raise TypeError
+        old_items = set(self._get_all_hash_items())
+        new_items = set(map(hash, items))
+        old_items.update(new_items)
+        self.cache.set(f"{self.__key}-total", frozenset(old_items))
+    
+    def _get_all_hash_items(self):
+        return self.cache.get(f"{self.__key}-total", frozenset())
+    
     @classmethod
     def _set_hash(cls, pk_hash, hash_):
         if type(pk_hash) is not str or type(hash_) is not str:
@@ -2168,6 +2195,22 @@ class ResultCacheTools(ORMHelper):
         """ Сохранить выводимый в ui результат в кеш.
         В дальнейшем из него можно будет доставать первичные ключи """
         cls.cache.set(cls.RESULT_CACHE_KEY, items, cls.CACHE_LIFETIME_HOURS)
+
+    def _get_checked_hash_items(self):
+        """ Запросить хэш суммы, которые ранее проверялись через has_changes """
+        return ORMHelper.cache.get(f"{self._id}_checked_items", set())
+
+    def _add_hash_item_to_checked(self, hash_value):
+        values = self._get_checked_hash_items()
+        values.add(hash_value)
+        ORMHelper.cache.set(f"{self._id}_checked_items", values)
+
+    def _remove_item_from_checked(self, value):
+        values = self._get_checked_hash_items()
+        if value not in values:
+            return
+        values.remove(value)
+        ORMHelper.cache.set(f"{self._id}_checked_items", values)
 
 
 class BaseResult(ABC, ResultCacheTools):
@@ -2189,6 +2232,7 @@ class BaseResult(ABC, ResultCacheTools):
         self._is_sort = False
         self.__is_valid()
         super().__init__(self._id)
+        self._set_hash_from_current_result_instance(self.items)
 
     def has_changes(self, hash_=None, given_unknown_status=False, _nodes=None) -> Optional[Union[bool, ValueError]]:
         """ Изменились ли значения в результатах с момента последнего запроса has_changes.
@@ -2218,13 +2262,20 @@ class BaseResult(ABC, ResultCacheTools):
                     raise TypeError
         else:
             _nodes = self.items
+        if hash_ is None:
+            hash_items = self._get_hash_from_current_result_instance()
+            self._set_hash_from_current_result_instance(_nodes)
+            print(hash_items, frozenset((str(n.__hash__()) for n in _nodes)))
+            return not hash_items == frozenset((str(n.__hash__()) for n in _nodes))
         pk = self._get_primary_key_hash(str(hash_))
         if not pk:
-            if given_unknown_status:
-                return
-            raise KeyError
-        checked_items = self.__get_checked_hash_items()
-        self.__add_hash_item_to_checked(hash_)
+            if hash_ not in self._get_all_hash_items():
+                if given_unknown_status:
+                    return
+                raise KeyError
+            return True
+        checked_items = self._get_checked_hash_items()
+        self._add_hash_item_to_checked(hash_)
         actual_hash = get_hash_in_new_collection(_nodes, pk)
         if actual_hash is None:
             if hash_ in checked_items:
@@ -2241,6 +2292,7 @@ class BaseResult(ABC, ResultCacheTools):
         self.__merged_data = self._merge()
         self._save_result_collection(self.__merged_data)
         self._set_all_hash_from_results(self.__merged_data)
+        self._set_all_hash_items(self.__merged_data)
         return self.__merged_data
 
     @property
@@ -2257,6 +2309,7 @@ class BaseResult(ABC, ResultCacheTools):
         self.__merged_data = self._merge()
         self._save_result_collection(self.__merged_data)
         self._set_all_hash_from_results(self.__merged_data)
+        self._set_all_hash_items(self.__merged_data)
         return iter(self.__merged_data)
 
     def __len__(self):
@@ -2304,22 +2357,6 @@ class BaseResult(ABC, ResultCacheTools):
         if model_instance is None:
             raise InvalidModel(f"Класс-модель '{model_name}' в модуле models не найден")
         return model_instance, primary_key, value
-
-    def __get_checked_hash_items(self):
-        """ Запросить хэш суммы, которые ранее проверялись через has_changes """
-        return ORMHelper.cache.get(f"{self._id}_checked_items", set())
-
-    def __add_hash_item_to_checked(self, hash_value):
-        values = self.__get_checked_hash_items()
-        values.add(hash_value)
-        ORMHelper.cache.set(f"{self._id}_checked_items", values)
-
-    def __remove_item_from_checked(self, value):
-        values = self.__get_checked_hash_items()
-        if value not in values:
-            return
-        values.remove(value)
-        ORMHelper.cache.set(f"{self._id}_checked_items", values)
 
     @staticmethod
     def __gen_id(**kwargs):
@@ -2430,6 +2467,8 @@ class JoinSelectResult(OrderByJoinResultMixin, BaseResult, ModelTools):
         else:
             result = tuple(self._merge())
             self._save_result_collection(result)
+            self._set_all_hash_from_results(result)
+            self._set_all_hash_items(result)
         return result
 
     def __getitem__(self, item: int) -> SpecialOrmContainer:

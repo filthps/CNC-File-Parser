@@ -812,7 +812,7 @@ class TestORMHelper(unittest.TestCase, SetUp):
         self.set_data_into_database()
         join_select_result = self.orm_manager.join_select(Machine, Cnc, on={"Machine.machineid": "Cnc.cncid"})
         #  Первый запрос has_changes всегда вернёт None
-        self.assertIsNone(join_select_result.has_changes(given_unknown_status=True))  # Для всей выборки результатов (не указан хеш)
+        self.assertFalse(join_select_result.has_changes(given_unknown_status=True))  # Для всей выборки результатов (не указан хеш)
         invalid_hash = 34535566543  # Совершенно постороннее значение, взятое с потолка
         self.assertIsNone(join_select_result.has_changes(invalid_hash, given_unknown_status=True))  # Для всей выборки результатов (не указан хеш)
         self.update_exists_items()
