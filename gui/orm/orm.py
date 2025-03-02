@@ -2144,12 +2144,66 @@ class ResultCacheTools(ORMHelper):
         В дальнейшем из него можно будет доставать первичные ключи """
         cls.cache.set(cls.RESULT_CACHE_KEY, items, cls.CACHE_LIFETIME_HOURS)
 
-    def _get_primary_keys(self):
-        ...
+    def _set_hash(self, data: Union[tuple[ResultORMCollection], ResultORMCollection]):
+        self.cache.set(self.__key, set(map(str, map(hash, data))))
+        self.__add_values_in_all_hash_items(data)
 
-    def _set_hash(self, data):
-        self.cache
+    def _get_hash(self):
+        return self.cache.get(self.__key, set())
 
+    def _add_hash_value(self, val):
+        self.__is_valid_hash_key(val)
+        current = self._get_hash()
+        current.add(val)
+        self.cache.set(self.__key, current)
+
+
+    def _is_hash_value_from_result(self, hash_value):
+        """ Была ли данная хеш-сумма в результатах когда-либо """
+        self.__is_valid_hash_key(hash_value)
+        current_items = self.cache.get(f"{self.__key}-cur", set())
+        if hash_value in current_items:
+            return True
+        return False
+
+    def _get_checked_hash_items(self) -> set:
+        return self.cache.get(f"{self.__key}-checked", set())
+
+    def _add_nodes_to_checked(self, nodes):
+        checked = self._get_checked_hash_items()
+        checked.update(set(map(str, map(hash, nodes))))
+        self.cache.set(f"{self.__key}-checked", checked)
+
+    def _remove_hash_value_from_checked(self, h_val):
+        self.__is_valid_hash_key(h_val)
+        checked = self._get_checked_hash_items()
+        if h_val in checked:
+            checked.remove(h_val)
+        self.cache.set(f"{self.__key}-checked", checked)
+
+    def _remove_nodes_from_checked(self, nodes):
+        checked = self._get_checked_hash_items()
+        current = set(map(str, map(hash, nodes)))
+        result = checked & current
+        if result:
+            other = checked.difference(result)
+            if other:
+                self.cache.set(f"{self.__key}-checked", other)
+                return
+            self.cache.delete(f"{self.__key}-checked")
+
+    def __add_values_in_all_hash_items(self, data):
+        """ Запоминать все хеш-элементы, чтобы потом отличить их от посторонних, которых никогда не было в результатах"""
+        current_values: set = self.cache.get(f"{self.__key}-cur", set())
+        current_values.update(set(map(str, map(hash, data))))
+        self.cache.set(f"{self.__key}-cur", current_values)
+
+    @staticmethod
+    def __is_valid_hash_key(hash_key):
+        if type(hash_key) is not str:
+            raise TypeError
+        if not hash_key:
+            raise ValueError
 
 
 class BaseResult(ABC, ResultCacheTools):
@@ -2171,7 +2225,7 @@ class BaseResult(ABC, ResultCacheTools):
         self._is_sort = False
         self.__is_valid()
         super().__init__(self._id)
-        self._set_hash_from_current_result_instance(self.items)
+        self._set_hash(self.items)
 
     def has_changes(self, hash_value=None) -> Optional[Union[bool, ValueError]]:
         """ Изменились ли значения в результатах с момента последнего запроса has_changes.
@@ -2182,7 +2236,24 @@ class BaseResult(ABC, ResultCacheTools):
         if hash_value is not None:
             if type(hash_value) is not int:
                 raise TypeError
+            hash_value = str(hash_value)
         nodes = self.items
+        actual_hash_sum = list(map(str, map(hash, nodes)))
+        if hash_value is None:
+            old_hash = self._get_hash()
+            self._set_hash(nodes)
+            if not frozenset(actual_hash_sum) == frozenset(old_hash):
+                return True
+            return False
+        if hash_value in actual_hash_sum:
+            return False
+        if not self._is_hash_value_from_result(hash_value):
+            return
+        self._add_hash_value(hash_value)
+        return True
+
+
+
 
 
     def _has_changes_for_pointer(self, hash_value: int):
@@ -2194,8 +2265,6 @@ class BaseResult(ABC, ResultCacheTools):
     def items(self):
         self.__merged_data = self._merge()
         self._save_result_collection(self.__merged_data)
-        self._set_all_hash_from_results(self.__merged_data)
-        self._set_all_hash_items(self.__merged_data)
         return self.__merged_data
 
     @property
@@ -2205,16 +2274,13 @@ class BaseResult(ABC, ResultCacheTools):
     @pointer.setter
     def pointer(self: Union["Result", "JoinSelectResult"], wrap_items: list):
         items = self.items
-        self._set_all_hash_from_results(items)
         self._save_result_collection(items)
-        self._set_all_hash_items(items)
+        self._set_hash(items)
         self._pointer = Pointer(self, wrap_items, self._merge)
 
     def __iter__(self):
         self.__merged_data = self._merge()
         self._save_result_collection(self.__merged_data)
-        self._set_all_hash_from_results(self.__merged_data)
-        self._set_all_hash_items(self.__merged_data)
         return iter(self.__merged_data)
 
     def __len__(self):
