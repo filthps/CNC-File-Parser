@@ -99,6 +99,7 @@ class LinkedList:
         if self:
             last_elem = self._tail
             self.__set_next(last_elem, new_element)
+            self.__set_prev(new_element, last_elem)
             self._tail = new_element
         else:
             self._head = self._tail = new_element
@@ -112,8 +113,15 @@ class LinkedList:
             self._head = self._tail = node
             return
         first_elem = self._head
+        if self._head == self._tail:
+            node.index = 0
+            first_elem.index = 1
+        first_elem = self._head
         self._head = node
         node.next = first_elem
+        first_elem.prev = node
+        node.index = first_elem.index
+        self.__incr_indexes(first_elem)
 
     def replace(self, old_node: LinkedListItem, new_node: LinkedListItem):
         if not isinstance(old_node, self.LinkedListItem) or not isinstance(new_node, self.LinkedListItem):
@@ -124,7 +132,7 @@ class LinkedList:
             self._head = self._tail = new_node
             return
         next_node = old_node.next
-        previous_node = old_node.prev()
+        previous_node = old_node.prev
         if old_node.index == len(self) - 1:
             self._tail = new_node
         if old_node.index == 0:
@@ -157,10 +165,6 @@ class LinkedList:
             self._head = self._tail = new_element
 
     def __delitem__(self, index):  # O(n)
-        def decr_index_for_nex_items(cur_item: LinkedListItem):  # O(n)
-            while cur_item is not None:
-                cur_item.index -= 1
-                cur_item = cur_item.next
         index = self.__support_negative_index(index)
         self._is_valid_index(index)
         if not index:
@@ -172,7 +176,7 @@ class LinkedList:
             if next_item is None:
                 self._tail = None
             else:
-                decr_index_for_nex_items(next_item)
+                self.__decr_indexes(next_item)
             self._head = next_item
             return item
         item_prev = self.__forward_move(index - 1)
@@ -190,7 +194,7 @@ class LinkedList:
         next_item = current_item.next
         current_item.next = None
         item_prev.next = next_item
-        decr_index_for_nex_items(current_item)
+        self.__decr_indexes(current_item)
         return current_item
 
     def __iter__(self):
@@ -212,7 +216,7 @@ class LinkedList:
         self._tail = new_tail
 
     def __len__(self):
-        return sum(tuple(1 for _ in self))
+        return sum((1 for _ in self))
 
     def __bool__(self):
         try:
@@ -232,14 +236,11 @@ class LinkedList:
                 return True
         return False
 
-    def _is_valid_index(self, index) -> Optional[Exception]:
+    def _is_valid_index(self, index):
         if not isinstance(index, int):
             raise TypeError
-        if not self and not index:
+        if self._tail is None:
             return
-        if not self:
-            if not index == 0:
-                raise IndexError
         if index not in range(self._tail.index + 1):
             raise IndexError
 
@@ -258,12 +259,24 @@ class LinkedList:
 
     def __forward_move(self, index=-1):
         element = self._head
-        for _ in range(len(self) - 1 if index == -1 else index):
-            try:
-                element = element.next
-            except AttributeError:
+        for _ in range(self.__support_negative_index(index)):
+            next_element = element.next
+            if next_element is None:
                 raise IndexError
+            element = next_element
         return element
+
+    @staticmethod
+    def __incr_indexes(node):
+        while node is not None:
+            node.index += 1
+            node = node.next
+
+    @staticmethod
+    def __decr_indexes(node):
+        while node is not None:
+            node.index -= 1
+            node = node.next
 
     @staticmethod
     def __gen(start_item: Optional[LinkedListItem] = None) -> Iterator:
