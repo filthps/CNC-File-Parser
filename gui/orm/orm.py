@@ -2144,59 +2144,45 @@ class ResultCacheTools(ORMHelper):
         В дальнейшем из него можно будет доставать первичные ключи """
         cls.cache.set(cls.RESULT_CACHE_KEY, items, cls.CACHE_LIFETIME_HOURS)
 
-    def _set_hash(self, data: Union[tuple[ResultORMCollection], ResultORMCollection]):
-        self.cache.set(self.__key, set(map(str, map(hash, data))))
-        self.__add_values_in_all_hash_items(data)
+    def _set_hash(self, nodes):
+        hash_sum = set(map(str, map(hash, nodes)))
+        self.cache.set(self.__key, hash_sum)
+        self._add_to_all_nodes_has_been_in_result(hash_sum)
 
-    def _get_hash(self):
+    def _add_hash_item(self, value):
+        self.__is_valid_hash_key(value)
+        current_hash = self._get_hash()
+        current_hash.add(value)
+        self.cache.set(self.__key, current_hash)
+
+    def _get_hash(self) -> set[str]:
         return self.cache.get(self.__key, set())
 
-    def _add_hash_value(self, val):
-        self.__is_valid_hash_key(val)
-        current = self._get_hash()
-        current.add(val)
-        self.cache.set(self.__key, current)
+    def _is_node_has_been_in_result(self, value):
+        """ Была ли данная нода(её хеш-сумма) в результатах когда-либо ранее"""
+        self.__is_valid_hash_key(value)
+        return value in self.__get_all_nodes_has_been_in_result()
 
+    def _add_to_all_nodes_has_been_in_result(self, items: Iterable[str]):
+        [self.__is_valid_hash_key(i) for i in items]
+        checked = self.__get_all_nodes_has_been_in_result()
+        checked.update(items)
+        self.cache.set(f"{self.__key}-all", checked)
 
-    def _is_hash_value_from_result(self, hash_value):
-        """ Была ли данная хеш-сумма в результатах когда-либо """
-        self.__is_valid_hash_key(hash_value)
-        current_items = self.cache.get(f"{self.__key}-cur", set())
-        if hash_value in current_items:
-            return True
-        return False
+    def _is_hash_from_checked(self, val):
+        return val in self.cache.get(f"{self.__key}-checked", set())
 
-    def _get_checked_hash_items(self) -> set:
+    def _add_hash_to_checked(self, values):
+        [self.__is_valid_hash_key(n) for n in values]
+        checked = self._get_checked_hash_items()
+        checked.update(values)
+        self.cache.set(f"{self.__key}-checked", checked)
+
+    def _get_checked_hash_items(self):
         return self.cache.get(f"{self.__key}-checked", set())
 
-    def _add_nodes_to_checked(self, nodes):
-        checked = self._get_checked_hash_items()
-        checked.update(set(map(str, map(hash, nodes))))
-        self.cache.set(f"{self.__key}-checked", checked)
-
-    def _remove_hash_value_from_checked(self, h_val):
-        self.__is_valid_hash_key(h_val)
-        checked = self._get_checked_hash_items()
-        if h_val in checked:
-            checked.remove(h_val)
-        self.cache.set(f"{self.__key}-checked", checked)
-
-    def _remove_nodes_from_checked(self, nodes):
-        checked = self._get_checked_hash_items()
-        current = set(map(str, map(hash, nodes)))
-        result = checked & current
-        if result:
-            other = checked.difference(result)
-            if other:
-                self.cache.set(f"{self.__key}-checked", other)
-                return
-            self.cache.delete(f"{self.__key}-checked")
-
-    def __add_values_in_all_hash_items(self, data):
-        """ Запоминать все хеш-элементы, чтобы потом отличить их от посторонних, которых никогда не было в результатах"""
-        current_values: set = self.cache.get(f"{self.__key}-cur", set())
-        current_values.update(set(map(str, map(hash, data))))
-        self.cache.set(f"{self.__key}-cur", current_values)
+    def __get_all_nodes_has_been_in_result(self) -> set:
+        return self.cache.get(f"{self.__key}-all", set())
 
     @staticmethod
     def __is_valid_hash_key(hash_key):
@@ -2238,28 +2224,24 @@ class BaseResult(ABC, ResultCacheTools):
                 raise TypeError
             hash_value = str(hash_value)
         nodes = self.items
-        actual_hash_sum = list(map(str, map(hash, nodes)))
         if hash_value is None:
             old_hash = self._get_hash()
+            new_hash = set(map(str, map(hash, nodes))) - self._get_checked_hash_items()
             self._set_hash(nodes)
-            if not frozenset(actual_hash_sum) == frozenset(old_hash):
+            if not new_hash:
+                return False
+            if not new_hash == old_hash:
                 return True
             return False
-        if hash_value in actual_hash_sum:
+        self._set_hash(nodes)
+        if self._is_hash_from_checked(hash_value):
             return False
-        if not self._is_hash_value_from_result(hash_value):
+        if hash_value in map(str, map(hash, nodes)):
+            return False
+        if not self._is_node_has_been_in_result(hash_value):
             return
-        self._add_hash_value(hash_value)
+        self._add_hash_to_checked([hash_value])
         return True
-
-
-
-
-
-    def _has_changes_for_pointer(self, hash_value: int):
-        if type(hash_value) is not int:
-            raise TypeError
-        primary_key = self._get_hash()
 
     @property
     def items(self):
@@ -2444,8 +2426,6 @@ class JoinSelectResult(OrderByJoinResultMixin, BaseResult, ModelTools):
         else:
             result = tuple(self._merge())
             self._save_result_collection(result)
-            self._set_all_hash_from_results(result)
-            self._set_all_hash_items(result)
         return result
 
     def __getitem__(self, item: int) -> SpecialOrmContainer:
@@ -2635,7 +2615,7 @@ class Pointer(PointerCacheTools):
         hash_sum = [int(val) for val in self._get_hash_sum()]
         hash_names_map = {name:  hash_sum[index] for index, name in enumerate(self._get_wrappers())}
         self._set_pointer_configuration(self._create_cache_data(items=result))
-        return self._result_item.has_changes(hash_value=hash_names_map[name], _nodes=result)
+        return self._result_item.has_changes(hash_value=hash_names_map[name])
 
     def __getitem__(self, item: str) -> Optional[Union[ResultORMItem, ResultORMCollection]]:
         if not isinstance(item, str):

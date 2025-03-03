@@ -795,15 +795,20 @@ class TestORMHelper(unittest.TestCase, SetUp):
         pk_1_index = select_result.items[1].get_primary_key_and_value()
         hash_from_cncid0 = hash(select_result.items[0])
         hash_from_cncid1 = hash(select_result.items[1])
+        self.assertFalse(select_result.has_changes())
         self.orm_manager.set_item(_model=Cnc, **pk_0_index, name="newtestname", _update=True)
         self.assertTrue(select_result.has_changes(hash_from_cncid0))
         self.assertFalse(select_result.has_changes(hash_from_cncid1))
+        self.assertFalse(select_result.has_changes())
         self.orm_manager.set_item(_model=Cnc, name="testname", _update=True, **pk_1_index)
         self.assertTrue(select_result.has_changes(hash_from_cncid1))
         self.assertFalse(select_result.has_changes())
         self.assertFalse(select_result.has_changes())
-        self.orm_manager.set_item(_model=Cnc, name="ame", _insert=True, cncid=2)
+        self.orm_manager.set_item(_model=Cnc, _insert=True, name="newname")
+        new_hash_val = select_result.items[-1].__hash__()
         self.assertTrue(select_result.has_changes())
+        self.assertFalse(select_result.has_changes(new_hash_val))
+        self.assertFalse(select_result.has_changes())
 
     @drop_cache
     @db_reinit
