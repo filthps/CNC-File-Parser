@@ -16,9 +16,24 @@ class PointerException(ORMException):
         super().__init__(text)
 
 
+class PointerEmptyWrapper(PointerException):
+    def __init__(self, val="Контейнер wrappers пуст"):
+        super().__init__(val)
+
+
+class PointerWrapperTypeError(PointerException):
+    def __init__(self, value=""):
+        super().__init__(text=value)
+
+
 class PointerWrapperLengthError(PointerException):
     def __init__(self, text="Длина элементов в wrap_items больше не соответствует длине результатов"):
         super().__init__(text)
+
+
+class PointerRepeatedWrapper(PointerException):
+    def __init__(self, t="В конфигурации данного Pointer есть 1 или более повторяющееся значение в элементах обёртки"):
+        super().__init__(text=t)
 
 
 class ORMInitializationError(ORMException):

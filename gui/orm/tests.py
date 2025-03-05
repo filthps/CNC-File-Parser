@@ -11,16 +11,12 @@
     База данных, её соответствие модели ACID, тестируется отдельными тестами!
 """
 import unittest
-import datetime
 import time
 from sqlalchemy import func, select, text
 from database.models import *
 from database.procedures import init_all_triggers
 from gui.datatype import LinkedList
 from orm import *
-
-
-DEBUG = True
 
 
 def is_database_empty(session, empty=True, tables=15, procedures=52, test_db_name="testdb"):
@@ -95,9 +91,12 @@ class SetUp:
         self.orm_manager.set_item(_model=Cnc, _insert=True, cncid=1, name="Newcnc", commentsymbol="!")
         self.orm_manager.set_item(_model=Machine, machineid=2, cncid=2, machinename="Fidia", inputcatalog=r"D:\Heller",
                                   outputcatalog=r"C:\Test", _insert=True)
-        self.orm_manager.set_item(_model=Machine, machinename="Tesm", _insert=True, machineid=1, cncid=1)
-        self.orm_manager.set_item(_model=Machine, machinename="65A90", _insert=True)
-        self.orm_manager.set_item(_model=Machine, machinename="Rambaudi", _insert=True)
+        self.orm_manager.set_item(_model=Machine, machinename="Tesm", _insert=True, machineid=1, cncid=1, inputcatalog=r"D:\Test",
+                                  outputcatalog=r"C:\anef")
+        self.orm_manager.set_item(_model=Machine, machinename="65A90", _insert=True, inputcatalog=r"D:\Test",
+                                  outputcatalog=r"C:\anef")
+        self.orm_manager.set_item(_model=Machine, machinename="Rambaudi", _insert=True, inputcatalog=r"D:\Test",
+                                  outputcatalog=r"C:\anef")
 
     def update_exists_items(self):
         self.orm_manager.set_item(cncid=1, name="nameeg", _model=Cnc, _update=True)
@@ -548,7 +547,7 @@ class TestORMHelper(unittest.TestCase, SetUp):
         with self.orm_manager.database as session:
             session.add(Machine(machinename="Test", inputcatalog=r"C:\Test", outputcatalog="C:\\TestPath"))
             session.commit()
-        self.assertEqual(self.orm_manager.database.execute("SELECT COUNT(machineid) FROM machine").scalar(), 1)
+        self.assertEqual(self.orm_manager.database.execute(text("SELECT COUNT(machineid) FROM machine")).scalar(), 1)
         data = self.orm_manager.database.execute(select(Machine).filter_by(machinename="Test")).scalar().__dict__
         self.assertEqual(data["machinename"], "Test")
         self.assertEqual(data["inputcatalog"], "C:\\Test")
@@ -601,7 +600,8 @@ class TestORMHelper(unittest.TestCase, SetUp):
         self.assertEqual(self.orm_manager.items[2].value["operationdescription"], "text")
         self.orm_manager.set_item(_insert=True, _model=Condition, findfull=True, parentconditionbooleanvalue=True)
         self.assertEqual(self.orm_manager.items.__len__(), 4)
-        self.orm_manager.set_item(_delete=True, machinename="Some_name", _model=Machine)
+        self.orm_manager.set_item(_delete=True, machinename="Some_name", _model=Machine, inputcatalog=r"D:\Test",
+                                  outputcatalog=r"C:\anef")
         self.orm_manager.set_item(_delete=True, machinename="Some_name_2", _model=Machine)
         time.sleep(3)
         result = self.orm_manager.get_items(_model=Machine, machinename="Helller", _db_only=True)
@@ -652,14 +652,14 @@ class TestORMHelper(unittest.TestCase, SetUp):
         # Элементы с _delete=True игнорируются в выборке через метод get_items,- согласно замыслу
         # Тем не менее, в очереди они должны присутствовать: см свойство items
 
-        self.orm_manager.set_item(_model=Machine, machinename="Fidia", inputcatalog="C:\\path", _insert=True)
+        self.orm_manager.set_item(_model=Machine, machinename="Fidia", inputcatalog="C:\\path", _insert=True, outputcatalog=r"T:\ddfg")
         self.assertEqual(self.orm_manager.get_items(_model=Machine).__len__(), 1)
         self.orm_manager.set_item(_model=Condition, condinner="text", less=True, _insert=True)
         self.orm_manager.set_item(_model=Cnc, name="Fid", cncid=3, commentsymbol="$", _update=True)
         self.assertEqual(self.orm_manager.get_items(_model=Machine).__len__(), 1)
         self.assertEqual(self.orm_manager.get_items(_model=Condition).__len__(), 1)
         self.assertEqual(self.orm_manager.get_items(_model=Cnc).__len__(), 1)
-        self.orm_manager.set_item(_model=Machine, machinename="Fidia", inputcatalog="C:\\pathnew", _update=True)
+        self.orm_manager.set_item(_model=Machine, machinename="Fidia", inputcatalog="C:\\pathnew", _update=True, outputcatalog=r"T:\name")
 
     @drop_cache
     @db_reinit
@@ -786,7 +786,7 @@ class TestORMHelper(unittest.TestCase, SetUp):
 
     @drop_cache
     @db_reinit
-    def test_single_select__has_changes(self):
+    def test_has_changes(self):
         self.set_data_into_database()
         self.set_data_into_queue()
         select_result = self.orm_manager.get_items(Cnc)
@@ -796,15 +796,15 @@ class TestORMHelper(unittest.TestCase, SetUp):
         hash_from_cncid0 = hash(select_result.items[0])
         hash_from_cncid1 = hash(select_result.items[1])
         self.assertFalse(select_result.has_changes())
-        self.orm_manager.set_item(_model=Cnc, **pk_0_index, name="newtestname", _update=True)
+        self.orm_manager.set_item(_model=Cnc, **pk_0_index, name="newtestname", _update=True, commentsymbol="$")
         self.assertTrue(select_result.has_changes(hash_from_cncid0))
         self.assertFalse(select_result.has_changes(hash_from_cncid1))
         self.assertFalse(select_result.has_changes())
-        self.orm_manager.set_item(_model=Cnc, name="testname", _update=True, **pk_1_index)
+        self.orm_manager.set_item(_model=Cnc, name="testname", _update=True, **pk_1_index, commentsymbol="^")
         self.assertTrue(select_result.has_changes(hash_from_cncid1))
         self.assertFalse(select_result.has_changes())
         self.assertFalse(select_result.has_changes())
-        self.orm_manager.set_item(_model=Cnc, _insert=True, name="newname")
+        self.orm_manager.set_item(_model=Cnc, _insert=True, name="newname", commentsymbol="&")
         new_hash_val = select_result.items[-1].__hash__()
         self.assertTrue(select_result.has_changes())
         self.assertFalse(select_result.has_changes(new_hash_val))
@@ -844,7 +844,121 @@ class TestORMHelper(unittest.TestCase, SetUp):
 
     @drop_cache
     @db_reinit
-    def test_join_select_pointer_instance(self):
+    def test_has_new_entries(self):
+        result = self.orm_manager.get_items(Numeration)
+        self.assertFalse(result.has_new_entries())
+        self.orm_manager.set_item(_model=Numeration, _insert=True)
+        self.assertTrue(result.has_new_entries())
+        self.assertFalse(result.has_new_entries())
+        self.assertFalse(result.has_new_entries())
+        self.assertFalse(result.has_new_entries())
+        self.orm_manager.set_item(_model=Numeration, _insert=True, numerationid=2)
+        self.assertTrue(result.has_new_entries())
+        self.assertFalse(result.has_new_entries())
+
+    @drop_cache
+    @db_reinit
+    def test_has_new_entries_join_select(self):
+        result = self.orm_manager.join_select(Cnc, Machine, on={"Machine.cncid": "Cnc.cncid"})
+        self.assertFalse(result.has_new_entries())
+        self.orm_manager.set_item(_model=Cnc, name="Test", _insert=True)
+        self.orm_manager.set_item(_model=Machine, machinename="newmachine", _insert=True, machineid=1)
+        # В тесте ниже возвращаемый результат - False, потому как, несмотря на то,
+        # что мы добавили 2 записи, они не указывают друг на друга по внешнему ключу
+        self.assertFalse(result.has_new_entries())
+        # Добавим связь и убедимся, что результатом на наш запрос вернётся - True
+        self.orm_manager.set_item(_model=Machine, machinename="newmachine", _update=True, cncid=1)
+        self.assertTrue(result.has_new_entries())
+        self.assertFalse(result.has_new_entries())
+        self.orm_manager.set_item(_model=Machine, machinename="othermachine", _insert=True, cncid=2)  # cncid==2 на след строке
+        self.orm_manager.set_item(_model=Cnc, name="Test_new", _insert=True)
+        self.assertTrue(result.has_new_entries())
+        self.assertFalse(result.has_new_entries())
+        self.assertFalse(result.has_new_entries())
+        # Разъединим связь machineid==1 и cncid=1 и убедимся, что появились изменения
+        self.orm_manager.set_item(_model=Machine, machineid=1, _update=True, cncid=None)
+        self.assertTrue(result.has_new_entries())
+
+
+class TestResultPointer(unittest.TestCase, SetUp):
+    def setUp(self) -> None:
+        ORMHelper.TESTING = True
+        ORMHelper.CACHE_LIFETIME_HOURS = 60
+        self.orm_manager = ORMHelper
+
+    @drop_cache
+    @db_reinit
+    def test_pointer(self):
+        from itertools import repeat
+        self.set_data_into_database()
+        self.set_data_into_queue()
+        result = self.orm_manager.get_items(Machine)
+        with self.assertRaises(PointerRepeatedWrapper):
+            result.pointer = tuple(repeat("any_str", 10))  # 1 или более повторяющихся элементов обёртки
+        with self.assertRaises(PointerRepeatedWrapper):
+            result.pointer = tuple(repeat("r", 2))  # 1 или более повторяющихся элементов обёртки
+        with self.assertRaises(PointerRepeatedWrapper):
+            result.pointer = tuple(repeat("any_s", 4))  # 1 или более повторяющихся элементов обёртки
+        with self.assertRaises(PointerWrapperLengthError):
+            result.pointer = ("Станок 1", "Станок 2", "Станок 3", "Станок 4", "Станка 5 нету этот лишний")
+        with self.assertRaises(PointerWrapperLengthError):
+            result.pointer = ("Станок 1", "Станок 2")  # Не хватает 2 элементов в списке!
+        with self.assertRaises(PointerWrapperLengthError):
+            result.pointer = tuple()
+        with self.assertRaises(PointerWrapperTypeError):
+            result.pointer = ""
+        with self.assertRaises(PointerWrapperTypeError):
+            result.pointer = 9
+        with self.assertRaises(PointerWrapperTypeError):
+            result.pointer = b"st"
+        with self.assertRaises(PointerWrapperTypeError):
+            result.pointer = 0
+        result.pointer = ("Станок 1", "Станок 2", "Станок 3", "Станок 4")  # GOOD Теперь
+        # До тех пор, пока не появятся новые записи, или, пока не удалится одна/несколько/все из текущих,
+        # Есть возможность удобного обращения через __getitem__!
+        self.assertEqual(result.pointer.wrap_items, ("Станок 1", "Станок 2", "Станок 3", "Станок 4"))
+        self.assertIsInstance(result.pointer.items, dict)
+        self.assertEqual(4, result.pointer.items.__len__())
+        #
+        # Пока мы ничего не изменяли столбцы(или не добавляли новые) отслеживаемых через Pointer() нод,
+        # мы логично получим ответ False,
+        # После вызова метода has_changes
+        self.assertFalse(result.pointer.has_changes("Станок 1"))
+        self.assertFalse(result.pointer.has_changes("Станок 3"))
+        self.assertFalse(result.pointer.has_changes("Станок 2"))
+        self.assertFalse(result.pointer.has_changes("Станок 4"))
+        self.assertTrue(result.pointer)
+        # А теперь изменим сами(со стороны нашего ui) первую запись, которая ассоциируется со 'Станок 1'
+        self.orm_manager.set_item(Machine, machineid=2, machinename="test",
+                                  _update=True)
+        self.assertTrue(result.pointer)
+        self.assertFalse(result.pointer.has_changes("Станок 3"))
+        self.assertFalse(result.pointer.has_changes("Станок 2"))
+        self.assertFalse(result.pointer.has_changes("Станок 4"))
+        self.assertTrue(result.pointer.has_changes("Станок 1"))  # Как и ожидалось!!!
+        # После появления в локальной очереди или базе данных новой записи
+        self.orm_manager.set_item(_model=Machine, machinename="somenewmachinename", _insert=True)
+        # Экземпляр станет недействителен и станет закрыт для любого взаимодействия
+        # Убедимся, что экземпляр pointer "перестал со мной сотрудничать"
+        self.assertIsNone(result.pointer.items)
+        self.assertFalse(result.pointer)
+        self.assertEqual(0, result.pointer.__len__())
+        self.assertIsNone(result.pointer.has_changes("Станок 1"))
+        self.assertIsNone(result.pointer.has_changes("Станок 3"))
+        self.assertIsNone(result.pointer.has_changes("Станок 2"))
+        self.assertIsNone(result.pointer.has_changes("Станок 4"))
+        with self.assertRaises(KeyError):  # А вот такого вообще не было в текущем wrapper
+            self.assertIsNone(result.pointer.has_changes("Станок 5"))
+        # С ним покончено((((
+        # К счастью, текущий экземпляр result может получить новый pointer!, для этого
+        # Нужно снова ассоциировать с сеттером pointer правильный кортеж(по длине) и содержимому без повторений
+        result.pointer = ("Станок 1", "Станок 2", "Станок 3", "Станок 4", "Станок 5")
+        print(result.pointer["Станок 5"])  # machinename="somenewmachinename" строка 921!
+        self.assertEqual(result.pointer["Станок 5"]["machinename"], "somenewmachinename")
+
+    @drop_cache
+    @db_reinit
+    def test_join_select_pointer(self):
         """ Тестирование Pointer
         Pointer нужен для связывания данных на стороне UI с готовыми инструментами для повторного запроса на эти данные,
         тем самым перекладывая часть рутинной работы с UI на ORM.
@@ -852,11 +966,11 @@ class TestORMHelper(unittest.TestCase, SetUp):
         self.set_data_into_database()
         self.set_data_into_queue()
         result = self.orm_manager.join_select(Machine, Cnc, on={"Machine.cncid": "Cnc.cncid"})
-        result.pointer = ["Результат в списке 1", "Результат в списке 2"]
+        result.pointer = ("Результат в списке 1", "Результат в списке 2")
         #
         # Тест wrap_items
         #
-        self.assertEqual(result.pointer.wrap_items, ["Результат в списке 1", "Результат в списке 2"])
+        self.assertEqual(result.pointer.wrap_items, ("Результат в списке 1", "Результат в списке 2"))
         #
         #  Тестировать refresh
         #
@@ -880,6 +994,7 @@ class TestORMHelper(unittest.TestCase, SetUp):
         self.assertFalse(result.pointer.has_changes("Результат в списке 1"))
 
 
+"""  not supported - ver 1.
 class TestQueueOrderBy(unittest.TestCase, SetUp):
     def setUp(self) -> None:
         ORMHelper.TESTING = True
@@ -969,5 +1084,4 @@ class TestQueueOrderBy(unittest.TestCase, SetUp):
         container = self.orm_manager.items
         container.order_by(Machine, by_create_time=True)
         print(container.search_nodes(Machine))
-
-
+"""
