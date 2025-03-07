@@ -1,16 +1,15 @@
 import os
-import datetime
 import itertools
 from uuid import uuid4
 from dotenv import load_dotenv
-from sqlalchemy import String, Integer, Column, ForeignKey, Boolean, SmallInteger, Text, CheckConstraint, DateTime
-from sqlalchemy.orm import relationship, InstrumentedAttribute
-from flask_sqlalchemy import SQLAlchemy as FlaskSQLAlchemy
 from flask import Flask
+from sqlalchemy import String, Integer, Column, ForeignKey, Boolean, SmallInteger, Text, CheckConstraint
+from sqlalchemy.orm import relationship
+from flask_sqlalchemy import SQLAlchemy as FlaskSQLAlchemy
+from orm
 
 
 load_dotenv(os.path.join(os.path.dirname(__file__), "database.env"))
-RESERVED_WORDS = ("__insert", "__update", "__delete", "__ready", "__model", "column_names")  # Используются в классе ORMHelper
 DATABASE_PATH = os.environ.get("DATABASE_PATH")
 
 
@@ -22,45 +21,6 @@ def create_app(path=None, app_name=None):
 
 app = create_app()
 db = FlaskSQLAlchemy(app)
-
-
-class ModelController:
-    __table__ = ...
-    column_names = ...
-
-    def __new__(cls, **k):
-        cls.column_names = {}  # Если база данных инициализирована вручную, средствами sql,
-        # то заполнить даный словарь вручную
-
-        def check_class_attributes():
-            """ Предотвратить использование заерезервированных в классе ORMHelper слов """
-            for special_word in RESERVED_WORDS:
-                if hasattr(cls, f"__{cls.__name__}{special_word}"):
-                    raise AttributeError(
-                        f"Не удалось инциализировать класс-модель {cls.__name__}. "
-                        f"Атрибут {special_word} использовать нельзя, тк он зарезервирован."
-                    )
-
-        def collect_column_attributes():
-            """ Собрать в атрибут класса column_names все имена стоблцов таблицы """
-            column_names = cls.column_names
-            for value in cls.__dict__.values():
-                if type(value) is InstrumentedAttribute and hasattr(value.expression, "name"):
-                    column_names.update({value.expression.name: {"type": value.expression.type.python_type,
-                                                                 "nullable": value.expression.nullable,
-                                                                 "primary_key": value.expression.primary_key,
-                                                                 "autoincrement": True if not value.expression.autoincrement == "auto" else False,
-                                                                 "unique": value.expression.unique,
-                                                                 "default": value.expression.default}})  # todo: Доработать остальные аналоги default, согласно документации https://docs.sqlalchemy.org/en/20/core/defaults.html
-                    if hasattr(value, "length"):
-                        column_names[value.expression.name].update({"length": value.length})
-
-        def collect_foreign_keys():
-            cls.foreign_keys = tuple(cls.__table__.foreign_keys)
-        check_class_attributes()
-        collect_column_attributes() if not cls.column_names else None
-        collect_foreign_keys()
-        return super().__new__(cls)
 
 
 def get_uuid():
@@ -75,23 +35,7 @@ OPERATION_TYPES = (
     ("uc", "Раскомментировать"),
 )
 
-
-#  class CustomModel(ModelController, db.Model):
-class CustomModel(ModelController):
-    """
-    Абстрактный класс для аннотации типов.
-    класс модели SQLAlchemy для использования в классе ORMHelper модуля tools!
-    Атрибут класса __tablename__ обязателен!
-    Остальные атрибуты, ЕСЛИ БАЗА ДАННЫХ ИНИЦИАЛИРОВАНА ОТДЕЛЬНО, не нужны
-    """
-    __tablename__ = "test_table"
-    some_column = ...  # Column(Integer, primary_key=True))
-
-
-class GlobalFields:
-    _create_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
-
-
+"""
 class TaskDelegation(ModelController, db.Model, GlobalFields):
     __tablename__ = "taskdelegate"
     id = Column(String, primary_key=True, default=get_uuid)
@@ -367,3 +311,4 @@ def create_db():
 if __name__ == "__main__":
     drop_db()
     create_db()
+"""

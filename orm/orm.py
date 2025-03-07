@@ -1,9 +1,16 @@
 """
+Перед началом использования данного модуля следует разобраться с моделями, описанными в модуле models данного пакета.
+Модели
 Основные положения
-Для конечного пользования применяются только методы set_item, get_item 
-### insert новой записи через set_item:
+Для конечного пользования применяются только методы set_item, get_items
+### insert/update/delete(DML) новой записи через set_item:
     - pk передан явно
-    - генерится автоинкрементивный ключ, который не пойдёт в insert запись
+    - генерится автоинкрементивный ключ, который не пойдёт в insert запись, если autoincrement=True
+    - в целевой таблице, как и в ноде присутствует столбец unique=True,
+    тогда запись с таким столбцом и значением будет искаться сначала в локалаьной очереди, а затем и в базе данных.
+### get_items и join_select
+    Возвращает экземпляр Result и JoinSelectResult соотвественно.
+    Выполняет 2 запроса: 1 в базу данных, второй в локальную очередь. Полученные записи накладываются друг на друг
 """
 import sys
 import copy
@@ -19,7 +26,7 @@ import uuid
 from itertools import zip_longest
 from abc import ABC, abstractmethod, abstractproperty
 from weakref import ref, ReferenceType
-from typing import Union, Iterator, Iterable, Optional, Literal, Type, Any, Sequence, Callable
+from typing import Union, Iterator, Iterable, Optional, Literal, Type, Any
 from collections import ChainMap
 from pymemcache.client.base import Client
 from pymemcache.exceptions import MemcacheError
@@ -32,7 +39,6 @@ from sqlalchemy.orm import Query, sessionmaker as session_factory, Session, scop
 from sqlalchemy.exc import DisconnectionError, OperationalError, SQLAlchemyError
 from gui.datatype import LinkedList, LinkedListItem
 from database.models import RESERVED_WORDS, CustomModel, ModelController, DATABASE_PATH
-from gui.orm.exceptions import *
 
 
 class ORMAttributes:
