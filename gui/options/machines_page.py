@@ -5,7 +5,7 @@ from PySide2.QtCore import Slot
 from PySide2.QtWidgets import QListWidgetItem, QLineEdit, QComboBox
 from PySide2.QtWidgets import QFileDialog
 from gui.validation import Validator
-from database.models import Cnc, Machine
+from orm.db.models import Cnc, Machine
 from gui.orm import orm
 from gui.ui import Ui_main_window as Ui
 from gui.tools import Constructor, Tools

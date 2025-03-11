@@ -12,11 +12,11 @@
 """
 import unittest
 import time
-from sqlalchemy import func, select, text
-from database.models import *
-from database.procedures import init_all_triggers
+from typing import Optional
+from sqlalchemy import select, text
+from orm.db.procedures import init_all_triggers
 from gui.datatype import LinkedList
-from orm import *
+from orm.db.models import *
 
 
 def is_database_empty(session, empty=True, tables=15, procedures=52, test_db_name="testdb"):

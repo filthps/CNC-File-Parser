@@ -7,7 +7,7 @@ from PySide2.QtWidgets import QButtonGroup, QMainWindow, QListWidget, QListWidge
 from PySide2.QtCore import Slot, Qt
 from PySide2.QtGui import QSyntaxHighlighter
 from gui.tools import JoinedModelTools, Constructor, MyAbstractDialog
-from database.models import Condition, HeadVarible, HeadVarDelegation, SearchString
+from orm.db.models import Condition, HeadVarible, HeadVarDelegation, SearchString
 from gui.orm.orm import JoinSelectResult, ORMHelper, ResultORMCollection
 from gui.ui import Ui_main_window as Ui
 from gui.validation import Validator

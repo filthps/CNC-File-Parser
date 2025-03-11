@@ -1,17 +1,12 @@
 import os
-import threading
-from typing import Union, Iterator, Optional, Sequence, Callable
+from typing import Union, Iterator, Optional, Sequence
 from itertools import count, cycle, repeat
-from PySide2.QtCore import Qt, QPoint, QSize
-from PySide2.QtCore import QObject, QThread, QRunnable, QThreadPool
-from PySide2.QtCore import Signal, Slot, SIGNAL
-from PySide2.QtGui import QPixmap, QPainter, QPalette, QFont
-from PySide2.QtWidgets import QMainWindow, QTabWidget, QStackedWidget, QPushButton, QDialogButtonBox,\
+from PySide2.QtCore import Qt
+from PySide2.QtWidgets import QPushButton, QDialogButtonBox,\
     QDialog, QLabel, QVBoxLayout, QLineEdit, \
-    QComboBox, QRadioButton, QSplashScreen
+    QComboBox, QRadioButton
 from PySide2.QtGui import QIcon
 from gui.ui import Ui_main_window as Ui
-from database.models import CustomModel
 from orm.orm import ResultORMItem, ResultORMCollection
 
 

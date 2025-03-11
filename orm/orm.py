@@ -38,7 +38,7 @@ from sqlalchemy.sql.expression import select
 from sqlalchemy.orm import Query, sessionmaker as session_factory, Session, scoped_session
 from sqlalchemy.exc import DisconnectionError, OperationalError, SQLAlchemyError
 from gui.datatype import LinkedList, LinkedListItem
-from database.models import RESERVED_WORDS, CustomModel, ModelController, DATABASE_PATH
+from orm.db.models import RESERVED_WORDS, CustomModel, ModelController, DATABASE_PATH
 
 
 class ORMAttributes:

@@ -1,14 +1,12 @@
 """ Тесты рассчитаны под PostreSQL диалект! """
 import time
 import unittest
-import sys
-from psycopg2.errors import RaiseException
 from sqlalchemy.engine import create_engine
 from sqlalchemy.sql import select
 from sqlalchemy.orm.session import sessionmaker
 from sqlalchemy.exc import InternalError, IntegrityError, PendingRollbackError
-from database.procedures import init_all_triggers
-from .models import db, Cnc, Machine, Comment, Insert, Uncomment, Rename, Condition, Replace, Numeration, Remove, \
+from orm.db.procedures import init_all_triggers
+from orm.db.models import db, Cnc, Machine, Comment, Insert, Uncomment, Rename, Condition, Replace, Numeration, Remove, \
     OperationDelegation, HeadVarible, HeadVarDelegation, TaskDelegation, ModelController, DATABASE_PATH_FOR_TESTS
 
 

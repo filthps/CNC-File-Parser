@@ -1,7 +1,7 @@
-from typing import Optional, Iterator
+from typing import Optional
 from PySide2.QtCore import Slot
 from PySide2.QtWidgets import QListWidgetItem, QLineEdit, QTextEdit
-from database.models import Cnc
+from orm.db.models import Cnc
 from gui.orm import orm
 from gui.tools import Constructor, Tools
 from gui.ui import Ui_main_window

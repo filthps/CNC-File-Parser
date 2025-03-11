@@ -6,7 +6,6 @@ from flask import Flask
 from sqlalchemy import String, Integer, Column, ForeignKey, Boolean, SmallInteger, Text, CheckConstraint
 from sqlalchemy.orm import relationship
 from flask_sqlalchemy import SQLAlchemy as FlaskSQLAlchemy
-from orm
 
 
 load_dotenv(os.path.join(os.path.dirname(__file__), "database.env"))
@@ -35,7 +34,7 @@ OPERATION_TYPES = (
     ("uc", "Раскомментировать"),
 )
 
-"""
+
 class TaskDelegation(ModelController, db.Model, GlobalFields):
     __tablename__ = "taskdelegate"
     id = Column(String, primary_key=True, default=get_uuid)
@@ -311,4 +310,3 @@ def create_db():
 if __name__ == "__main__":
     drop_db()
     create_db()
-"""

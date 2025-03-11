@@ -1,7 +1,7 @@
 """ Postgres диалект! """
 from sqlalchemy import DDL, create_engine
 from sqlalchemy.orm import Session, create_session
-from database.models import *
+from orm.db.models import *
 
 
 load_dotenv(os.path.join(os.path.dirname(__file__), "database.env"))
