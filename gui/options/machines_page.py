@@ -6,7 +6,7 @@ from PySide2.QtWidgets import QListWidgetItem, QLineEdit, QComboBox
 from PySide2.QtWidgets import QFileDialog
 from gui.validation import Validator
 from orm.db.models import Cnc, Machine
-from gui.orm import orm
+from orm import orm
 from gui.ui import Ui_main_window as Ui
 from gui.tools import Constructor, Tools
 from gui.threading_ import QThreadInstanceDecorator
@@ -62,7 +62,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
                 self.ui.add_machine_list_0.addItem(item)
                 if self.db_items.is_node_from_cache(machinename=name, model=Machine):
                     self.validator.set_not_complete_edit_attributes(item)
-            machines.pointer = machine_names
+            machines.pointer = tuple(machine_names)
             self.machines_pointer = machines.pointer
             self.clear_property_fields()
             self.insert_all_cnc_from_db(cnc_items)

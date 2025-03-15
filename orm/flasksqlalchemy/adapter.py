@@ -1,3 +1,4 @@
+from sqlalchemy.orm import InstrumentedAttribute
 from orm.conf import RESERVED_WORDS, AbstractModelController
 
 
@@ -37,4 +38,4 @@ class ModelController(AbstractModelController):
         check_class_attributes()
         collect_column_attributes() if not cls.column_names else None
         collect_foreign_keys()
-        return super().__new__(cls)
+        return super().__new__(cls, **k)

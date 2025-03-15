@@ -2,7 +2,7 @@ from typing import Optional
 from PySide2.QtCore import Slot
 from PySide2.QtWidgets import QListWidgetItem, QLineEdit, QTextEdit
 from orm.db.models import Cnc
-from gui.orm import orm
+from orm import orm
 from gui.tools import Constructor, Tools
 from gui.ui import Ui_main_window
 from gui.validation import Validator
@@ -43,7 +43,7 @@ class AddCNC(Constructor, Tools):
                 self.ui.cnc_list.addItem(list_item)
                 if self.db_items.is_node_from_cache(name=item["name"]):
                     self.validator.set_not_complete_edit_attributes(list_item)
-            self.select_result.pointer = names
+            self.select_result.pointer = tuple(names)
             self.reset_fields_to_default()
             auto_select_cnc_item(cnc_items) if names else None
             self.connect_text_field_signals()

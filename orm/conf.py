@@ -6,10 +6,10 @@ from abc import ABC, abstractmethod
 RESERVED_WORDS = ("__insert", "__update", "__delete", "__ready", "__model", "column_names")
 
 
-class AbstractModelController(ABC):
+class AbstractModelController:
     @abstractmethod
     def __new__(cls, *args, **kwargs):
-        pass
+        return super().__new__(cls, *args, **kwargs)
 
 
 #  class CustomModel(ModelController, db.Model):

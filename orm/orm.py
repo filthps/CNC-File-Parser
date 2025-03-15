@@ -38,7 +38,9 @@ from sqlalchemy.sql.expression import select
 from sqlalchemy.orm import Query, sessionmaker as session_factory, Session, scoped_session
 from sqlalchemy.exc import DisconnectionError, OperationalError, SQLAlchemyError
 from gui.datatype import LinkedList, LinkedListItem
-from orm.db.models import RESERVED_WORDS, CustomModel, ModelController, DATABASE_PATH
+from orm.db.models import ModelController, DATABASE_PATH
+from orm.conf import RESERVED_WORDS, CustomModel
+from orm.exceptions import *
 
 
 class ORMAttributes:
@@ -2782,7 +2784,7 @@ class Pointer(PointerCacheTools):
 
     def _is_valid_config(self):
         if type(self._wrap_items) is not tuple:
-            raise PointerWrapperTypeError
+            raise PointerWrapperTypeError("В качестве элементов wrapper принимается кортеж строк")
         if not all(map(lambda x: isinstance(x, str), self._wrap_items)):
             raise PointerWrapperTypeError
         if not self._wrap_items:
