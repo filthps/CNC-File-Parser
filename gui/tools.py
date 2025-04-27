@@ -7,7 +7,7 @@ from PySide2.QtWidgets import QPushButton, QDialogButtonBox,\
     QComboBox, QRadioButton
 from PySide2.QtGui import QIcon
 from gui.ui import Ui_main_window as Ui
-from orm.orm import ResultORMItem, ResultORMCollection
+from two_m_root.orm import ResultORMItem, ResultORMCollection
 
 
 class Tools:

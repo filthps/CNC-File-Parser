@@ -6,9 +6,9 @@ from PySide2.QtWidgets import QButtonGroup, QMainWindow, QListWidget, QListWidge
     QVBoxLayout, QGroupBox, QLineEdit, QRadioButton, QDialogButtonBox, QSpacerItem, QTextBrowser, QLabel, QFormLayout
 from PySide2.QtCore import Slot, Qt
 from PySide2.QtGui import QSyntaxHighlighter
+from two_m_root.orm import Tool, JoinSelectResult, ResultORMCollection
 from gui.tools import JoinedModelTools, Constructor, MyAbstractDialog
-from orm.db.models import Condition, HeadVarible, HeadVarDelegation, SearchString
-from orm.orm import JoinSelectResult, ORMHelper, ResultORMCollection
+from two_m.models import Condition, HeadVarible, HeadVarDelegation, SearchString
 from gui.ui import Ui_main_window as Ui
 from gui.validation import Validator
 from gui.threading_ import QThreadInstanceDecorator
@@ -39,7 +39,7 @@ class AddConditionDialog(MyAbstractDialog, InputTools):
     """
     EMPTY_VARIBLES_TEXT = "<Переменные не найдены>"
 
-    def __init__(self, db: ORMHelper, app: Optional["ConditionsPage"] = None, callback=None):
+    def __init__(self, db: Tool, app: Optional["ConditionsPage"] = None, callback=None):
         self.ui = SimpleNamespace()
         self.ui.accept_button = QDialogButtonBox.Apply
         self.ui.button_box = QDialogButtonBox(self.ui.accept_button, orientation=Qt.Orientation.Horizontal)
@@ -438,7 +438,7 @@ class ConditionsPage(Constructor, JoinedModelTools, InputTools):
         super().__init__(app_instance, ui)
         self.app = app_instance
         self.ui = ui
-        self.db_items: ORMHelper = app_instance.db_items_queue
+        self.db_items: Tool = app_instance.db_items_queue
         self.validator: Optional[ConditionsPageValidator] = None
         self.join_select_result: Optional[JoinSelectResult] = None
         self.add_condition_dialog: Optional[AddConditionDialog] = None

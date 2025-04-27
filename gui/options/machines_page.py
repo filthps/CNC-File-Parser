@@ -5,8 +5,8 @@ from PySide2.QtCore import Slot
 from PySide2.QtWidgets import QListWidgetItem, QLineEdit, QComboBox
 from PySide2.QtWidgets import QFileDialog
 from gui.validation import Validator
-from orm.db.models import Cnc, Machine
-from orm import orm
+from two_m_root.orm import Tool, Pointer, Result
+from two_m.models import Machine, Cnc
 from gui.ui import Ui_main_window as Ui
 from gui.tools import Constructor, Tools
 from gui.threading_ import QThreadInstanceDecorator
@@ -32,9 +32,9 @@ class OptionsPageCreateMachine(Constructor, Tools):
 
     def __init__(self, main_app_instance, ui: Ui):
         self.validator = None
-        self.db_items: orm.ORMHelper = main_app_instance.db_items_queue
+        self.db_items: Tool = main_app_instance.db_items_queue
         self.main_app = main_app_instance
-        self.machines_pointer: Optional[orm.Pointer] = None
+        self.machines: Optional[Result] = None
         self.ui = ui
         super().__init__(main_app_instance, ui)
 
@@ -60,14 +60,14 @@ class OptionsPageCreateMachine(Constructor, Tools):
                 machine_names.append(name)
                 item = QListWidgetItem(name)
                 self.ui.add_machine_list_0.addItem(item)
-                if self.db_items.is_node_from_cache(machinename=name, model=Machine):
+                if self.db_items.is_node_from_cache(machinename=name, _model=Machine):
                     self.validator.set_not_complete_edit_attributes(item)
-            machines.pointer = tuple(machine_names)
-            self.machines_pointer = machines.pointer
+            self.machines = machines
+            machines.pointer = machine_names
             self.clear_property_fields()
             self.insert_all_cnc_from_db(cnc_items)
-            self.select_machine_item()
             self.connect_fields_signals()
+            self.select_machine_item()
 
         @QThreadInstanceDecorator(result_callback=callback, in_new_qthread=create_thread)
         def load_items():
@@ -158,33 +158,24 @@ class OptionsPageCreateMachine(Constructor, Tools):
             if not machine_item:
                 self.reload()
                 return
-            if not cnc_items:
-                return
             self.disconnect_fields_signals()
             self.clear_property_fields()
             self.insert_all_cnc_from_db(cnc_items)
-            cnc_name = [cnc.value for cnc in cnc_items if cnc["cncid"] == machine_item.value.get("cncid", None)]
-            cnc_name = cnc_name[0] if cnc_name else {}
-            self.update_fields({**cnc_name, **machine_item.value})
+            self.update_fields({**({"name": cnc_items[0]["name"]} if cnc_items else {}), **machine_item.value})
             self.validator.set_machine(machine_)
             self.connect_fields_signals()
 
         @QThreadInstanceDecorator(result_callback=insert_machine_info_in_ui)
         def load_selected_machine(machine_name):
-            if self.machines_pointer.has_changes(machine_name):
-                #self.reload(False)
-                print("ХУЕТА")
-                return
-            machine = self.machines_pointer[machine_name]
+            machine = self.machines.pointer[machine_name]
             if machine is None:
-                #self.reload(create_thread=False)
-                print("ХУЕТА")
+                self.reload(create_thread=False)
                 return
-            cncs = self.db_items.get_items(_model=Cnc, _db_only=True)
-            if cncs.has_changes():
-                #self.reload(create_thread=False)
-                print("ХУЕТА")
+            if self.machines.pointer.has_changes(machine_name):
+                self.reload(False)
                 return
+            fk = machine.get("cncid")
+            cncs = self.db_items.get_items(_model=Cnc, _db_only=True, **{"cncid": fk} if fk is not None else {})
             return machine, cncs.items
         if machine_ is None:
             return
@@ -232,7 +223,7 @@ class OptionsPageCreateMachine(Constructor, Tools):
         @QThreadInstanceDecorator()
         def save_data(field_name: str, field_value: str, machine_n: str):
             def check_machine_is_exists():
-                m = self.machines_pointer[machine_n]
+                m = self.machines[machine_n]
                 if not m:
                     self.reload(create_thread=False)
                     return
@@ -254,18 +245,24 @@ class OptionsPageCreateMachine(Constructor, Tools):
 
     @Slot(str)
     def change_cnc(self, cnc_name):
-        @QThreadInstanceDecorator()
-        def check_exists_machine_and_cnc_and_update_data(current_machine_name: str, selected_cnc_name: str):
-            machine = self.db_items.get_item(machinename=current_machine_name, _model=Machine)
-            cnc = self.db_items.get_item(_model=Cnc, name=selected_cnc_name)
-            if not cnc or not machine:
-                self.reload(create_thread=False)
-            if selected_cnc_name == self.COMBO_BOX_DEFAULT_VALUES:
-                self.db_items.remove_field_from_node(selected_machine_name, "cncid")
-                return
-            self.db_items.set_item(cncid=cnc["cncid"],
-                                   machinename=current_machine_name,
+        def add_changes(args):
+            current_machine, new_cncid = args
+            self.db_items.set_item(cncid=new_cncid,
+                                   machinename=current_machine,
                                    _update=True, _ready=self.validator.refresh())
+
+        @QThreadInstanceDecorator(result_callback=add_changes)
+        def check_exists_machine_and_cnc_and_update_data(current_machine_name: str, selected_cnc_name: str):
+            machine = self.machines.pointer[current_machine_name]
+            if machine is None:
+                return self.reload(create_thread=False)
+            if selected_cnc_name == self.COMBO_BOX_DEFAULT_VALUES:
+                self.db_items.remove_field_from_node(machine.get_primary_key_and_value(only_val=True), "cncid")
+                return
+            cnc = self.db_items.get_items(_model=Cnc, name=selected_cnc_name)
+            if not cnc:
+                self.reload(create_thread=False)
+            return current_machine_name, cnc[0]["cncid"]
         if not cnc_name:
             return
         selected_machine = self.ui.add_machine_list_0.currentItem()

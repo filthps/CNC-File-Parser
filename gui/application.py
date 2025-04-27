@@ -2,10 +2,10 @@ import sys
 from PySide2.QtWidgets import QMainWindow, QApplication
 from PySide2.QtCore import Qt, QRect
 from PySide2.QtGui import QPixmap, QBrush
+from two_m_root.orm import Tool as DatabaseQueueTool
 from gui.ui import Ui_main_window as Ui
 from gui.signals import Navigation, Actions
 from tools import Tools
-from orm import orm
 
 
 class Main(QMainWindow, Tools):
@@ -18,7 +18,7 @@ class Main(QMainWindow, Tools):
         self.ui = None
 
         def init_db_manager():
-            self.db_items_queue = orm.ORMHelper
+            self.db_items_queue = DatabaseQueueTool
 
         def init_ui():
             def init_buttons():

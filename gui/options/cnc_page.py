@@ -1,8 +1,8 @@
 from typing import Optional
 from PySide2.QtCore import Slot
 from PySide2.QtWidgets import QListWidgetItem, QLineEdit, QTextEdit
-from orm.db.models import Cnc
-from orm import orm
+from two_m_root.orm import Tool, Result, ResultORMCollection, Pointer
+from two_m.models import Cnc
 from gui.tools import Constructor, Tools
 from gui.ui import Ui_main_window
 from gui.validation import Validator
@@ -17,9 +17,9 @@ class AddCNC(Constructor, Tools):
         super().__init__(app, ui)
         self.instance = app
         self.ui = ui
-        self.db_items: orm.ORMHelper = app.db_items_queue
+        self.db_items: Tool = app.db_items_queue
         self.validator: Optional[CncPageValidator] = None
-        self.select_result: Optional[orm.Result] = None
+        self.select_result: Optional[Result] = None
 
         def set_db_manager_model():
             self.db_items.set_model(Cnc)
@@ -33,7 +33,7 @@ class AddCNC(Constructor, Tools):
         self.connect_main_signals()
 
     def reload(self, in_new_qthread: bool = True):
-        def insert_cnc_items(cnc_items: orm.ResultORMCollection):
+        def insert_cnc_items(cnc_items: ResultORMCollection):
             self.disconnect_text_field_signals()
             self.ui.cnc_list.clear()
             names = []
@@ -43,7 +43,7 @@ class AddCNC(Constructor, Tools):
                 self.ui.cnc_list.addItem(list_item)
                 if self.db_items.is_node_from_cache(name=item["name"]):
                     self.validator.set_not_complete_edit_attributes(list_item)
-            self.select_result.pointer = tuple(names)
+            self.select_result.pointer = names
             self.reset_fields_to_default()
             auto_select_cnc_item(cnc_items) if names else None
             self.connect_text_field_signals()
@@ -117,30 +117,24 @@ class AddCNC(Constructor, Tools):
         dialog.show()
 
     def select_cnc(self, item: QListWidgetItem):
-        def update_fields(data=None):
-            if data is None:
-                return
+        def update_fields(data):
             self.disconnect_text_field_signals()
             self.reset_fields_to_default()
-            self.update_fields(line_edit_values=data)
+            self.update_fields(data)
             self.validator.set_cnc(item)
             self.validator.refresh()
             self.connect_text_field_signals()
 
         @QThreadInstanceDecorator(result_callback=update_fields)
         def load_cnc(item_name):
-            has_not_changes = self.select_result.pointer.is_valid_ordering
-            if not has_not_changes:
-                self.reload(in_new_qthread=False)
-                return
-            return self.select_result.pointer[item_name].value
+            item = self.select_result.pointer[item_name]
+            return item.value if item is not None else {}
         if not item:
             return
         name = item.text()
         load_cnc(name)
 
     def update_data(self, field_name):
-        @QThreadInstanceDecorator()
         def set_data():
             self.db_items.set_item(name=cnc_name,
                                    **{self.UI__TO_SQL_COLUMN_LINK__LINE_EDIT[field_name]: value},

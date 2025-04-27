@@ -1,11 +1,13 @@
-""" Postgres диалект! """
+"""
+Copyright (C) 2025 Литовченко Виктор Иванович (filthps)
+Данный модуль является шаблоном для написания хранимых процедур
+"""
 import os
 from dotenv import load_dotenv
 from sqlalchemy import DDL, create_engine
 from sqlalchemy.orm import Session, create_session
 
-
-load_dotenv(os.path.join(os.path.dirname(__file__), "database.env"))
+load_dotenv(os.path.join(os.path.dirname(__file__), "settings.env"))
 DB_PATH = os.environ.get("DATABASE_PATH")
 
 
@@ -35,7 +37,7 @@ def init_operation_delegation_table_triggers(s: Session):
 
     trigger_check_unique_delegation = DDL("""
         CREATE TRIGGER operation_delegation_trigger
-        BEFORE INSERT OR UPDATE
+        BEFORE INSERT
         ON operationdelegation FOR EACH ROW
         EXECUTE PROCEDURE check_unique_delegation();
     """)
@@ -67,7 +69,7 @@ def init_operation_delegation_table_triggers(s: Session):
 
     trigger_check_count_delegation_options = DDL("""
         CREATE TRIGGER delegation_trigger_counter
-        BEFORE INSERT OR UPDATE
+        BEFORE INSERT
         ON operationdelegation FOR EACH ROW
         EXECUTE PROCEDURE check_count_delegation_options();
     """)
@@ -100,7 +102,7 @@ def init_cnc_table_triggers(s: Session):
 
     test_unique_cnc_trigger = DDL("""
         CREATE TRIGGER unique_cnc_control
-        BEFORE INSERT OR UPDATE
+        BEFORE INSERT
         ON cnc FOR EACH ROW
         EXECUTE PROCEDURE test_unique_cnc();
         """)
@@ -126,7 +128,7 @@ def init_condition_table_triggers(s: Session):
 
     self_parent_control_trigger = DDL("""
         CREATE TRIGGER check_self_parent_condition
-        BEFORE INSERT OR UPDATE
+        BEFORE INSERT
         ON cond FOR EACH ROW
         EXECUTE PROCEDURE control_self_parent_condition();
         """)
@@ -162,7 +164,7 @@ def init_condition_table_triggers(s: Session):
 
     condition_unique_validation_trigger = DDL("""
         CREATE TRIGGER check_unique_condition
-        BEFORE INSERT OR UPDATE
+        BEFORE INSERT
         ON cond FOR EACH ROW
         EXECUTE PROCEDURE check_condition();
         """)
@@ -192,7 +194,7 @@ def init_condition_table_triggers(s: Session):
 
     condition_options_trigger = DDL("""
         CREATE TRIGGER check_condition_values
-        BEFORE INSERT OR UPDATE
+        BEFORE INSERT
         ON cond FOR EACH ROW
         EXECUTE PROCEDURE check_condition_options();
     """)
@@ -227,7 +229,7 @@ def init_numeration_table_triggers(s: Session):
 
     numeration_trigger = DDL("""
         CREATE TRIGGER check_unique_num 
-        BEFORE INSERT OR UPDATE
+        BEFORE INSERT
         ON num FOR EACH ROW
         EXECUTE PROCEDURE check_num_options();
         """)
@@ -260,7 +262,7 @@ def init_replace_table_triggers(s: Session):
 
     replace_trigger = DDL("""
         CREATE TRIGGER check_unique_replace
-        BEFORE INSERT OR UPDATE
+        BEFORE INSERT
         ON repl FOR EACH ROW
         EXECUTE PROCEDURE check_repl_options();
         """)
@@ -292,7 +294,7 @@ def init_comment_table_triggers(s: Session):
 
     comment_unique_trigger = DDL("""
         CREATE TRIGGER check_unique_comment
-        BEFORE INSERT OR UPDATE
+        BEFORE INSERT
         ON comment FOR EACH ROW
         EXECUTE PROCEDURE check_unique_cmt();
         """)
@@ -317,7 +319,7 @@ def init_comment_table_triggers(s: Session):
 
     comment_options_trigger = DDL("""
         CREATE TRIGGER comment_trigger_check_options
-        BEFORE INSERT OR UPDATE
+        BEFORE INSERT
         ON comment FOR EACH ROW
         EXECUTE PROCEDURE check_comment_options();
     """)
@@ -351,7 +353,7 @@ def init_remove_table_triggers(s: Session):
 
     rename_unique_trigger = DDL("""
         CREATE TRIGGER check_unique_remove
-        BEFORE INSERT OR UPDATE
+        BEFORE INSERT
         ON remove FOR EACH ROW
         EXECUTE PROCEDURE check_rem_options();
         """)
@@ -377,7 +379,7 @@ def init_remove_table_triggers(s: Session):
 
     rename_options_trigger = DDL("""
         CREATE TRIGGER remove_trigger
-        BEFORE INSERT OR UPDATE
+        BEFORE INSERT
         ON remove FOR EACH ROW
         EXECUTE PROCEDURE remove_trigger_func();
     """)
@@ -411,7 +413,7 @@ def init_uncomment_table_triggers(s: Session):
 
     uncomment_unique_trigger = DDL("""
         CREATE TRIGGER check_unique_uncomment 
-        BEFORE INSERT OR UPDATE
+        BEFORE INSERT
         ON uncomment FOR EACH ROW
         EXECUTE PROCEDURE check_uncomment_options();
         """)
@@ -434,7 +436,7 @@ def init_uncomment_table_triggers(s: Session):
 
     uncomment_options_trigger = DDL("""
         CREATE TRIGGER uncomment_trigger
-        BEFORE INSERT OR UPDATE
+        BEFORE INSERT
         ON uncomment FOR EACH ROW
         EXECUTE PROCEDURE uncomment_trigger_func();
     """)
@@ -472,7 +474,7 @@ def init_rename_table_triggers(s: Session):
 
     rename_table_unique_trigger = DDL("""
     CREATE TRIGGER check_unique_instance_rename
-    BEFORE INSERT OR UPDATE
+    BEFORE INSERT
     ON renam FOR EACH ROW
     EXECUTE PROCEDURE rename_count_instances();
     """)
@@ -510,7 +512,7 @@ def init_rename_table_triggers(s: Session):
 
     rename_table_options_trigger = DDL("""
         CREATE TRIGGER rename_trigger
-        BEFORE INSERT OR UPDATE
+        BEFORE INSERT
         ON renam FOR EACH ROW
         EXECUTE PROCEDURE rename_filter_values();
     """)
@@ -545,7 +547,7 @@ def init_insert_table_triggers(s: Session):
 
     insert_table_unique_trigger = DDL("""
     CREATE TRIGGER check_unique_instance_insert
-    BEFORE INSERT OR UPDATE
+    BEFORE INSERT
     ON insert FOR EACH ROW
     EXECUTE PROCEDURE insert_count_instances();
     """)
@@ -570,7 +572,7 @@ def init_insert_table_triggers(s: Session):
 
     insert_table_options_trigger = DDL("""
         CREATE TRIGGER insert_trigger
-        BEFORE INSERT OR UPDATE
+        BEFORE INSERT
         ON insert FOR EACH ROW
         EXECUTE PROCEDURE insert_filter_values();
     """)
@@ -612,7 +614,7 @@ def init_machine_table_triggers(s: Session):
 
     machine_table_unique_trigger = DDL("""
         CREATE TRIGGER check_machine
-        BEFORE INSERT OR UPDATE
+        BEFORE INSERT
         ON machine FOR EACH ROW
         EXECUTE PROCEDURE machine_count_instances();
         """)
@@ -644,7 +646,7 @@ def init_headvarible_table_triggers(s: Session):
 
     headvar_unique_trigger = DDL("""
         CREATE TRIGGER check_headvarible
-        BEFORE INSERT OR UPDATE
+        BEFORE INSERT
         ON headvar FOR EACH ROW
         EXECUTE PROCEDURE headvarible_count_instances();
         """)
@@ -675,7 +677,7 @@ def init_headvardelegation_table_triggers(s: Session):
 
     head_varible_delegation_table_unique_trigger = DDL("""
         CREATE TRIGGER check_varsec_instance
-        BEFORE INSERT OR UPDATE
+        BEFORE INSERT
         ON varsec FOR EACH ROW
         EXECUTE PROCEDURE varsec_check_unique();
         """)
@@ -699,7 +701,7 @@ def init_headvardelegation_table_triggers(s: Session):
 
     head_varible_delegation_table_options_trigger = DDL("""
         CREATE TRIGGER check_varsec_options
-        BEFORE INSERT OR UPDATE
+        BEFORE INSERT
         ON varsec FOR EACH ROW
         EXECUTE PROCEDURE varsec_check_options();
         """)
@@ -730,7 +732,7 @@ def init_taskdelegation_table_triggers(s: Session):
 
     task_delegation_table_unique_trigger = DDL("""
         CREATE TRIGGER check_taskdelegate_instance
-        BEFORE INSERT OR UPDATE
+        BEFORE INSERT
         ON taskdelegate FOR EACH ROW
         EXECUTE PROCEDURE taskdelegate_check_unique();
         """)
@@ -765,7 +767,7 @@ def init_searchstring_table_triggers(s: Session):
 
     search_string_table_unique_trigger = DDL("""
         CREATE TRIGGER check_unique_searchstring
-        BEFORE INSERT OR UPDATE
+        BEFORE INSERT
         ON sstring FOR EACH ROW
         EXECUTE PROCEDURE search_other_item();
     """)
@@ -785,7 +787,7 @@ def init_searchstring_table_triggers(s: Session):
 
     search_string_table_indexes_validation_inner_trigger = DDL("""
         CREATE TRIGGER check_selected_place
-        BEFORE INSERT OR UPDATE
+        BEFORE INSERT
         ON sstring FOR EACH ROW
         EXECUTE PROCEDURE count_inner();
     """)
@@ -809,7 +811,7 @@ def init_searchstring_table_triggers(s: Session):
 
     search_string_table_indexes_validation_right_trigger = DDL("""
         CREATE TRIGGER check_separators_to_replace
-        BEFORE INSERT OR UPDATE
+        BEFORE INSERT
         ON sstring FOR EACH ROW
         EXECUTE PROCEDURE replace_ignore_separators();
     """)
@@ -823,9 +825,7 @@ def init_searchstring_table_triggers(s: Session):
     s.commit()
 
 
-def init_all_triggers(db_path=None):
-    engine = create_engine(db_path or DB_PATH)
-    session = create_session(bind=engine)
+def init_all_triggers(session):
     init_rename_table_triggers(session)
     init_uncomment_table_triggers(session)
     init_remove_table_triggers(session)
@@ -844,4 +844,6 @@ def init_all_triggers(db_path=None):
 
 
 if __name__ == "__main__":
-    init_all_triggers()
+    engine = create_engine(DB_PATH)
+    session = create_session(bind=engine)
+    init_all_triggers(session)

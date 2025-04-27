@@ -1,17 +1,17 @@
+"""
+Copyright (C) 2025 Литовченко Виктор Иванович (filthps)
+Данный модуль является шаблоном для написания классов-моделей таблиц
+"""
 import os
 import itertools
 from uuid import uuid4
 from dotenv import load_dotenv
+from sqlalchemy import Column, ForeignKey, String, Integer, Boolean, CheckConstraint, SmallInteger, Text
 from flask import Flask
-from sqlalchemy import String, Integer, Column, ForeignKey, Boolean, SmallInteger, Text, CheckConstraint
-from sqlalchemy.orm import relationship
 from flask_sqlalchemy import SQLAlchemy as FlaskSQLAlchemy
-from orm.conf import GlobalFields
-from orm.flasksqlalchemy.adapter import ModelController
-
-
-load_dotenv(os.path.join(os.path.dirname(__file__), "database.env"))
-DATABASE_PATH = os.environ.get("DATABASE_PATH")
+from two_m_root.conf import GlobalFields
+from two_m_root.flasksqlalchemy.adapter import ModelController
+from two_m.main import DATABASE_PATH
 
 
 def create_app(path=None, app_name=None):
@@ -58,7 +58,6 @@ class Machine(ModelController, db.Model, GlobalFields):
     spindelespeed = Column(Integer, nullable=True, default=None)
     inputcatalog = Column(String, nullable=False)
     outputcatalog = Column(String, nullable=False)
-    operations = relationship("OperationDelegation", secondary=TaskDelegation.__table__)
     __table_args__ = (
         CheckConstraint("machinename!=''", name="machine_name_empty"),
         CheckConstraint(r"SUBSTRING(machinename, 1, 2) NOT SIMILAR TO '[0-9_\!@#\$%\^&\*\(\)\-\= ]*'", name="invalid_machine_name_reg"),
@@ -304,7 +303,6 @@ def drop_db():
 
 
 def create_db():
-    check_bad_attribute_name()
     app.app_context().push()
     db.create_all()
 
